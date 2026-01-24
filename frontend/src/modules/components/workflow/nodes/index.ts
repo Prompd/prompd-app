@@ -1,6 +1,13 @@
 /**
  * Workflow Node Components - Export all custom node types
+ *
+ * All nodes are wrapped with NodeErrorBoundary for crash protection.
  */
+
+import { ComponentType, createElement } from 'react'
+import type { NodeProps } from '@xyflow/react'
+import { NodeErrorBoundary } from '../NodeErrorBoundary'
+import type { BaseNodeData } from '../../../services/workflowTypes'
 
 export { TriggerNode } from './TriggerNode'
 export { PromptNode } from './PromptNode'
@@ -56,35 +63,59 @@ import { TransformNode } from './TransformNode'
 import { MemoryNode } from './MemoryNode'
 
 /**
+ * Wraps a node component with error boundary for crash protection
+ * Using permissive types since node components are already properly typed
+ */
+function withErrorBoundary(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Component: ComponentType<any>,
+  nodeType: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): ComponentType<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return function WrappedNode(props: any) {
+    return createElement(
+      NodeErrorBoundary,
+      {
+        nodeId: props.id,
+        nodeType,
+        children: createElement(Component, props),
+      }
+    )
+  }
+}
+
+/**
  * Node types registry for React Flow
+ * All nodes are wrapped with error boundaries for crash protection
  */
 export const nodeTypes = {
-  trigger: TriggerNode,
-  prompt: PromptNode,
-  provider: ProviderNode,
-  output: OutputNode,
-  condition: ConditionNode,
-  loop: LoopNode,
-  parallel: ParallelNode,
-  merge: MergeNode,
-  callback: CallbackNode,
-  checkpoint: CallbackNode, // Alias for callback (legacy compatibility)
-  'user-input': UserInputNode,
-  tool: ToolNode,
-  'tool-call-parser': ToolCallParserNode,
-  'tool-call-router': ToolCallRouterNode,
-  agent: AgentNode,
-  'chat-agent': ChatAgentNode,
-  guardrail: GuardrailNode,
-  'error-handler': ErrorHandlerNode,
+  trigger: withErrorBoundary(TriggerNode, 'trigger'),
+  prompt: withErrorBoundary(PromptNode, 'prompt'),
+  provider: withErrorBoundary(ProviderNode, 'provider'),
+  output: withErrorBoundary(OutputNode, 'output'),
+  condition: withErrorBoundary(ConditionNode, 'condition'),
+  loop: withErrorBoundary(LoopNode, 'loop'),
+  parallel: withErrorBoundary(ParallelNode, 'parallel'),
+  merge: withErrorBoundary(MergeNode, 'merge'),
+  callback: withErrorBoundary(CallbackNode, 'callback'),
+  checkpoint: withErrorBoundary(CallbackNode, 'checkpoint'), // Alias for callback (legacy compatibility)
+  'user-input': withErrorBoundary(UserInputNode, 'user-input'),
+  tool: withErrorBoundary(ToolNode, 'tool'),
+  'tool-call-parser': withErrorBoundary(ToolCallParserNode, 'tool-call-parser'),
+  'tool-call-router': withErrorBoundary(ToolCallRouterNode, 'tool-call-router'),
+  agent: withErrorBoundary(AgentNode, 'agent'),
+  'chat-agent': withErrorBoundary(ChatAgentNode, 'chat-agent'),
+  guardrail: withErrorBoundary(GuardrailNode, 'guardrail'),
+  'error-handler': withErrorBoundary(ErrorHandlerNode, 'error-handler'),
   // Phase E: Advanced Nodes
-  command: CommandNode,
-  code: CodeNode,
-  'claude-code': ClaudeCodeNode,
-  workflow: WorkflowNode,
-  'mcp-tool': McpToolNode,
-  transformer: TransformNode,
-  memory: MemoryNode,
+  command: withErrorBoundary(CommandNode, 'command'),
+  code: withErrorBoundary(CodeNode, 'code'),
+  'claude-code': withErrorBoundary(ClaudeCodeNode, 'claude-code'),
+  workflow: withErrorBoundary(WorkflowNode, 'workflow'),
+  'mcp-tool': withErrorBoundary(McpToolNode, 'mcp-tool'),
+  transformer: withErrorBoundary(TransformNode, 'transformer'),
+  memory: withErrorBoundary(MemoryNode, 'memory'),
   // Placeholder mappings (reuse existing nodes until dedicated ones are created)
-  api: ToolNode, // HTTP API node uses Tool with http type
+  api: withErrorBoundary(ToolNode, 'api'), // HTTP API node uses Tool with http type
 }

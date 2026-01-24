@@ -40,6 +40,7 @@ import {
   createEmptyWorkflow,
   createWorkflowNode,
 } from '../modules/services/workflowParser'
+import { validateWorkflow, validateWorkflowQuick } from '../modules/services/workflowValidator'
 
 // ============================================================================
 // Undo/Redo History Management
@@ -404,6 +405,7 @@ interface WorkflowStoreState {
   serializeToJson: () => string
   clearWorkflow: () => void
   updateWorkflowParameters: (parameters: import('../modules/services/workflowTypes').WorkflowParameter[]) => void
+  runValidation: () => void
 
   // Clipboard for copy/paste
   clipboard: { node: WorkflowCanvasNode; edges: WorkflowCanvasEdge[] } | null
@@ -575,6 +577,13 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
             })
           }
         }
+
+        // Run validation on the loaded workflow
+        if (state.workflowFile) {
+          const validationResult = validateWorkflow(state.workflowFile)
+          state.errors = validationResult.errors
+          state.warnings = validationResult.warnings
+        }
       })
     },
 
@@ -608,6 +617,17 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         if (state.workflowFile) {
           state.workflowFile.parameters = parameters
           state.isDirty = true
+        }
+      })
+    },
+
+    // Run validation on the current workflow
+    runValidation: () => {
+      set(state => {
+        if (state.workflowFile) {
+          const result = validateWorkflow(state.workflowFile)
+          state.errors = result.errors
+          state.warnings = result.warnings
         }
       })
     },
