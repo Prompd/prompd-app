@@ -1,0 +1,33 @@
+---
+id: base-analysis-prompt
+name: "Base Analysis Framework"
+description: "Foundational prompt for structured analysis"
+version: 1.0.1
+parameters:
+  - name: topic
+    type: string
+    required: true
+    default: "artificial intelligence"
+    description: "Topic to analyze"
+  - name: output_format
+    type: string
+    enum: [report, summary, detailed]
+    default: report
+    description: "Format of output"
+---
+
+# Analysis Framework: {topic}
+
+## Objective
+Provide structured analysis of {topic} in {output_format} format.
+
+## Core Framework
+1. **Overview**: Define scope and context
+2. **Key Components**: Identify primary elements
+3. **Analysis**: Examine relationships and patterns
+4. **Insights**: Draw conclusions and implications
+
+## Output Requirements
+- Clear structure and organization
+- Evidence-based conclusions
+- Actionable insights where applicable

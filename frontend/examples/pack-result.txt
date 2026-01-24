@@ -1,0 +1,34 @@
+Found existing manifest.json
+
+Creating package with universal file support: public-examples-1.1.0.pdpkg
+  OK Added manifest.json
+  SKIP not in files whitelist: manifest.json
+  OK Keeping safe file: README.md
+  OK Keeping safe file: assistants\code-assistant.prmd
+  OK Keeping safe file: contexts\architecture-patterns.json
+  OK Keeping safe file: contexts\code-review-checklist.md
+  OK Keeping safe file: contexts\deployment-config.yaml
+  CONV Converted code file: typescript-examples.ts -> contexts\typescript-examples.ts.txt
+  OK Keeping safe file: prompts\api-development.prmd
+  OK Keeping safe file: prompts\base-prompt.prmd
+  OK Keeping safe file: prompts\basic-inheritance.prmd
+  OK Keeping safe file: prompts\package-inheritance.prmd
+  OK Keeping safe file: prompts\team-project-planner.prmd
+  SKIP not in files whitelist: prompts\untitled.prmd
+  OK Keeping safe file: systems\system-admin.md
+  OK Keeping safe file: users\user-lead-engineer.md
+
+Package creation complete!
+Conversion Summary:
+  Safe files (kept as-is): 12
+  Code files (-> .txt): 1
+  Binary extractions: 0
+  Error files: 0
+  Total files processed: 13
+OK Package is secure - no executable files present
+Package saved: dist\public-examples-1.1.0.pdpkg
+
+Package created successfully!
+   Package: dist\public-examples-1.1.0.pdpkg
+   Size: 21.5 KB
+Package validation passed

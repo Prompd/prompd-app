@@ -1,0 +1,39 @@
+---
+id: basic-inheritance-example
+name: "Basic Inheritance Example"
+description: "Demonstrates simple local file inheritance"
+version: 1.0.2
+inherits: "./base-prompt.prmd"
+parameters:
+  - name: topic
+    type: string
+    default: "artificial intelligence"
+    description: "Topic to analyze"
+  - name: analysis_depth
+    type: string
+    enum: [basic, detailed, comprehensive]
+    default: detailed
+    description: "Level of analysis depth"
+---
+
+## Extended Analysis for {topic}
+
+This prompt extends the base analysis with additional insights:
+
+### Detailed Research Areas
+{%- if analysis_depth == "comprehensive" %}
+- Historical context and evolution
+- Current market trends and applications
+- Future projections and implications
+- Regulatory and ethical considerations
+{%- elif analysis_depth == "detailed" %}
+- Current state and key developments
+- Main applications and use cases
+- Challenges and opportunities
+{%- else %}
+- Basic overview and key points
+- Primary use cases
+{%- endif %}
+
+### Methodology
+Conduct {analysis_depth} analysis using structured research approach.

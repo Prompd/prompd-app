@@ -1,0 +1,13 @@
+{
+  "name": "prompd-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "build": "cd packages/react && npm run build && cd ../../frontend && npm run build",
+    "build:react": "cd packages/react && npm run build",
+    "electron:dev": "cd frontend && npm run electron:dev",
+    "electron:build:win": "cd frontend && npm run electron:build:win"
+  }
+}

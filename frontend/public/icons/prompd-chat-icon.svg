@@ -1,0 +1,11 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M2 6 C2 3, 5 2, 8 2 L26 2 C29 2, 30 3, 30 6 L30 20 C30 23, 29 24, 26 24 L12 24 L6 30 L6 24 C3 24, 2 23, 2 20 Z" 
+        fill="#007acc" stroke="#005a9e" stroke-width="1"/>
+  <path d="M3 6 C3 4, 5 3, 8 3 L26 3 C28 3, 29 4, 29 6 L29 20 C29 22, 28 23, 26 23 L12.5 23 L7 28 L7 23 C5 23, 3 22, 3 20 Z" 
+        fill="#4FC1FF"/>
+  <text x="16" y="17" font-family="'Segoe UI', Arial, sans-serif" font-size="12" font-weight="bold" fill="white" text-anchor="middle">Pd</text>
+  <circle cx="12" cy="9" r="1" fill="white" opacity="0.8"/>
+  <circle cx="15" cy="9" r="1" fill="white" opacity="0.8"/>
+  <circle cx="18" cy="9" r="1" fill="white" opacity="0.8"/>
+</svg>
+

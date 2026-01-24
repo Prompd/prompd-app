@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/git/github/Logikbug/prompd-docs/**)",
+      "Bash(npm install)",
+      "Bash(npm audit:*)",
+      "Bash(npm run build:*)",
+      "Bash(node:*)",
+      "Bash(timeout 10s npm run dev)",
+      "Bash(timeout 15s npm run dev)",
+      "Read(//c/git/github/Logikbug/prompd-base/examples/**)",
+      "Read(//c/git/github/Logikbug/prompd-cli/cli/**)",
+      "Write(//c/git/github/Logikbug/prompd-cli/cli/**)",
+      "Bash(cat:*)",
+      "Bash(tree:*)",
+      "Read(//c/git/github/Logikbug/registry.prompdhub.ai/backend/src/routes/**)",
+      "Bash(npx tsc:*)",
+      "Bash(timeout 60 npx tsc:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

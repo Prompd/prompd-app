@@ -1,0 +1,43 @@
+[
+  {
+    "id": "free-llm-tip",
+    "title": "Free LLM Providers Available",
+    "description": "Configure Groq, Google AI Studio, or other free providers in Settings.",
+    "icon": "Sparkles",
+    "type": "tip",
+    "date": "2026-01-02",
+    "priority": 10,
+    "action": {
+      "type": "settings",
+      "label": "Configure API Keys",
+      "target": "api-keys"
+    }
+  },
+  {
+    "id": "registry-launch",
+    "title": "Package Registry Now Live",
+    "description": "Browse and install community packages from the registry.",
+    "icon": "Package",
+    "type": "announcement",
+    "date": "2026-01-01",
+    "priority": 5,
+    "action": {
+      "type": "registry",
+      "label": "Browse Packages"
+    }
+  },
+  {
+    "id": "discord",
+    "title": "Join the Community",
+    "description": "Connect with other prompt engineers on Discord.",
+    "icon": "Users",
+    "type": "community",
+    "date": "2025-12-15",
+    "priority": 1,
+    "action": {
+      "type": "link",
+      "label": "Join Discord",
+      "target": "https://discord.gg/prompd"
+    }
+  }
+]

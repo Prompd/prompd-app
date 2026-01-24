@@ -1,0 +1,38 @@
+---
+id: package-inheritance-example
+name: "Package Inheritance Example"
+description: "Demonstrates package-based inheritance"
+version: 1.0.3
+inherits: "@prompd/public-examples@1.0.6/prompts/base-prompt.prmd"
+parameters:
+  - name: domain
+    type: string
+    default: "technology"
+    description: "Domain to focus analysis on"
+  - name: stakeholders
+    type: array
+    items:
+      enum: [developers, users, executives, regulators]
+    default: ["developers", "users"]
+    description: "Key stakeholder groups"
+context:
+  - "../contexts/typescript-examples.ts"
+---
+
+## Specialized Analysis for {domain}
+
+### Stakeholder Perspectives
+{%- for stakeholder in stakeholders %}
+**{stakeholder} Viewpoint:**
+- Key concerns and priorities
+- Success criteria and metrics
+- Risk factors and mitigation strategies
+
+{%- endfor %}
+
+### Domain-Specific Considerations
+For {domain} analysis, evaluate:
+- Industry standards and best practices
+- Regulatory compliance requirements
+- Market dynamics and competitive landscape
+- Technical feasibility and constraints

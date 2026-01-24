@@ -1,0 +1,1 @@
+prompd publish .\dist\public-examples-1.1.0.pdpkg

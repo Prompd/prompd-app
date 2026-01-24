@@ -1,0 +1,28 @@
+{
+  "name": "@prompd/public-examples",
+  "version": "1.1.0",
+  "description": "Public example prompts demonstrating inheritance, overriding features, and general usage patterns. Includes practical examples showing how to extend templates, customize prompts, and implement common AI workflow patterns.",
+  "license": "MIT",
+  "tags": ["examples", "prompts", "patterns", "assistants"],
+  "keywords": ["examples", "prompts", "patterns", "assistants", "roles"],
+  "readme": "README.md",
+  "homepage": "https://github.com/Prompd/prompd-cli/tree/main/examples",
+  "author": "prompd",
+  "dependencies": {
+    "@prompd/public-examples": "1.0.5"
+  },
+  "main": "prompts/api-development.prmd",
+  "files": [
+    "prompts/base-prompt.prmd",
+    "prompts/basic-inheritance.prmd",
+    "prompts/package-inheritance.prmd",
+    "prompts/team-project-planner.prmd",
+    "assistants/code-assistant.prmd",
+    "systems/system-admin.md",
+    "users/user-lead-engineer.md",
+    "contexts/typescript-examples.ts",
+    "contexts/deployment-config.yaml",
+    "contexts/architecture-patterns.json",
+    "contexts/code-review-checklist.md"
+  ]
+}

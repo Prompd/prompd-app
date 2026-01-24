@@ -1,0 +1,1822 @@
+{
+  "@clerk/clerk-react@5.59.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/clerk/javascript",
+    "publisher": "Clerk",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@clerk\\clerk-react",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@clerk\\clerk-react\\LICENSE"
+  },
+  "@clerk/shared@3.42.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/clerk/javascript",
+    "publisher": "Clerk",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@clerk\\shared",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@clerk\\shared\\LICENSE"
+  },
+  "@monaco-editor/loader@1.7.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/suren-atoyan/monaco-loader",
+    "publisher": "Suren Atoyan",
+    "email": "contact@surenatoyan.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@monaco-editor\\loader",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@monaco-editor\\loader\\LICENSE"
+  },
+  "@monaco-editor/react@4.7.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/suren-atoyan/monaco-react",
+    "publisher": "Suren Atoyan",
+    "email": "contact@surenatoyan.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@monaco-editor\\react",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@monaco-editor\\react\\LICENSE"
+  },
+  "@prompd/app@0.1.0": {
+    "licenses": "UNLICENSED",
+    "private": true,
+    "publisher": "Prompd LLC",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend"
+  },
+  "@prompd/react@0.2.0": {
+    "licenses": "MIT",
+    "publisher": "Stephen Baker",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\README.md"
+  },
+  "@socket.io/component-emitter@3.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/socketio/emitter",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@socket.io\\component-emitter",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@socket.io\\component-emitter\\LICENSE"
+  },
+  "@types/d3-color@3.1.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@types\\d3-color",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@types\\d3-color\\LICENSE"
+  },
+  "@types/d3-drag@3.0.7": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@types\\d3-drag",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@types\\d3-drag\\LICENSE"
+  },
+  "@types/d3-interpolate@3.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@types\\d3-interpolate",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@types\\d3-interpolate\\LICENSE"
+  },
+  "@types/d3-selection@3.0.11": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@types\\d3-selection",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@types\\d3-selection\\LICENSE"
+  },
+  "@types/d3-transition@3.0.9": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@types\\d3-transition",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@types\\d3-transition\\LICENSE"
+  },
+  "@types/d3-zoom@3.0.8": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@types\\d3-zoom",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@types\\d3-zoom\\LICENSE"
+  },
+  "@types/debug@4.1.12": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\debug",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\debug\\LICENSE"
+  },
+  "@types/estree-jsx@1.0.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\estree-jsx",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\estree-jsx\\LICENSE"
+  },
+  "@types/estree@1.0.8": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\estree",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\estree\\LICENSE"
+  },
+  "@types/hast@3.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\hast",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\hast\\LICENSE"
+  },
+  "@types/mdast@4.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\mdast",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\mdast\\LICENSE"
+  },
+  "@types/ms@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\ms",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\ms\\LICENSE"
+  },
+  "@types/prop-types@15.7.15": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\prop-types",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\prop-types\\LICENSE"
+  },
+  "@types/react@18.3.27": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\react",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\react\\LICENSE"
+  },
+  "@types/trusted-types@2.0.7": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@types\\trusted-types",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@types\\trusted-types\\LICENSE"
+  },
+  "@types/unist@2.0.11": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\parse-entities\\node_modules\\@types\\unist",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\parse-entities\\node_modules\\@types\\unist\\LICENSE"
+  },
+  "@types/unist@3.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\unist",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@types\\unist\\LICENSE"
+  },
+  "@ungap/structured-clone@1.3.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/ungap/structured-clone",
+    "publisher": "Andrea Giammarchi",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@ungap\\structured-clone",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\@ungap\\structured-clone\\LICENSE"
+  },
+  "@xyflow/react@12.10.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/xyflow/xyflow",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@xyflow\\react",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@xyflow\\react\\LICENSE"
+  },
+  "@xyflow/system@0.0.74": {
+    "licenses": "MIT",
+    "repository": "https://github.com/xyflow/xyflow",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@xyflow\\system",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@xyflow\\system\\LICENSE"
+  },
+  "anymatch@3.1.3": {
+    "licenses": "ISC",
+    "repository": "https://github.com/micromatch/anymatch",
+    "publisher": "Elan Shanker",
+    "url": "https://github.com/es128",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\anymatch",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\anymatch\\LICENSE"
+  },
+  "argparse@2.0.1": {
+    "licenses": "Python-2.0",
+    "repository": "https://github.com/nodeca/argparse",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\argparse",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\argparse\\LICENSE"
+  },
+  "bail@2.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/bail",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\bail",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\bail\\license"
+  },
+  "binary-extensions@2.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/binary-extensions",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\binary-extensions",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\binary-extensions\\license"
+  },
+  "braces@3.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromatch/braces",
+    "publisher": "Jon Schlinkert",
+    "url": "https://github.com/jonschlinkert",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\braces",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\braces\\LICENSE"
+  },
+  "builder-util-runtime@9.5.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron-userland/electron-builder",
+    "publisher": "Vladimir Krivosheev",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\builder-util-runtime",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\builder-util-runtime\\LICENSE"
+  },
+  "ccount@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/ccount",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\ccount",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\ccount\\license"
+  },
+  "character-entities-html4@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/character-entities-html4",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\character-entities-html4",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\character-entities-html4\\license"
+  },
+  "character-entities-legacy@3.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/character-entities-legacy",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\character-entities-legacy",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\character-entities-legacy\\license"
+  },
+  "character-entities@2.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/character-entities",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\character-entities",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\character-entities\\license"
+  },
+  "character-reference-invalid@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/character-reference-invalid",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\character-reference-invalid",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\character-reference-invalid\\license"
+  },
+  "chokidar@3.6.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/paulmillr/chokidar",
+    "publisher": "Paul Miller",
+    "url": "https://paulmillr.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\chokidar",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\chokidar\\LICENSE"
+  },
+  "classcat@5.0.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jorgebucaran/classcat",
+    "publisher": "Jorge Bucaran",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\classcat",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\classcat\\LICENSE.md"
+  },
+  "clsx@2.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lukeed/clsx",
+    "publisher": "Luke Edwards",
+    "email": "luke.edwards05@gmail.com",
+    "url": "https://lukeed.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\clsx",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\clsx\\license"
+  },
+  "comma-separated-tokens@2.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/comma-separated-tokens",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\comma-separated-tokens",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\comma-separated-tokens\\license"
+  },
+  "core-util-is@1.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/isaacs/core-util-is",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\core-util-is",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\core-util-is\\LICENSE"
+  },
+  "cronstrue@2.59.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/bradymholt/cronstrue",
+    "publisher": "Brady Holt",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\react-cron-generator\\node_modules\\cronstrue",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\react-cron-generator\\node_modules\\cronstrue\\LICENSE"
+  },
+  "csstype@3.1.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/frenic/csstype",
+    "publisher": "Fredrik Nicol",
+    "email": "fredrik.nicol@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\csstype",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\csstype\\LICENSE"
+  },
+  "csstype@3.2.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/frenic/csstype",
+    "publisher": "Fredrik Nicol",
+    "email": "fredrik.nicol@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\csstype",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\csstype\\LICENSE"
+  },
+  "d3-color@3.1.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-color",
+    "publisher": "Mike Bostock",
+    "url": "http://bost.ocks.org/mike",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-color",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-color\\LICENSE"
+  },
+  "d3-dispatch@3.0.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-dispatch",
+    "publisher": "Mike Bostock",
+    "url": "http://bost.ocks.org/mike",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-dispatch",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-dispatch\\LICENSE"
+  },
+  "d3-drag@3.0.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-drag",
+    "publisher": "Mike Bostock",
+    "url": "https://bost.ocks.org/mike",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-drag",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-drag\\LICENSE"
+  },
+  "d3-ease@3.0.1": {
+    "licenses": "BSD-3-Clause",
+    "repository": "https://github.com/d3/d3-ease",
+    "publisher": "Mike Bostock",
+    "url": "http://bost.ocks.org/mike",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-ease",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-ease\\LICENSE"
+  },
+  "d3-interpolate@3.0.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-interpolate",
+    "publisher": "Mike Bostock",
+    "url": "http://bost.ocks.org/mike",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-interpolate",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-interpolate\\LICENSE"
+  },
+  "d3-selection@3.0.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-selection",
+    "publisher": "Mike Bostock",
+    "url": "https://bost.ocks.org/mike",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-selection",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-selection\\LICENSE"
+  },
+  "d3-timer@3.0.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-timer",
+    "publisher": "Mike Bostock",
+    "url": "http://bost.ocks.org/mike",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-timer",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-timer\\LICENSE"
+  },
+  "d3-transition@3.0.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-transition",
+    "publisher": "Mike Bostock",
+    "url": "https://bost.ocks.org/mike",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-transition",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-transition\\LICENSE"
+  },
+  "d3-zoom@3.0.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-zoom",
+    "publisher": "Mike Bostock",
+    "url": "https://bost.ocks.org/mike",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-zoom",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\d3-zoom\\LICENSE"
+  },
+  "debug@4.4.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/debug-js/debug",
+    "publisher": "Josh Junon",
+    "url": "https://github.com/qix-",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\debug",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\debug\\LICENSE"
+  },
+  "decode-named-character-reference@1.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/decode-named-character-reference",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\decode-named-character-reference",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\decode-named-character-reference\\license"
+  },
+  "decode-named-character-reference@1.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/decode-named-character-reference",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\decode-named-character-reference",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\decode-named-character-reference\\license"
+  },
+  "dequal@2.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lukeed/dequal",
+    "publisher": "Luke Edwards",
+    "email": "luke.edwards05@gmail.com",
+    "url": "https://lukeed.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\dequal",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\dequal\\license"
+  },
+  "devlop@1.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/devlop",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\devlop",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\devlop\\license"
+  },
+  "dompurify@3.2.7": {
+    "licenses": "(MPL-2.0 OR Apache-2.0)",
+    "repository": "https://github.com/cure53/DOMPurify",
+    "publisher": "Dr.-Ing. Mario Heiderich, Cure53",
+    "email": "mario@cure53.de",
+    "url": "https://cure53.de/",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\dompurify",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\dompurify\\LICENSE"
+  },
+  "dotenv@17.2.3": {
+    "licenses": "BSD-2-Clause",
+    "repository": "https://github.com/motdotla/dotenv",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\dotenv",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\dotenv\\LICENSE"
+  },
+  "electron-updater@6.7.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron-userland/electron-builder",
+    "publisher": "Vladimir Krivosheev",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\electron-updater",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\electron-updater\\LICENSE"
+  },
+  "elkjs@0.11.0": {
+    "licenses": "EPL-2.0",
+    "repository": "https://github.com/kieler/elkjs",
+    "publisher": "Ulf Rüegg",
+    "email": "uruurumail@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\elkjs",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\elkjs\\LICENSE.md"
+  },
+  "engine.io-client@6.6.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/socketio/socket.io",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\engine.io-client",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\engine.io-client\\LICENSE"
+  },
+  "engine.io-parser@5.2.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/socketio/socket.io",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\engine.io-parser",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\engine.io-parser\\LICENSE"
+  },
+  "entities@6.0.1": {
+    "licenses": "BSD-2-Clause",
+    "repository": "https://github.com/fb55/entities",
+    "publisher": "Felix Boehm",
+    "email": "me@feedic.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\entities",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\entities\\LICENSE"
+  },
+  "escape-string-regexp@5.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/escape-string-regexp",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-find-and-replace\\node_modules\\escape-string-regexp",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-find-and-replace\\node_modules\\escape-string-regexp\\license"
+  },
+  "estree-util-is-identifier-name@3.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/estree-util-is-identifier-name",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\estree-util-is-identifier-name",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\estree-util-is-identifier-name\\license"
+  },
+  "extend@3.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/justmoon/node-extend",
+    "publisher": "Stefan Thomas",
+    "email": "justmoon@members.fsf.org",
+    "url": "http://www.justmoon.net",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\extend",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\extend\\LICENSE"
+  },
+  "fill-range@7.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jonschlinkert/fill-range",
+    "publisher": "Jon Schlinkert",
+    "url": "https://github.com/jonschlinkert",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\fill-range",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\fill-range\\LICENSE"
+  },
+  "fs-extra@10.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jprichardson/node-fs-extra",
+    "publisher": "JP Richardson",
+    "email": "jprichardson@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\electron-updater\\node_modules\\fs-extra",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\electron-updater\\node_modules\\fs-extra\\LICENSE"
+  },
+  "glob-parent@5.1.2": {
+    "licenses": "ISC",
+    "repository": "https://github.com/gulpjs/glob-parent",
+    "publisher": "Gulp Team",
+    "email": "team@gulpjs.com",
+    "url": "https://gulpjs.com/",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\glob-parent",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\glob-parent\\LICENSE"
+  },
+  "glob-to-regexp@0.4.1": {
+    "licenses": "BSD-2-Clause",
+    "repository": "https://github.com/fitzgen/glob-to-regexp",
+    "publisher": "Nick Fitzgerald",
+    "email": "fitzgen@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\glob-to-regexp",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\glob-to-regexp\\README.md"
+  },
+  "graceful-fs@4.2.11": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/node-graceful-fs",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\graceful-fs",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\graceful-fs\\LICENSE"
+  },
+  "hast-util-from-parse5@8.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/hast-util-from-parse5",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\hast-util-from-parse5",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\hast-util-from-parse5\\license"
+  },
+  "hast-util-is-element@3.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/hast-util-is-element",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\hast-util-is-element",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\hast-util-is-element\\license"
+  },
+  "hast-util-parse-selector@4.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/hast-util-parse-selector",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\hast-util-parse-selector",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\hast-util-parse-selector\\license"
+  },
+  "hast-util-raw@9.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/hast-util-raw",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\hast-util-raw",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\hast-util-raw\\license"
+  },
+  "hast-util-to-jsx-runtime@2.3.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/hast-util-to-jsx-runtime",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\hast-util-to-jsx-runtime",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\hast-util-to-jsx-runtime\\license"
+  },
+  "hast-util-to-parse5@8.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/hast-util-to-parse5",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\hast-util-to-parse5",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\hast-util-to-parse5\\license"
+  },
+  "hast-util-to-text@4.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/hast-util-to-text",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\hast-util-to-text",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\hast-util-to-text\\license"
+  },
+  "hast-util-whitespace@3.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/hast-util-whitespace",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\hast-util-whitespace",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\hast-util-whitespace\\license"
+  },
+  "hastscript@9.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/hastscript",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\hastscript",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\hastscript\\license"
+  },
+  "highlight.js@11.11.1": {
+    "licenses": "BSD-3-Clause",
+    "repository": "https://github.com/highlightjs/highlight.js",
+    "publisher": "Josh Goebel",
+    "email": "hello@joshgoebel.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\highlight.js",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\highlight.js\\LICENSE"
+  },
+  "html-url-attributes@3.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/rehypejs/rehype-minify/tree/main/packages/html-url-attributes",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\html-url-attributes",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\html-url-attributes\\license"
+  },
+  "html-void-elements@3.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/html-void-elements",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\html-void-elements",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\html-void-elements\\license"
+  },
+  "idb@8.0.3": {
+    "licenses": "ISC",
+    "repository": "https://github.com/jakearchibald/idb",
+    "publisher": "Jake Archibald",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\idb",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\idb\\LICENSE"
+  },
+  "immediate@3.0.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/calvinmetcalf/immediate",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\immediate",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\immediate\\LICENSE.txt"
+  },
+  "immer@10.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/immerjs/immer",
+    "publisher": "Michel Weststrate",
+    "email": "info@michel.codes",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\immer",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\immer\\LICENSE"
+  },
+  "inherits@2.0.4": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/inherits",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\inherits",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\inherits\\LICENSE"
+  },
+  "inline-style-parser@0.2.7": {
+    "licenses": "MIT",
+    "repository": "https://github.com/remarkablemark/inline-style-parser",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\inline-style-parser",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\inline-style-parser\\LICENSE"
+  },
+  "is-alphabetical@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/is-alphabetical",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\is-alphabetical",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\is-alphabetical\\license"
+  },
+  "is-alphanumerical@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/is-alphanumerical",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\is-alphanumerical",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\is-alphanumerical\\license"
+  },
+  "is-binary-path@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/is-binary-path",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-binary-path",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-binary-path\\license"
+  },
+  "is-decimal@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/is-decimal",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\is-decimal",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\is-decimal\\license"
+  },
+  "is-extglob@2.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jonschlinkert/is-extglob",
+    "publisher": "Jon Schlinkert",
+    "url": "https://github.com/jonschlinkert",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-extglob",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-extglob\\LICENSE"
+  },
+  "is-glob@4.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromatch/is-glob",
+    "publisher": "Jon Schlinkert",
+    "url": "https://github.com/jonschlinkert",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-glob",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-glob\\LICENSE"
+  },
+  "is-hexadecimal@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/is-hexadecimal",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\is-hexadecimal",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\is-hexadecimal\\license"
+  },
+  "is-number@7.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jonschlinkert/is-number",
+    "publisher": "Jon Schlinkert",
+    "url": "https://github.com/jonschlinkert",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-number",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-number\\LICENSE"
+  },
+  "is-plain-obj@4.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/is-plain-obj",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\is-plain-obj",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\is-plain-obj\\license"
+  },
+  "isarray@1.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/juliangruber/isarray",
+    "publisher": "Julian Gruber",
+    "email": "mail@juliangruber.com",
+    "url": "http://juliangruber.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\isarray",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\isarray\\README.md"
+  },
+  "js-cookie@3.0.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/js-cookie/js-cookie",
+    "publisher": "Klaus Hartl",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\js-cookie",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\js-cookie\\LICENSE"
+  },
+  "js-tokens@4.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lydell/js-tokens",
+    "publisher": "Simon Lydell",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\js-tokens",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\js-tokens\\LICENSE"
+  },
+  "js-yaml@4.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nodeca/js-yaml",
+    "publisher": "Vladimir Zapparov",
+    "email": "dervus.grim@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\js-yaml",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\js-yaml\\LICENSE"
+  },
+  "jsonfile@6.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jprichardson/node-jsonfile",
+    "publisher": "JP Richardson",
+    "email": "jprichardson@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\electron-updater\\node_modules\\jsonfile",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\electron-updater\\node_modules\\jsonfile\\LICENSE"
+  },
+  "jszip@3.10.1": {
+    "licenses": "(MIT OR GPL-3.0-or-later)",
+    "repository": "https://github.com/Stuk/jszip",
+    "publisher": "Stuart Knightley",
+    "email": "stuart@stuartk.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\jszip",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\jszip\\LICENSE.markdown"
+  },
+  "lazy-val@1.0.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/develar/lazy-val",
+    "publisher": "Vladimir Krivosheev",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\lazy-val",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\lazy-val\\readme.md"
+  },
+  "lie@3.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/calvinmetcalf/lie",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\lie",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\lie\\license.md"
+  },
+  "lodash-es@4.17.22": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\lodash-es",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\lodash-es\\LICENSE"
+  },
+  "lodash.escaperegexp@4.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "url": "http://allyoucanleet.com/",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\lodash.escaperegexp",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\lodash.escaperegexp\\LICENSE"
+  },
+  "lodash.isequal@4.5.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "url": "http://allyoucanleet.com/",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\lodash.isequal",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\lodash.isequal\\LICENSE"
+  },
+  "longest-streak@3.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/longest-streak",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\longest-streak",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\longest-streak\\license"
+  },
+  "loose-envify@1.4.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/zertosh/loose-envify",
+    "publisher": "Andres Suarez",
+    "email": "zertosh@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\loose-envify",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\loose-envify\\LICENSE"
+  },
+  "lowlight@3.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/lowlight",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\lowlight",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\lowlight\\license"
+  },
+  "lucide-react@0.541.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/lucide-icons/lucide",
+    "publisher": "Eric Fennis",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\lucide-react",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\lucide-react\\LICENSE"
+  },
+  "lucide-react@0.543.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/lucide-icons/lucide",
+    "publisher": "Eric Fennis",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\lucide-react",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\lucide-react\\LICENSE"
+  },
+  "markdown-table@3.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/markdown-table",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\markdown-table",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\markdown-table\\license"
+  },
+  "marked@14.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/markedjs/marked",
+    "publisher": "Christopher Jeffrey",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\marked",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\marked\\LICENSE.md"
+  },
+  "mdast-util-find-and-replace@3.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/mdast-util-find-and-replace",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-find-and-replace",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-find-and-replace\\license"
+  },
+  "mdast-util-from-markdown@2.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/mdast-util-from-markdown",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-from-markdown",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-from-markdown\\license"
+  },
+  "mdast-util-gfm-autolink-literal@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/mdast-util-gfm-autolink-literal",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-gfm-autolink-literal",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-gfm-autolink-literal\\license"
+  },
+  "mdast-util-gfm-footnote@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/mdast-util-gfm-footnote",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-gfm-footnote",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-gfm-footnote\\license"
+  },
+  "mdast-util-gfm-strikethrough@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/mdast-util-gfm-strikethrough",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-gfm-strikethrough",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-gfm-strikethrough\\license"
+  },
+  "mdast-util-gfm-table@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/mdast-util-gfm-table",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-gfm-table",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-gfm-table\\license"
+  },
+  "mdast-util-gfm-task-list-item@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/mdast-util-gfm-task-list-item",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-gfm-task-list-item",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-gfm-task-list-item\\license"
+  },
+  "mdast-util-gfm@3.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/mdast-util-gfm",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-gfm",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-gfm\\license"
+  },
+  "mdast-util-mdx-expression@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/mdast-util-mdx-expression",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-mdx-expression",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-mdx-expression\\license"
+  },
+  "mdast-util-mdx-jsx@3.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/mdast-util-mdx-jsx",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-mdx-jsx",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-mdx-jsx\\license"
+  },
+  "mdast-util-mdxjs-esm@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/mdast-util-mdxjs-esm",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-mdxjs-esm",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-mdxjs-esm\\license"
+  },
+  "mdast-util-phrasing@4.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/mdast-util-phrasing",
+    "publisher": "Victor Felder",
+    "email": "victor@draft.li",
+    "url": "https://draft.li",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-phrasing",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-phrasing\\license"
+  },
+  "mdast-util-to-hast@13.2.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/mdast-util-to-hast",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-to-hast",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-to-hast\\license"
+  },
+  "mdast-util-to-markdown@2.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/mdast-util-to-markdown",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-to-markdown",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-to-markdown\\license"
+  },
+  "mdast-util-to-string@4.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/mdast-util-to-string",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-to-string",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\mdast-util-to-string\\license"
+  },
+  "micromark-core-commonmark@2.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-core-commonmark",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-core-commonmark",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-core-commonmark\\license"
+  },
+  "micromark-extension-gfm-autolink-literal@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark-extension-gfm-autolink-literal",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-extension-gfm-autolink-literal",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-extension-gfm-autolink-literal\\license"
+  },
+  "micromark-extension-gfm-footnote@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark-extension-gfm-footnote",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-extension-gfm-footnote",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-extension-gfm-footnote\\license"
+  },
+  "micromark-extension-gfm-strikethrough@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark-extension-gfm-strikethrough",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-extension-gfm-strikethrough",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-extension-gfm-strikethrough\\license"
+  },
+  "micromark-extension-gfm-table@2.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark-extension-gfm-table",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-extension-gfm-table",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-extension-gfm-table\\license"
+  },
+  "micromark-extension-gfm-tagfilter@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark-extension-gfm-tagfilter",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-extension-gfm-tagfilter",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-extension-gfm-tagfilter\\license"
+  },
+  "micromark-extension-gfm-task-list-item@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark-extension-gfm-task-list-item",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-extension-gfm-task-list-item",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-extension-gfm-task-list-item\\license"
+  },
+  "micromark-extension-gfm@3.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark-extension-gfm",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-extension-gfm",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-extension-gfm\\license"
+  },
+  "micromark-factory-destination@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-factory-destination",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-factory-destination",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-factory-destination\\license"
+  },
+  "micromark-factory-label@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-factory-label",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-factory-label",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-factory-label\\license"
+  },
+  "micromark-factory-space@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-factory-space",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-factory-space",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-factory-space\\license"
+  },
+  "micromark-factory-title@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-factory-title",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-factory-title",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-factory-title\\license"
+  },
+  "micromark-factory-whitespace@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-factory-whitespace",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-factory-whitespace",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-factory-whitespace\\license"
+  },
+  "micromark-util-character@2.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-util-character",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-character",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-character\\license"
+  },
+  "micromark-util-chunked@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-util-chunked",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-chunked",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-chunked\\license"
+  },
+  "micromark-util-classify-character@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-util-classify-character",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-classify-character",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-classify-character\\license"
+  },
+  "micromark-util-combine-extensions@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-util-combine-extensions",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-combine-extensions",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-combine-extensions\\license"
+  },
+  "micromark-util-decode-numeric-character-reference@2.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-util-decode-numeric-character-reference",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-decode-numeric-character-reference",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-decode-numeric-character-reference\\license"
+  },
+  "micromark-util-decode-string@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-util-decode-string",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-decode-string",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-decode-string\\license"
+  },
+  "micromark-util-encode@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-util-encode",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-encode",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-encode\\license"
+  },
+  "micromark-util-html-tag-name@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-util-html-tag-name",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-html-tag-name",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-html-tag-name\\license"
+  },
+  "micromark-util-normalize-identifier@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-util-normalize-identifier",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-normalize-identifier",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-normalize-identifier\\license"
+  },
+  "micromark-util-resolve-all@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-util-resolve-all",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-resolve-all",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-resolve-all\\license"
+  },
+  "micromark-util-sanitize-uri@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-util-sanitize-uri",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-sanitize-uri",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-sanitize-uri\\license"
+  },
+  "micromark-util-subtokenize@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-util-subtokenize",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-subtokenize",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-subtokenize\\license"
+  },
+  "micromark-util-symbol@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-util-symbol",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-symbol",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-symbol\\license"
+  },
+  "micromark-util-types@2.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-util-types",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-types",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark-util-types\\license"
+  },
+  "micromark@4.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\micromark\\license"
+  },
+  "monaco-editor@0.55.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/microsoft/monaco-editor",
+    "publisher": "Microsoft Corporation",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\monaco-editor",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\monaco-editor\\LICENSE"
+  },
+  "ms@2.1.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/vercel/ms",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\ms",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\ms\\license.md"
+  },
+  "node-cron@3.0.3": {
+    "licenses": "ISC",
+    "repository": "https://github.com/merencia/node-cron",
+    "publisher": "Lucas Merencia",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\node-cron",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\node-cron\\LICENSE.md"
+  },
+  "normalize-path@3.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jonschlinkert/normalize-path",
+    "publisher": "Jon Schlinkert",
+    "url": "https://github.com/jonschlinkert",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\normalize-path",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\normalize-path\\LICENSE"
+  },
+  "pako@1.0.11": {
+    "licenses": "(MIT AND Zlib)",
+    "repository": "https://github.com/nodeca/pako",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\pako",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\pako\\LICENSE"
+  },
+  "parse-entities@4.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/parse-entities",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\parse-entities",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\parse-entities\\license"
+  },
+  "parse5@7.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/inikulin/parse5",
+    "publisher": "Ivan Nikulin",
+    "email": "ifaaan@gmail.com",
+    "url": "https://github.com/inikulin",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\parse5",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\parse5\\LICENSE"
+  },
+  "picomatch@2.3.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromatch/picomatch",
+    "publisher": "Jon Schlinkert",
+    "url": "https://github.com/jonschlinkert",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\anymatch\\node_modules\\picomatch",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\anymatch\\node_modules\\picomatch\\LICENSE"
+  },
+  "process-nextick-args@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/calvinmetcalf/process-nextick-args",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\process-nextick-args",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\process-nextick-args\\license.md"
+  },
+  "property-information@7.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/property-information",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\property-information",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\property-information\\license"
+  },
+  "react-cron-generator@2.1.4": {
+    "licenses": "ISC",
+    "repository": "https://github.com/sojinantony01/react-cron-generator",
+    "publisher": "Sojin Antony",
+    "url": "https://github.com/sojinantony01",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\react-cron-generator",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\react-cron-generator\\LICENSE.txt"
+  },
+  "react-dom@18.3.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/facebook/react",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\react-dom",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\react-dom\\LICENSE"
+  },
+  "react-markdown@10.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/remarkjs/react-markdown",
+    "publisher": "Espen Hovlandsdal",
+    "email": "espen@hovlandsdal.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\react-markdown",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\react-markdown\\license"
+  },
+  "react-markdown@9.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/remarkjs/react-markdown",
+    "publisher": "Espen Hovlandsdal",
+    "email": "espen@hovlandsdal.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\react-markdown",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\react-markdown\\license"
+  },
+  "react@18.3.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/facebook/react",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\react",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\react\\LICENSE"
+  },
+  "readable-stream@2.3.8": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nodejs/readable-stream",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\readable-stream",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\readable-stream\\LICENSE"
+  },
+  "readdirp@3.6.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/paulmillr/readdirp",
+    "publisher": "Thorsten Lorenz",
+    "email": "thlorenz@gmx.de",
+    "url": "thlorenz.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\readdirp",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\readdirp\\LICENSE"
+  },
+  "rehype-highlight@7.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/rehypejs/rehype-highlight",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\rehype-highlight",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\rehype-highlight\\license"
+  },
+  "rehype-raw@7.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/rehypejs/rehype-raw",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\rehype-raw",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\rehype-raw\\license"
+  },
+  "remark-gfm@4.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/remarkjs/remark-gfm",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\remark-gfm",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\remark-gfm\\license"
+  },
+  "remark-parse@11.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/remarkjs/remark/tree/main/packages/remark-parse",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\remark-parse",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\remark-parse\\license"
+  },
+  "remark-rehype@11.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/remarkjs/remark-rehype",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\remark-rehype",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\remark-rehype\\license"
+  },
+  "remark-stringify@11.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/remarkjs/remark/tree/main/packages/remark-stringify",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\remark-stringify",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\remark-stringify\\license"
+  },
+  "safe-buffer@5.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/feross/safe-buffer",
+    "publisher": "Feross Aboukhadijeh",
+    "email": "feross@feross.org",
+    "url": "http://feross.org",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\safe-buffer",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\safe-buffer\\LICENSE"
+  },
+  "sax@1.4.4": {
+    "licenses": "BlueOak-1.0.0",
+    "repository": "https://github.com/isaacs/sax-js",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\sax",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\sax\\LICENSE.md"
+  },
+  "scheduler@0.23.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/facebook/react",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\scheduler",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\scheduler\\LICENSE"
+  },
+  "semver@7.7.3": {
+    "licenses": "ISC",
+    "repository": "https://github.com/npm/node-semver",
+    "publisher": "GitHub Inc.",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\electron-updater\\node_modules\\semver",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\electron-updater\\node_modules\\semver\\LICENSE"
+  },
+  "setimmediate@1.0.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/YuzuJS/setImmediate",
+    "publisher": "YuzuJS",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\setimmediate",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\setimmediate\\LICENSE.txt"
+  },
+  "socket.io-client@4.8.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/socketio/socket.io",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\socket.io-client",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\socket.io-client\\LICENSE"
+  },
+  "socket.io-parser@4.2.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/socketio/socket.io",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\socket.io-parser",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\socket.io-parser\\LICENSE"
+  },
+  "space-separated-tokens@2.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/space-separated-tokens",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\space-separated-tokens",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\space-separated-tokens\\license"
+  },
+  "state-local@1.0.7": {
+    "licenses": "MIT",
+    "repository": "https://github.com/suren-atoyan/state-local",
+    "publisher": "Suren Atoyan",
+    "email": "contact@surenatoyan.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\state-local",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\state-local\\LICENSE"
+  },
+  "std-env@3.10.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/unjs/std-env",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\std-env",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\std-env\\LICENCE"
+  },
+  "string_decoder@1.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nodejs/string_decoder",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\string_decoder",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\string_decoder\\LICENSE"
+  },
+  "stringify-entities@4.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/stringify-entities",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\stringify-entities",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\stringify-entities\\license"
+  },
+  "style-to-js@1.1.21": {
+    "licenses": "MIT",
+    "repository": "https://github.com/remarkablemark/style-to-js",
+    "publisher": "Mark",
+    "email": "mark@remarkablemark.org",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\style-to-js",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\style-to-js\\LICENSE"
+  },
+  "style-to-object@1.0.14": {
+    "licenses": "MIT",
+    "repository": "https://github.com/remarkablemark/style-to-object",
+    "publisher": "Mark",
+    "email": "mark@remarkablemark.org",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\style-to-object",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\style-to-object\\LICENSE"
+  },
+  "swr@2.3.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/vercel/swr",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\swr",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\swr\\LICENSE"
+  },
+  "tiny-typed-emitter@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/binier/tiny-typed-emitter",
+    "publisher": "Zurab Benashvili",
+    "email": "zura.benashvili@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\tiny-typed-emitter",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\tiny-typed-emitter\\LICENSE"
+  },
+  "to-regex-range@5.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/micromatch/to-regex-range",
+    "publisher": "Jon Schlinkert",
+    "url": "https://github.com/jonschlinkert",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\to-regex-range",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\to-regex-range\\LICENSE"
+  },
+  "trim-lines@3.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/trim-lines",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\trim-lines",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\trim-lines\\license"
+  },
+  "trough@2.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/trough",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\trough",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\trough\\license"
+  },
+  "tslib@2.8.1": {
+    "licenses": "0BSD",
+    "repository": "https://github.com/Microsoft/tslib",
+    "publisher": "Microsoft Corp.",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\tslib",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\tslib\\LICENSE.txt"
+  },
+  "unified@11.0.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/unifiedjs/unified",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\unified",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\unified\\license"
+  },
+  "unist-util-find-after@5.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/unist-util-find-after",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\unist-util-find-after",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\unist-util-find-after\\license"
+  },
+  "unist-util-is@6.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/unist-util-is",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\unist-util-is",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\unist-util-is\\license"
+  },
+  "unist-util-position@5.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/unist-util-position",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\unist-util-position",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\unist-util-position\\license"
+  },
+  "unist-util-stringify-position@4.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/unist-util-stringify-position",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\unist-util-stringify-position",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\unist-util-stringify-position\\license"
+  },
+  "unist-util-visit-parents@6.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/unist-util-visit-parents",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\unist-util-visit-parents",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\unist-util-visit-parents\\license"
+  },
+  "unist-util-visit@5.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/unist-util-visit",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\unist-util-visit",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\unist-util-visit\\license"
+  },
+  "unist-util-visit@5.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/syntax-tree/unist-util-visit",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\unist-util-visit",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\unist-util-visit\\license"
+  },
+  "universalify@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/RyanZim/universalify",
+    "publisher": "Ryan Zimmerman",
+    "email": "opensrc@ryanzim.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\electron-updater\\node_modules\\universalify",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\electron-updater\\node_modules\\universalify\\LICENSE"
+  },
+  "use-sync-external-store@1.6.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/facebook/react",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\use-sync-external-store",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\use-sync-external-store\\LICENSE"
+  },
+  "util-deprecate@1.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/TooTallNate/util-deprecate",
+    "publisher": "Nathan Rajlich",
+    "email": "nathan@tootallnate.net",
+    "url": "http://n8.io/",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\util-deprecate",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\util-deprecate\\LICENSE"
+  },
+  "uuid@8.3.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/uuidjs/uuid",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\uuid",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\uuid\\LICENSE.md"
+  },
+  "vfile-location@5.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/vfile/vfile-location",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\vfile-location",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\vfile-location\\license"
+  },
+  "vfile-message@4.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/vfile/vfile-message",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\vfile-message",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\vfile-message\\license"
+  },
+  "vfile@6.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/vfile/vfile",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\vfile",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\vfile\\license"
+  },
+  "web-namespaces@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/web-namespaces",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\web-namespaces",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\web-namespaces\\license"
+  },
+  "ws@8.18.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/websockets/ws",
+    "publisher": "Einar Otto Stangvik",
+    "email": "einaros@gmail.com",
+    "url": "http://2x.io",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\ws",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\ws\\LICENSE"
+  },
+  "xmlhttprequest-ssl@2.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mjwwit/node-XMLHttpRequest",
+    "publisher": "Michael de Wit",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\xmlhttprequest-ssl",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\xmlhttprequest-ssl\\LICENSE"
+  },
+  "yaml@2.8.2": {
+    "licenses": "ISC",
+    "repository": "https://github.com/eemeli/yaml",
+    "publisher": "Eemeli Aro",
+    "email": "eemeli@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\yaml",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\yaml\\LICENSE"
+  },
+  "zustand@4.5.7": {
+    "licenses": "MIT",
+    "repository": "https://github.com/pmndrs/zustand",
+    "publisher": "Paul Henschel",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\zustand",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\zustand\\LICENSE"
+  },
+  "zustand@5.0.9": {
+    "licenses": "MIT",
+    "repository": "https://github.com/pmndrs/zustand",
+    "publisher": "Paul Henschel",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\zustand",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\zustand\\LICENSE"
+  },
+  "zwitch@2.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/wooorm/zwitch",
+    "publisher": "Titus Wormer",
+    "email": "tituswormer@gmail.com",
+    "url": "https://wooorm.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\zwitch",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\zwitch\\license"
+  }
+}

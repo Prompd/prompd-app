@@ -1,0 +1,178 @@
+{
+  "name": "@prompd/app",
+  "version": "0.1.0",
+  "description": "AI prompt editor with package-based inheritance",
+  "author": "Prompd LLC",
+  "private": true,
+  "main": "electron/main.js",
+  "homepage": "./",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run generate-licenses && tsc -b && vite build",
+    "generate-licenses": "npx license-checker --json --production --out public/licenses.json",
+    "preview": "vite preview",
+    "clean": "node -e \"const fs=require('fs');['dist','dist-electron'].forEach(d=>{if(fs.existsSync(d)){fs.rmSync(d,{recursive:true,force:true});console.log('Cleaned '+d)}})\"",
+    "generate-icons": "node scripts/generate-icons.mjs",
+    "electron:dev": "concurrently \"cross-env BROWSER=none npm run dev\" \"wait-on tcp:127.0.0.1:5173 -t 60000 && cross-env ELECTRON_START_URL=http://localhost:5173 electron .\"",
+    "electron:build": "npm run clean && npm run generate-icons && npm run build && electron-builder",
+    "electron:build:win": "npm run clean && npm run generate-icons && npm run build && electron-builder --win",
+    "electron:build:mac": "npm run clean && npm run generate-icons && npm run build && electron-builder --mac",
+    "electron:build:linux": "npm run clean && npm run generate-icons && npm run build && electron-builder --linux"
+  },
+  "build": {
+    "appId": "io.prompd.app",
+    "productName": "Prompd",
+    "electronVersion": "38.7.2",
+    "npmRebuild": false,
+    "afterPack": "./scripts/afterPack.cjs",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "public/**/*",
+      "!**/*.map",
+      "!**/node_modules/**/*.md",
+      "!**/node_modules/**/*.ts",
+      "!**/node_modules/**/*.tsx",
+      "!**/node_modules/**/test/**",
+      "!**/node_modules/**/tests/**",
+      "!**/node_modules/**/__tests__/**",
+      "!**/node_modules/**/docs/**",
+      "!**/node_modules/**/examples/**",
+      "!**/node_modules/**/.github/**"
+    ],
+    "asarUnpack": [
+      "**/node_modules/@prompd/**"
+    ],
+    "extraResources": [
+      {
+        "from": "public/logo.ico",
+        "to": "logo.ico"
+      },
+      {
+        "from": "public/logo.icns",
+        "to": "logo.icns"
+      },
+      {
+        "from": "public/logo.png",
+        "to": "logo.png"
+      }
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "Logikbug",
+      "repo": "prompd.app"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "public/logo.ico",
+      "executableName": "Prompd",
+      "requestedExecutionLevel": "asInvoker",
+      "signAndEditExecutable": false,
+      "forceCodeSigning": false
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "public/logo.icns",
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "public/logo.png",
+      "category": "Development"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Prompd",
+      "installerIcon": "public/logo.ico",
+      "uninstallerIcon": "public/logo.ico",
+      "installerHeaderIcon": "public/logo.ico"
+    },
+    "protocols": [
+      {
+        "name": "Prompd Protocol",
+        "schemes": [
+          "prompd"
+        ]
+      }
+    ],
+    "fileAssociations": [
+      {
+        "ext": "prmd",
+        "name": "Prompd File",
+        "description": "Prompt Definition File",
+        "mimeType": "application/x-prompd",
+        "role": "Editor",
+        "icon": "public/logo.ico"
+      },
+      {
+        "ext": "pdpkg",
+        "name": "Prompd Package",
+        "description": "Prompd Package Archive",
+        "mimeType": "application/x-prompd-package",
+        "role": "Viewer",
+        "icon": "public/logo.ico"
+      }
+    ]
+  },
+  "dependencies": {
+    "@clerk/clerk-react": "^5.58.1",
+    "@monaco-editor/react": "^4.6.0",
+    "@prompd/cli": "^0.3.3",
+    "@prompd/react": "file:../packages/react",
+    "@xyflow/react": "^12.10.0",
+    "chokidar": "^3.6.0",
+    "dotenv": "^17.2.3",
+    "electron-updater": "^6.6.2",
+    "elkjs": "^0.11.0",
+    "highlight.js": "^11.11.1",
+    "idb": "^8.0.3",
+    "immer": "^10.2.0",
+    "jszip": "^3.10.1",
+    "lodash-es": "^4.17.21",
+    "lucide-react": "^0.543.0",
+    "monaco-editor": "^0.55.1",
+    "node-cron": "^3.0.3",
+    "react": "^18.2.0",
+    "react-cron-generator": "^2.1.4",
+    "react-dom": "^18.2.0",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.1",
+    "socket.io-client": "^4.8.1",
+    "yaml": "^2.5.0",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@types/lodash-es": "^4.17.12",
+    "@types/node": "^24.3.1",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^38.3.0",
+    "electron-builder": "^26.0.12",
+    "electron-squirrel-startup": "^1.0.1",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.32.6",
+    "typescript": "^5.4.0",
+    "vite": "^5.0.0",
+    "wait-on": "^9.0.1"
+  }
+}

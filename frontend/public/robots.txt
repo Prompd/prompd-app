@@ -1,0 +1,60 @@
+# PrompdHub Registry Robots.txt
+# https://registry.prompdhub.ai
+
+# Allow all crawlers
+User-agent: *
+Allow: /
+
+# Specific rules for Googlebot
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 0
+
+# Specific rules for Bingbot
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 1
+
+# Block sensitive areas
+User-agent: *
+Disallow: /api/
+Disallow: /admin/
+Disallow: /account/settings/
+Disallow: /.well-known/
+Disallow: /tmp/
+Disallow: /private/
+
+# Allow specific API documentation
+Allow: /api-docs
+
+# Sitemap location
+Sitemap: https://registry.prompdhub.ai/sitemap.xml
+
+# Block bad bots
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Crawl-delay: 10
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+# AI/ML crawlers - allow for training
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: Claude-Web
+Allow: /

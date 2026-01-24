@@ -1,0 +1,261 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Prompd React Component Library Styles */
+/* Matches editor.prompdhub.ai theme system */
+
+@layer base {
+  :root {
+    --prompd-blue: #3b82f6;
+    --prompd-purple: #8b5cf6;
+    --prompd-pink: #c084fc;
+  }
+
+  /* Light theme - matches editor.prompdhub.ai */
+  :root,
+  :root.light {
+    color-scheme: light;
+    --prompd-bg: #f7f8fb;
+    --prompd-panel: #ffffff;
+    --prompd-panel-2: #f1f3f9;
+    --prompd-text: #0f1117;
+    --prompd-muted: #5c637a;
+    --prompd-border: #e5e7f1;
+    --prompd-accent: #3b82f6;
+    --prompd-error: #d32f2f;
+    --prompd-success: #10b981;
+    --prompd-hover: rgba(0,0,0,0.04);
+    --prompd-input-bg: #ffffff;
+    --prompd-input-border: #d5d9e6;
+  }
+
+  /* Dark theme - matches editor.prompdhub.ai */
+  :root.dark,
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --prompd-bg: #0b1220;
+    --prompd-panel: #0f172a;
+    --prompd-panel-2: #111827;
+    --prompd-text: #f1f5f9;
+    --prompd-muted: #cbd5e1;
+    --prompd-border: #1f2937;
+    --prompd-accent: #3b82f6;
+    --prompd-error: #ef4444;
+    --prompd-success: #10b981;
+    --prompd-hover: rgba(255, 255, 255, 0.08);
+    --prompd-accent-subtle: rgba(99, 102, 241, 0.15);
+    --prompd-input-bg: #0f172a;
+    --prompd-input-border: #1f2937;
+  }
+
+  /* Apply theme to Prompd components */
+  .prompd-chat,
+  .prompd-messages,
+  .prompd-input,
+  .prompd-context-area,
+  .prompd-package-selector {
+    background-color: var(--prompd-panel);
+    color: var(--prompd-text);
+    border-color: var(--prompd-border);
+  }
+
+  /*
+   * Customizable CSS Classes
+   * Override these in your application to customize the appearance
+   */
+
+  /* Main chat container */
+  .prompd-chat {
+    /* Full height flex container - customize as needed */
+  }
+
+  /* Messages scroll area */
+  .prompd-messages {
+    /* Scrollable message area - customize padding, etc */
+  }
+
+  /* Inner messages wrapper - centered with max-width */
+  .prompd-messages-inner {
+    /* Default: max-width 800px, centered */
+    /* Override to change chat width: */
+    /* .prompd-messages-inner { max-width: 1000px !important; } */
+  }
+
+  /* Input container at bottom */
+  .prompd-input-container {
+    /* Sticky bottom input area with border-top */
+    /* Customize background, padding, border */
+  }
+
+  /* Input wrapper - centered with max-width */
+  .prompd-input-wrapper {
+    /* Default: max-width 800px, centered */
+    /* Override to match messages width */
+  }
+
+  /* Individual message bubble */
+  .prompd-message {
+    /* Each message row */
+  }
+
+  /* User message bubble */
+  .prompd-message-user {
+    /* User-sent messages (gradient blue-purple) */
+  }
+
+  /* Assistant message bubble */
+  .prompd-message-assistant {
+    /* AI-generated messages */
+  }
+
+  /* System message bubble */
+  .prompd-message-system {
+    /* System/error messages */
+  }
+
+  /* Message avatar */
+  .prompd-avatar {
+    /* Avatar orbs with gradients */
+  }
+
+  /* Message text content */
+  .prompd-message-content {
+    /* The actual message text bubble */
+  }
+
+  /* Message metadata (timestamp, badges) */
+  .prompd-message-meta {
+    /* Metadata row below message */
+  }
+
+  /* Input textarea */
+  .prompd-input-field {
+    /* Main text input area */
+  }
+
+  /* Submit button */
+  .prompd-submit-button {
+    /* Send button with gradient */
+  }
+
+  /* Helper text below input */
+  .prompd-input-helper {
+    /* Keyboard hints and character count */
+  }
+
+  /* Empty state container */
+  .prompd-empty-state {
+    /* Welcome screen when no messages */
+  }
+
+  /* Suggested prompt cards */
+  .prompd-suggested-prompt {
+    /* Quick start prompt cards */
+  }
+
+  /* Mode dropdown styles */
+  .prompd-mode-option {
+    background: transparent;
+    transition: background-color 0.15s ease;
+  }
+
+  .prompd-mode-option:hover {
+    background-color: var(--prompd-hover) !important;
+  }
+
+  .prompd-mode-option-active,
+  .prompd-mode-option-active:hover {
+    background-color: var(--prompd-accent-subtle, rgba(99, 102, 241, 0.15)) !important;
+  }
+
+  .prompd-mode-button:hover {
+    background-color: var(--prompd-hover) !important;
+  }
+}
+
+@layer utilities {
+  /* Animated gradient background */
+  .animate-gradient-shift {
+    background-size: 200% 200%;
+    animation: gradient-shift 8s ease infinite;
+  }
+
+  @keyframes gradient-shift {
+    0%, 100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+  }
+
+  /* Fade in animation */
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-in;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Slide down animation for parameter expansion */
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      max-height: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      max-height: 500px;
+      transform: translateY(0);
+    }
+  }
+
+  /* Glassmorphic effects */
+  .glass {
+    @apply backdrop-blur-xl bg-white/70 dark:bg-slate-900/70;
+  }
+
+  /* Custom scrollbar - matches editor.prompdhub.ai */
+  .custom-scrollbar::-webkit-scrollbar,
+  .prompd-chat::-webkit-scrollbar,
+  .prompd-messages::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track,
+  .prompd-chat::-webkit-scrollbar-track,
+  .prompd-messages::-webkit-scrollbar-track {
+    background: var(--prompd-panel-2);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb,
+  .prompd-chat::-webkit-scrollbar-thumb,
+  .prompd-messages::-webkit-scrollbar-thumb {
+    background-color: var(--prompd-muted);
+    border-radius: 8px;
+    border: 2px solid var(--prompd-panel-2);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+  .prompd-chat::-webkit-scrollbar-thumb:hover,
+  .prompd-messages::-webkit-scrollbar-thumb:hover {
+    background-color: var(--prompd-accent);
+  }
+
+  /* Firefox scrollbar */
+  .custom-scrollbar,
+  .prompd-chat,
+  .prompd-messages {
+    scrollbar-width: thin;
+    scrollbar-color: var(--prompd-muted) var(--prompd-panel-2);
+  }
+}

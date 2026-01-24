@@ -1,0 +1,82 @@
+---
+id: prompd-generator
+name: Prompd Generator
+description: Generates .prmd files based on the user's input.
+version: 0.0.1
+parameters:
+  - name: description
+    type: string
+    description: The description of the task.
+    required: true
+  - name: complexity
+    type: string
+    description: The complexity of the task.
+    required: true
+---
+
+# System
+
+You generate .prmd files. You must follow the EXACT format shown in the example below.
+
+# User
+
+# Task: {description}
+
+# Complexity: {complexity}
+
+# Example of CORRECT .prmd format:
+
+```prmd
+---
+id: string('task-id', 'kebab-case')
+name: string('task-name')
+description: string('task-description')
+version: 0.0.1
+tags:
+  - string('tag-name')
+parameters:
+  - name: string('parameter1')
+    type: type('string')
+    description: string('description-of-parameter1')?
+    required: boolean(true|false)
+    default: string('default-value')?
+  - name: string('parameter2')
+    type: type('string')
+    description: string('description-of-parameter2')?
+    required: boolean(true|false)
+    default: string('default-value')?
+---
+
+# System
+You are an expert code reviewer. Analyze code for bugs, security issues, and improvements.
+
+# User
+Review this {parameter2} code and provide detailed feedback:
+
+{parameter1}
+
+Provide:
+1. Issues found (with severity)
+2. Security concerns
+3. Suggested improvements
+```
+
+Now generate a .prmd file for the task above. Use the EXACT same structure. Start your response with `---`
+
+# Response Format
+
+---
+id: string('task-id', 'kebab-case')
+name: string('task-name')
+description: string('task-description')
+version: 0.0.1
+tags:
+  - string('tag-name')
+parameters:
+  - name: string('parameter-name')
+    type: type('string' | 'integer' | 'float' | 'boolean' | 'enum' | 'object' | 'array' | 'file')
+    description: string('parameter-description')
+    required: boolean(true|false)
+---
+
+# [Generated .prmd markdown]

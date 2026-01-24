@@ -1,0 +1,101 @@
+{
+  "patterns": {
+    "microservices": {
+      "description": "Distributed architecture with independent services",
+      "pros": [
+        "Independent deployment and scaling",
+        "Technology diversity",
+        "Fault isolation",
+        "Team autonomy"
+      ],
+      "cons": [
+        "Operational complexity",
+        "Distributed system challenges",
+        "Data consistency issues",
+        "Network latency"
+      ],
+      "use_cases": [
+        "Large-scale applications",
+        "Complex business domains",
+        "Multiple development teams"
+      ]
+    },
+    "monolith": {
+      "description": "Single unified codebase and deployment",
+      "pros": [
+        "Simpler deployment",
+        "Easier debugging",
+        "Better performance for local calls",
+        "Straightforward testing"
+      ],
+      "cons": [
+        "Limited scalability",
+        "Technology lock-in",
+        "Deployment coordination",
+        "Code coupling"
+      ],
+      "use_cases": [
+        "Small to medium applications",
+        "Rapid prototyping",
+        "Limited team size"
+      ]
+    },
+    "event_driven": {
+      "description": "Asynchronous communication via events",
+      "pros": [
+        "Loose coupling",
+        "Scalability",
+        "Resilience",
+        "Real-time processing"
+      ],
+      "cons": [
+        "Eventual consistency",
+        "Complex debugging",
+        "Event versioning",
+        "Message ordering"
+      ],
+      "use_cases": [
+        "Real-time systems",
+        "IoT applications",
+        "Complex workflows"
+      ]
+    },
+    "serverless": {
+      "description": "Function-as-a-Service architecture",
+      "pros": [
+        "No infrastructure management",
+        "Auto-scaling",
+        "Pay-per-use",
+        "Fast deployment"
+      ],
+      "cons": [
+        "Cold start latency",
+        "Vendor lock-in",
+        "Limited execution time",
+        "Debugging challenges"
+      ],
+      "use_cases": [
+        "Event-driven workloads",
+        "Variable traffic",
+        "Prototype development"
+      ]
+    }
+  },
+  "decision_framework": {
+    "factors": [
+      "Team size and expertise",
+      "Scale requirements",
+      "Budget constraints",
+      "Time to market",
+      "Regulatory compliance",
+      "Legacy system integration"
+    ],
+    "questions": [
+      "What is the expected traffic pattern?",
+      "How many teams will work on this?",
+      "What are the consistency requirements?",
+      "What is the deployment frequency?",
+      "What are the performance SLAs?"
+    ]
+  }
+}
