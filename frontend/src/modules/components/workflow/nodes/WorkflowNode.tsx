@@ -333,3 +333,6 @@ export const WorkflowNode = memo(({ id, data, selected }: WorkflowNodeProps) => 
 })
 
 WorkflowNode.displayName = 'WorkflowNode'
+
+// Export properties component
+export { WorkflowNodeProperties } from './WorkflowNodeProperties'

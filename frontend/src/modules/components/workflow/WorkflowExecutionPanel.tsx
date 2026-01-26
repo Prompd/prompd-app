@@ -3,11 +3,8 @@
  * Matches BuildOutputPanel styling with pin/minimize functionality
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import {
-  ChevronDown,
-  ChevronUp,
-  X,
   CheckCircle,
   AlertCircle,
   Loader,
@@ -22,12 +19,9 @@ import {
   Timer,
   FileText,
   Sparkles,
-  Copy,
-  Pin,
-  PinOff
+  Copy
 } from 'lucide-react'
 import { useWorkflowStore } from '../../../stores/workflowStore'
-import { useUIStore, selectWorkflowPanelPinned } from '../../../stores/uiStore'
 import type { WorkflowResult } from '../../services/workflowTypes'
 import type { CheckpointEvent, ExecutionTrace, TraceEntry } from '../../services/workflowExecutor'
 import { downloadTrace, getTraceSummary } from '../../services/workflowExecutor'
@@ -53,11 +47,8 @@ interface WorkflowExecutionPanelProps {
   onStop?: () => void
   isPaused?: boolean
   pendingCheckpoint?: CheckpointEvent | null
+  embedded?: boolean // When true, panel is embedded in tabs (parent handles all controls)
 }
-
-const MIN_HEIGHT = 100
-const MAX_HEIGHT = 500
-const DEFAULT_HEIGHT = 200
 
 export function WorkflowExecutionPanel({
   onClose,
@@ -67,86 +58,34 @@ export function WorkflowExecutionPanel({
   onResume,
   onStop,
   isPaused,
-  pendingCheckpoint
+  pendingCheckpoint,
+  embedded = false
 }: WorkflowExecutionPanelProps) {
-  const [isExpanded, setIsExpanded] = useState(true)
-  const [panelHeight, setPanelHeight] = useState(DEFAULT_HEIGHT)
-  const [isResizing, setIsResizing] = useState(false)
   const [activeTab, setActiveTab] = useState<'progress' | 'output' | 'prompts' | 'checkpoints' | 'trace'>('progress')
   const [traceFilter, setTraceFilter] = useState<TraceEntry['type'] | 'all'>('all')
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
   const [expandedTraceIndices, setExpandedTraceIndices] = useState<Set<number>>(new Set())
-  const resizeStartY = useRef(0)
-  const resizeStartHeight = useRef(0)
-
-  // UI Store state for pinning
-  const isPinned = useUIStore(selectWorkflowPanelPinned)
-  const setWorkflowPanelPinned = useUIStore(state => state.setWorkflowPanelPinned)
 
   // Get trace from result
   const trace = result?.trace
+
+  // Debug logging for trace
+  useEffect(() => {
+    console.log('[WorkflowExecutionPanel] Result changed')
+    console.log('[WorkflowExecutionPanel] Has result:', !!result)
+    console.log('[WorkflowExecutionPanel] Has trace:', !!trace)
+    console.log('[WorkflowExecutionPanel] Trace entries:', trace?.entries?.length || 0)
+  }, [result, trace])
 
   // Workflow store state
   const executionState = useWorkflowStore(state => state.executionState)
   const isExecuting = useWorkflowStore(state => state.isExecuting)
   const workflowFile = useWorkflowStore(state => state.workflowFile)
 
-  // Handle resize drag
-  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsResizing(true)
-    resizeStartY.current = e.clientY
-    resizeStartHeight.current = panelHeight
-  }, [panelHeight])
-
-  useEffect(() => {
-    if (!isResizing) return
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const deltaY = resizeStartY.current - e.clientY
-      const newHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, resizeStartHeight.current + deltaY))
-      setPanelHeight(newHeight)
-    }
-
-    const handleMouseUp = () => {
-      setIsResizing(false)
-    }
-
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [isResizing])
-
-  // Auto-collapse when canvas gains focus (if not pinned)
-  useEffect(() => {
-    const handleCanvasFocus = () => {
-      if (!isPinned && isExpanded) {
-        setIsExpanded(false)
-      }
-    }
-    window.addEventListener('workflow-canvas-focused', handleCanvasFocus)
-    return () => window.removeEventListener('workflow-canvas-focused', handleCanvasFocus)
-  }, [isPinned, isExpanded])
-
-  // Listen for expand event
-  useEffect(() => {
-    const handleExpand = () => {
-      setIsExpanded(true)
-    }
-    window.addEventListener('expand-workflow-panel', handleExpand)
-    return () => window.removeEventListener('expand-workflow-panel', handleExpand)
-  }, [])
-
   // Auto-switch to output tab when complete
-  useEffect(() => {
-    if (result && !isExecuting) {
-      setActiveTab('output')
-    }
-  }, [result, isExecuting])
+  if (result && !isExecuting && activeTab === 'progress') {
+    setActiveTab('output')
+  }
 
   // Get node label from workflow file
   const getNodeLabel = (nodeId: string) => {
@@ -196,200 +135,58 @@ export function WorkflowExecutionPanel({
     traceFilter === 'all' || entry.type === traceFilter
   ) || []
 
-  // Build class name - when not pinned, panel floats over content
-  const panelClassName = [
-    'workflow-execution-panel',
-    isResizing ? 'resizing' : '',
-    !isPinned ? 'floating' : ''
-  ].filter(Boolean).join(' ')
-
   return (
-    <div
-      className={panelClassName}
-      style={{ height: isExpanded ? panelHeight : 'auto' }}
-    >
-      {/* Resize handle */}
-      <div
-        className="workflow-resize-handle"
-        onMouseDown={handleResizeMouseDown}
-      />
+    <div className="workflow-execution-panel" style={{ height: embedded ? '100%' : 'auto' }}>
+      {/* Note: This component is now always embedded in BottomPanelTabs.
+          Header/controls removed - parent handles all UI chrome. */}
 
-      {/* Header */}
-      <div className="workflow-panel-header">
-        <div className="workflow-panel-title" onClick={() => setIsExpanded(!isExpanded)}>
-          {isPaused && pendingCheckpoint ? (
-            <Radio size={14} style={{ color: 'var(--node-amber)' }} />
-          ) : isExecuting ? (
-            <Loader className="animate-spin" size={14} style={{ color: 'var(--accent)' }} />
-          ) : result ? (
-            result.success ? (
-              <CheckCircle size={14} style={{ color: 'var(--success)' }} />
-            ) : (
-              <AlertCircle size={14} style={{ color: 'var(--error)' }} />
-            )
-          ) : (
-            <Zap size={14} />
-          )}
-          <span>
-            {isPaused && pendingCheckpoint
-              ? `Paused at ${pendingCheckpoint.checkpointName || 'Checkpoint'}`
-              : isExecuting
-                ? 'Running...'
-                : result
-                  ? result.success ? 'Completed' : 'Failed'
-                  : 'Workflow Execution'
-            }
-          </span>
-          {result?.metrics?.totalDuration && (
-            <span style={{ color: 'var(--muted)', fontWeight: 400 }}>
-              ({formatDuration(result.metrics.totalDuration)})
-            </span>
-          )}
-        </div>
-
-        {/* Debug controls when paused */}
-        {isPaused && (
-          <div style={{ display: 'flex', gap: '6px', marginLeft: '12px' }}>
-            {onResume && (
-              <button
-                className="workflow-action-button"
-                onClick={onResume}
-                style={{ background: 'var(--success)', color: 'white' }}
-              >
-                <Play size={12} />
-                Resume
-              </button>
-            )}
-            {onStop && (
-              <button
-                className="workflow-action-button"
-                onClick={onStop}
-                style={{ background: 'var(--error)', color: 'white' }}
-              >
-                <Square size={12} />
-                Stop
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Tabs (centered) */}
-        {isExpanded && (
-          <div className="workflow-panel-tabs" style={{ marginLeft: 'auto', marginRight: '12px' }}>
-            <button
-              className={`workflow-panel-tab ${activeTab === 'progress' ? 'active' : ''}`}
-              onClick={() => setActiveTab('progress')}
-            >
-              <List size={12} />
-              Progress
-            </button>
-            <button
-              className={`workflow-panel-tab ${activeTab === 'output' ? 'active' : ''}`}
-              onClick={() => setActiveTab('output')}
-            >
-              <FileText size={12} />
-              Output
-            </button>
-            {promptsSent.length > 0 && (
-              <button
-                className={`workflow-panel-tab ${activeTab === 'prompts' ? 'active' : ''}`}
-                onClick={() => setActiveTab('prompts')}
-              >
-                <Sparkles size={12} />
-                Prompts ({promptsSent.length})
-              </button>
-            )}
-            {checkpoints.length > 0 && (
-              <button
-                className={`workflow-panel-tab ${activeTab === 'checkpoints' ? 'active' : ''}`}
-                onClick={() => setActiveTab('checkpoints')}
-              >
-                <Radio size={12} />
-                Checkpoints ({checkpoints.length})
-              </button>
-            )}
-            {trace && (
-              <button
-                className={`workflow-panel-tab ${activeTab === 'trace' ? 'active' : ''}`}
-                onClick={() => setActiveTab('trace')}
-              >
-                <Clock size={12} />
-                Trace ({trace.entries.length})
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="workflow-panel-actions">
-          {/* Stats */}
-          {isExpanded && (isExecuting || result) && (
-            <>
-              <div className="workflow-mini-stat">
-                <Zap size={12} />
-                <span className="value">{completedNodes}/{nodeCount}</span>
-              </div>
-              {promptsSent.length > 0 && (
-                <div className="workflow-mini-stat" style={{ marginLeft: '8px' }}>
-                  <Sparkles size={12} />
-                  <span className="value">{promptsSent.length}</span>
-                </div>
-              )}
-              {stats && (
-                <div className="workflow-mini-stat" style={{ marginLeft: '8px' }}>
-                  <Timer size={12} />
-                  <span className="value">{formatDuration(stats.totalDuration)}</span>
-                </div>
-              )}
-              <div style={{ width: '1px', height: '14px', background: 'var(--border)', margin: '0 8px' }} />
-            </>
-          )}
-
-          {/* Export button */}
-          {trace && isExpanded && (
-            <button
-              className="workflow-panel-action"
-              onClick={() => downloadTrace(trace)}
-              title="Export trace as JSON"
-            >
-              <Download size={14} />
-            </button>
-          )}
-
-          {/* Expand/collapse */}
+      {/* Tabs for switching content */}
+      <div className="workflow-panel-tabs" style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+        <button
+          className={`workflow-panel-tab ${activeTab === 'progress' ? 'active' : ''}`}
+          onClick={() => setActiveTab('progress')}
+        >
+          <List size={12} />
+          Progress
+        </button>
+        <button
+          className={`workflow-panel-tab ${activeTab === 'output' ? 'active' : ''}`}
+          onClick={() => setActiveTab('output')}
+        >
+          <FileText size={12} />
+          Output
+        </button>
+        {promptsSent.length > 0 && (
           <button
-            className="workflow-panel-action"
-            onClick={() => setIsExpanded(!isExpanded)}
-            title={isExpanded ? 'Minimize panel' : 'Expand panel'}
+            className={`workflow-panel-tab ${activeTab === 'prompts' ? 'active' : ''}`}
+            onClick={() => setActiveTab('prompts')}
           >
-            {isExpanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            <Sparkles size={12} />
+            Prompts ({promptsSent.length})
           </button>
-
-          {/* Pin button */}
+        )}
+        {checkpoints.length > 0 && (
           <button
-            className={`workflow-panel-action ${isPinned ? 'active' : ''}`}
-            onClick={() => setWorkflowPanelPinned(!isPinned)}
-            title={isPinned ? 'Unpin panel (will auto-hide on canvas focus)' : 'Pin panel (keep visible)'}
+            className={`workflow-panel-tab ${activeTab === 'checkpoints' ? 'active' : ''}`}
+            onClick={() => setActiveTab('checkpoints')}
           >
-            {isPinned ? <Pin size={14} /> : <PinOff size={14} />}
+            <Radio size={12} />
+            Checkpoints ({checkpoints.length})
           </button>
-
-          {/* Close button */}
-          {onClose && (
-            <button
-              className="workflow-panel-action"
-              onClick={onClose}
-              title="Close"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
+        )}
+        {trace && (
+          <button
+            className={`workflow-panel-tab ${activeTab === 'trace' ? 'active' : ''}`}
+            onClick={() => setActiveTab('trace')}
+          >
+            <Clock size={12} />
+            Trace ({trace.entries.length})
+          </button>
+        )}
       </div>
 
       {/* Content */}
-      {isExpanded && (
-        <div className="workflow-panel-content">
+      <div className="workflow-panel-content" style={{ height: 'calc(100% - 40px)', overflow: 'auto' }}>
           {/* Progress Tab */}
           {activeTab === 'progress' && (
             <div>
@@ -709,7 +506,6 @@ export function WorkflowExecutionPanel({
             </div>
           )}
         </div>
-      )}
     </div>
   )
 }

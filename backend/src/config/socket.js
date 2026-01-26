@@ -2,6 +2,34 @@ import { CompilationService } from '../services/CompilationService.js'
 import { ValidationService } from '../services/ValidationService.js'
 import { ProjectService } from '../services/ProjectService.js'
 import { agentService } from '../services/AgentService.js'
+import fetch from 'node-fetch'
+import { removeWebhookFromQueue } from '../routes/webhookProxy.js'
+
+/**
+ * Connected webhook proxy clients (userId → socket mapping)
+ */
+const webhookProxyClients = new Map()
+
+/**
+ * Validate registry token via /auth/me endpoint
+ */
+async function validateRegistryToken(token, registryUrl = 'https://registry.prompdhub.ai') {
+  try {
+    const response = await fetch(`${registryUrl}/auth/me`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+      timeout: 3000
+    })
+
+    if (!response.ok) {
+      return null
+    }
+
+    return await response.json() // { userId, username, ... }
+  } catch (error) {
+    console.error('[WebhookProxy] Token validation failed:', error.message)
+    return null
+  }
+}
 
 export function setupSocketHandlers(io) {
   const compilationService = new CompilationService()
@@ -10,6 +38,42 @@ export function setupSocketHandlers(io) {
 
   io.on('connection', (socket) => {
     console.log(`Socket connected: ${socket.id}`)
+
+    // Webhook proxy client registration (for local services)
+    socket.on('webhook-proxy:register', async (data) => {
+      const { token } = data
+
+      if (!token) {
+        socket.emit('webhook-proxy:error', { error: 'Missing token' })
+        return
+      }
+
+      // Validate token via registry
+      const user = await validateRegistryToken(token)
+      if (!user) {
+        socket.emit('webhook-proxy:error', { error: 'Invalid token' })
+        return
+      }
+
+      const userId = user.userId || user.id
+      webhookProxyClients.set(userId, socket)
+      socket.webhookProxyUserId = userId
+
+      socket.emit('webhook-proxy:registered', { userId })
+      console.log(`[WebhookProxy] Client registered: ${userId}`)
+    })
+
+    // Webhook acknowledgment
+    socket.on('webhook-proxy:ack', (data) => {
+      const { webhookId } = data
+      console.log(`[WebhookProxy] Webhook acknowledged: ${webhookId}`)
+      socket.emit(`webhook-ack-${webhookId}`)
+
+      // Remove from queue
+      if (socket.webhookProxyUserId) {
+        removeWebhookFromQueue(webhookId, socket.webhookProxyUserId)
+      }
+    })
 
     // Project collaboration
     socket.on('project:join', async (projectId) => {
@@ -307,7 +371,13 @@ export function setupSocketHandlers(io) {
     // Handle disconnection
     socket.on('disconnect', (reason) => {
       console.log(`Socket disconnected: ${socket.id}, reason: ${reason}`)
-      
+
+      // Clean up webhook proxy client
+      if (socket.webhookProxyUserId) {
+        webhookProxyClients.delete(socket.webhookProxyUserId)
+        console.log(`[WebhookProxy] Client disconnected: ${socket.webhookProxyUserId}`)
+      }
+
       // Notify all rooms this user was in
       const rooms = Array.from(socket.rooms)
       rooms.forEach(room => {
@@ -332,4 +402,33 @@ export function setupSocketHandlers(io) {
   })
 
   console.log('Socket.IO handlers configured')
+}
+
+/**
+ * Forward webhook to connected client
+ * @param {string} userId - User ID
+ * @param {object} webhook - Webhook data
+ * @returns {Promise<boolean>} - True if delivered via WebSocket
+ */
+export async function forwardWebhookToClient(userId, webhook) {
+  const socket = webhookProxyClients.get(userId)
+
+  if (!socket) {
+    return false // Client not connected
+  }
+
+  // Emit webhook to client
+  socket.emit('webhook', webhook)
+
+  // Wait for acknowledgment (3 seconds timeout)
+  const ackReceived = await new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(false), 3000)
+
+    socket.once(`webhook-ack-${webhook.id}`, () => {
+      clearTimeout(timeout)
+      resolve(true)
+    })
+  })
+
+  return ackReceived
 }

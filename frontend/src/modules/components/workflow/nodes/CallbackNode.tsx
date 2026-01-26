@@ -472,3 +472,5 @@ export const CallbackNode = memo(({ id, data, selected }: CallbackNodeProps) => 
 })
 
 CallbackNode.displayName = 'CallbackNode'
+
+export { CallbackNodeProperties } from './CallbackNodeProperties'

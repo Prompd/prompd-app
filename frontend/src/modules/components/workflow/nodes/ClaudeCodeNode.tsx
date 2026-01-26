@@ -390,3 +390,6 @@ export const ClaudeCodeNode = memo(({ id, data, selected }: ClaudeCodeNodeProps)
 })
 
 ClaudeCodeNode.displayName = 'ClaudeCodeNode'
+
+// Export properties component
+export { ClaudeCodeNodeProperties } from './ClaudeCodeNodeProperties'

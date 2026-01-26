@@ -5,6 +5,7 @@ export type Issue = {
   message: string
   line?: number
   column?: number
+  code?: string
 }
 
 export type ParamsSchema = Record<string, {
@@ -216,4 +217,124 @@ export function stripContentFrontmatter(content: string): string {
 
   // Strip the prompd content frontmatter
   return content.slice(endIndex + endDelimiterLength)
+}
+
+/**
+ * Comprehensive validation for .prmd files including Jinja2 template syntax
+ * Used during package builds to catch all validation errors
+ */
+export function validatePrompdComprehensive(text: string): ParsedPrompd {
+  // Start with basic parsing
+  const result = parsePrompd(text)
+
+  // Add Jinja2 template syntax validation to the body
+  if (result.body) {
+    const bodyStartLine = text.split(/\r?\n/).findIndex((line, i) => {
+      if (i === 0) return false
+      const lines = text.split(/\r?\n/)
+      return lines[i - 1]?.trim() === '---' && i > 1
+    }) + 1
+
+    const jinjaIssues = validateJinja2Syntax(result.body, bodyStartLine)
+    result.issues.push(...jinjaIssues)
+  }
+
+  return result
+}
+
+/**
+ * Validate Jinja2 template syntax ({% %} and {{ }})
+ * Matches the validation logic from validation.ts but standalone
+ */
+function validateJinja2Syntax(body: string, bodyStartLine: number): Issue[] {
+  const issues: Issue[] = []
+
+  // Track block tags for matching
+  const blockStack: Array<{ tag: string; lineNumber: number; column: number }> = []
+
+  // Block tag pairs
+  const blockPairs: Record<string, string> = {
+    'if': 'endif',
+    'for': 'endfor',
+    'block': 'endblock',
+    'macro': 'endmacro',
+    'call': 'endcall',
+    'filter': 'endfilter',
+    'set': 'endset', // for {% set x %}...{% endset %} block form
+    'raw': 'endraw'
+  }
+
+  const endTags = new Set(Object.values(blockPairs))
+
+  // Find all block tags {% tag %}
+  const blockTagRegex = /\{%-?\s*(\w+)(?:\s+[^%]*)?\s*-?%\}/g
+  let match: RegExpExecArray | null
+
+  while ((match = blockTagRegex.exec(body)) !== null) {
+    const tag = match[1].toLowerCase()
+    const matchIndex = match.index
+    const lineNumber = body.substring(0, matchIndex).split('\n').length + bodyStartLine
+    const column = body.substring(0, matchIndex).split('\n').pop()!.length + 1
+
+    // Skip non-block tags (elif, else are part of if blocks, not standalone)
+    if (tag === 'elif' || tag === 'else') {
+      continue
+    }
+
+    // Check if it's an opening block tag
+    if (blockPairs[tag]) {
+      // Special handling for 'set' - check if it's self-closing (has '=') or block form
+      if (tag === 'set') {
+        const fullMatch = match[0]
+        // If it contains '=' it's a self-closing assignment, don't push to stack
+        if (fullMatch.includes('=')) {
+          continue // Self-closing, skip
+        }
+      }
+      blockStack.push({ tag, lineNumber, column })
+    }
+    // Check if it's a closing tag
+    else if (endTags.has(tag)) {
+      const expectedOpen = Object.entries(blockPairs).find(([, end]) => end === tag)?.[0]
+
+      if (blockStack.length === 0) {
+        // Closing tag without opening
+        issues.push({
+          severity: 'error',
+          message: `Unexpected {% ${tag} %} - no matching opening tag found.`,
+          line: lineNumber,
+          column,
+          code: 'jinja-unmatched-end-tag'
+        })
+      } else {
+        const lastOpen = blockStack[blockStack.length - 1]
+        if (blockPairs[lastOpen.tag] === tag) {
+          // Properly matched
+          blockStack.pop()
+        } else {
+          // Mismatched closing tag
+          issues.push({
+            severity: 'error',
+            message: `Mismatched {% ${tag} %} - expected {% ${blockPairs[lastOpen.tag]} %} to close {% ${lastOpen.tag} %} on line ${lastOpen.lineNumber}.`,
+            line: lineNumber,
+            column,
+            code: 'jinja-mismatched-tag'
+          })
+        }
+      }
+    }
+  }
+
+  // Report unclosed opening tags
+  for (const unclosed of blockStack) {
+    issues.push({
+      severity: 'error',
+      message: `Unclosed {% ${unclosed.tag} %} - add {% ${blockPairs[unclosed.tag]} %} to close it.`,
+      line: unclosed.lineNumber,
+      column: unclosed.column,
+      code: 'jinja-unclosed-tag'
+    })
+  }
+
+  return issues
 }

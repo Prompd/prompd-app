@@ -316,3 +316,6 @@ export const LoopNode = memo(({ id, data, selected }: LoopNodeProps) => {
 })
 
 LoopNode.displayName = 'LoopNode'
+
+// Export properties component
+export { LoopNodeProperties } from './LoopNodeProperties'

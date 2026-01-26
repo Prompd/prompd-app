@@ -129,6 +129,12 @@ interface UIState {
   // Workflow connections panel
   showConnectionsPanel: boolean
 
+  // Bottom panel (unified tab interface)
+  showBottomPanel: boolean
+  activeBottomTab: 'output' | 'execution'
+  bottomPanelHeight: number
+  bottomPanelPinned: boolean
+
   // Auto-save settings
   autoSaveEnabled: boolean
 }
@@ -201,6 +207,12 @@ interface UIActions {
   setShowConnectionsPanel: (show: boolean) => void
   toggleConnectionsPanel: () => void
 
+  // Bottom panel (unified)
+  setShowBottomPanel: (show: boolean) => void
+  setActiveBottomTab: (tab: 'output' | 'execution') => void
+  setBottomPanelHeight: (height: number) => void
+  setBottomPanelPinned: (pinned: boolean) => void
+
   // Auto-save settings
   setAutoSaveEnabled: (enabled: boolean) => void
 }
@@ -243,6 +255,10 @@ export const useUIStore = create<UIStore>()(
           showWorkflowPanel: false,
           workflowPanelPinned: false,
           showConnectionsPanel: false,
+          showBottomPanel: false,
+          activeBottomTab: 'output',
+          bottomPanelHeight: 200,
+          bottomPanelPinned: false,
           autoSaveEnabled: true, // Default to enabled
 
           // View mode
@@ -769,6 +785,25 @@ export const useUIStore = create<UIStore>()(
             state.showConnectionsPanel = !state.showConnectionsPanel
           }),
 
+          // Bottom panel (unified)
+          setShowBottomPanel: (show) => set((state) => {
+            state.showBottomPanel = show
+          }),
+
+          setActiveBottomTab: (tab) => set((state) => {
+            state.activeBottomTab = tab
+            // Show bottom panel when switching tabs
+            state.showBottomPanel = true
+          }),
+
+          setBottomPanelHeight: (height) => set((state) => {
+            state.bottomPanelHeight = height
+          }),
+
+          setBottomPanelPinned: (pinned) => set((state) => {
+            state.bottomPanelPinned = pinned
+          }),
+
           // Auto-save settings
           setAutoSaveEnabled: (enabled) => set((state) => {
             state.autoSaveEnabled = enabled
@@ -803,6 +838,9 @@ export const useUIStore = create<UIStore>()(
             recentProjects: state.recentProjects,
             buildPanelPinned: state.buildPanelPinned,
             workflowPanelPinned: state.workflowPanelPinned,
+            activeBottomTab: state.activeBottomTab,
+            bottomPanelHeight: state.bottomPanelHeight,
+            bottomPanelPinned: state.bottomPanelPinned,
             autoSaveEnabled: state.autoSaveEnabled
           }),
           // After hydration, set mode from defaultViewMode so the app opens in user's preferred view

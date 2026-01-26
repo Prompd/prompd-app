@@ -8,6 +8,7 @@ import { extractParametersWithMetadata, extractParameterMetadata } from './utils
 import { createFilterCompletions } from './filters'
 import { getEnvVarsCache } from './envCache'
 import { getIncludableFiles, getContextFiles, getFolders } from '../../services/workspaceService'
+import { getSuggestedParameters } from './promptPatterns'
 
 /**
  * Register the completion item provider
@@ -356,6 +357,33 @@ export function registerCompletionProvider(
       // Parameter suggestions
       if (context.type === 'parameter') {
         const query = context.query || word.word
+
+        // Pattern-based parameter suggestions (context-aware)
+        // Detect patterns in the document and suggest relevant parameters
+        const fullContent = model.getValue()
+        const patternSuggestions = getSuggestedParameters(fullContent)
+
+        // Add pattern-based suggestions first (highest priority)
+        patternSuggestions.forEach((param, index) => {
+          if (!query || param.name.toLowerCase().includes(query.toLowerCase())) {
+            const typeLabel = param.type === 'array' ? 'array' : param.type
+            const requiredBadge = param.required ? ' (required)' : ''
+
+            suggestions.push({
+              label: param.name,
+              kind: monaco.languages.CompletionItemKind.Property,
+              insertText: `${param.name}: { type: ${param.type}, description: "\${1:${param.description}}"${param.default !== undefined ? `, default: ${JSON.stringify(param.default)}` : ''}${param.required ? ', required: true' : ''} }`,
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              detail: `${typeLabel}${requiredBadge} - ${param.source}`,
+              documentation: {
+                value: `**${param.name}** (${typeLabel})\n\n${param.description}${param.default !== undefined ? `\n\n**Default:** \`${JSON.stringify(param.default)}\`` : ''}${param.required ? '\n\n**Required**' : ''}\n\n*Pattern-detected suggestion from: ${param.source}*`,
+                isTrusted: true
+              },
+              range,
+              sortText: `0_pattern_${index.toString().padStart(3, '0')}` // Highest priority
+            })
+          }
+        })
 
         // Registry parameter suggestions
         try {

@@ -382,3 +382,5 @@ export const McpToolNode = memo(({ id, data, selected }: McpToolNodeProps) => {
 })
 
 McpToolNode.displayName = 'McpToolNode'
+
+export { McpToolNodeProperties } from './McpToolNodeProperties'

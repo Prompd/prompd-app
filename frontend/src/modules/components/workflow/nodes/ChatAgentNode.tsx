@@ -515,3 +515,5 @@ export const ChatAgentNode = memo(({ id, data, selected }: ChatAgentNodeProps) =
 })
 
 ChatAgentNode.displayName = 'ChatAgentNode'
+
+export { ChatAgentNodeProperties } from './ChatAgentNodeProperties'

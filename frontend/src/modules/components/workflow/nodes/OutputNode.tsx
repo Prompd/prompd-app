@@ -175,3 +175,6 @@ export const OutputNode = memo(({ id, data, selected }: OutputNodeProps) => {
 })
 
 OutputNode.displayName = 'OutputNode'
+
+// Export properties component
+export { OutputNodeProperties } from './OutputNodeProperties'

@@ -1,0 +1,22 @@
+{
+  "name": "@prompd/scheduler-shared",
+  "version": "0.1.0",
+  "description": "Shared workflow scheduler logic for Prompd app (tray and service modes)",
+  "main": "scheduler.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "scheduler",
+    "cron",
+    "workflow",
+    "prompd"
+  ],
+  "author": "Prompd Team",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "node-cron": "^3.0.3",
+    "cron-parser": "^4.9.0"
+  }
+}

@@ -83,6 +83,8 @@ export interface ElectronAPI {
   // Prompd menu
   onMenuApiKeys: (callback: () => void) => () => void
   onMenuSettings: (callback: () => void) => () => void
+  onMenuSchedulerSettings: (callback: () => void) => () => void
+  onMenuSchedulerService: (callback: () => void) => () => void
   // Project menu
   onMenuNewFile: (callback: () => void) => () => void
   onMenuOpenFile: (callback: (filePath: string) => void) => () => void
@@ -263,7 +265,77 @@ export interface ElectronAPI {
   onTriggerExecutionStart?: (callback: (data: { workflowId: string; executionId: string }) => void) => () => void
   onTriggerExecutionComplete?: (callback: (data: { workflowId: string; executionId: string; status: string }) => void) => () => void
   onTriggerStatusChange?: (callback: (data: { workflowId: string; enabled: boolean }) => void) => () => void
+
+  // Service management (for standalone scheduler service)
+  startService?: () => Promise<{ success: boolean; message?: string; error?: string }>
+  stopService?: () => Promise<{ success: boolean; message?: string; error?: string }>
+  restartService?: () => Promise<{ success: boolean; message?: string; error?: string }>
+  getServiceStatus?: () => Promise<{
+    success: boolean
+    running: boolean
+    port?: number
+    uptime?: number
+    error?: string
+  }>
+  saveServiceConfig?: (config: ServiceConfig) => Promise<{ success: boolean; error?: string }>
+  loadServiceConfig?: () => Promise<{ success: boolean; config?: ServiceConfig; error?: string }>
+
+  // Scheduler API (for tray mode scheduling)
+  scheduler?: {
+    getSchedules: () => Promise<{ success: boolean; schedules?: ScheduleInfo[]; error?: string }>
+    addSchedule: (config: ScheduleConfig) => Promise<{ success: boolean; scheduleId?: string; error?: string }>
+    createSchedule: (config: ScheduleConfig) => Promise<{ success: boolean; scheduleId?: string; error?: string }>
+    updateSchedule: (scheduleId: string, config: Partial<ScheduleConfig>) => Promise<{ success: boolean; error?: string }>
+    deleteSchedule: (scheduleId: string) => Promise<{ success: boolean; error?: string }>
+    executeNow: (scheduleId: string) => Promise<{ success: boolean; error?: string }>
+    getHistory: (workflowId?: string | null, options?: { limit?: number }) => Promise<{ success: boolean; history?: ScheduleExecution[]; error?: string }>
+    getNextRunTimes: (scheduleId: string, count: number) => Promise<{ success: boolean; times?: number[]; error?: string }>
+  }
+
+  // Memory service API (for persistent memory storage via IPC)
+  memory?: {
+    get: (scope: string, namespace: string, key: string) => Promise<unknown>
+    set: (scope: string, namespace: string, key: string, value: unknown, ttl?: number) => Promise<void>
+    delete: (scope: string, namespace: string, key: string) => Promise<void>
+    list: (scope: string, namespace: string) => Promise<string[]>
+    clear: (scope: string, namespace: string) => Promise<void>
+  }
+
+  // Workflow execution API (proxies to @prompd/cli in main process)
+  workflow?: {
+    // Execute workflow (non-blocking, returns executionId immediately)
+    execute: (workflow: unknown, params: Record<string, unknown>, options?: unknown) => Promise<{ executionId: string }>
+
+    // Listen to execution events (single event loop with type-based routing)
+    onEvent: (callback: (event: WorkflowExecutionEvent) => void) => () => void
+
+    // Cancel execution
+    cancel: (executionId: string) => Promise<void>
+
+    // Download trace
+    downloadTrace: (trace: unknown, filename?: string) => Promise<void>
+
+    // Respond to user input request (bidirectional IPC)
+    respondToUserInput: (requestId: string, response: unknown) => Promise<void>
+
+    // Respond to checkpoint request (bidirectional IPC)
+    respondToCheckpoint: (requestId: string, shouldContinue: boolean) => Promise<void>
+  }
 }
+
+// Workflow execution event types (single event channel with type-based routing)
+// Discriminated union allows TypeScript to narrow types based on event.type
+export type WorkflowExecutionEvent =
+  | { type: 'node-start'; executionId: string; nodeId: string; timestamp: number }
+  | { type: 'node-complete'; executionId: string; nodeId: string; data: { output: unknown }; timestamp: number }
+  | { type: 'node-error'; executionId: string; nodeId: string; data: { error: string }; timestamp: number }
+  | { type: 'progress'; executionId: string; data: unknown; timestamp: number }
+  | { type: 'trace-entry'; executionId: string; data: unknown; timestamp: number }
+  | { type: 'checkpoint'; executionId: string; data: unknown; timestamp: number }
+  | { type: 'complete'; executionId: string; data: unknown; timestamp: number }
+  | { type: 'error'; executionId: string; data: { error: string; stack?: string }; timestamp: number }
+  | { type: 'user-input-request'; executionId: string; requestId: string; data: unknown; timestamp: number }
+  | { type: 'checkpoint-request'; executionId: string; requestId: string; data: unknown; timestamp: number }
 
 // Compilation types
 export interface CompileOptions {
@@ -451,6 +523,53 @@ export interface TriggerSettings {
   maxConcurrentExecutions?: number
   notificationsEnabled?: boolean
   minimizeToTray?: boolean
+}
+
+// Service configuration types (for standalone scheduler service)
+export interface ServiceConfig {
+  port: number
+  host: string
+  enableWebhooks: boolean
+  dbPath: string
+}
+
+// Scheduler types (for tray mode)
+export interface ScheduleConfig {
+  workflowId?: string
+  workflowPath: string
+  name: string
+  cronExpression: string
+  timezone: string
+  enabled: boolean
+  parameters: Record<string, unknown>
+}
+
+export interface ScheduleInfo {
+  id: string
+  workflowId: string
+  workflowPath: string
+  name: string
+  cronExpression: string
+  timezone: string
+  enabled: boolean
+  parameters: Record<string, unknown>
+  nextRunAt?: number
+  lastRunAt?: number
+  lastRunStatus?: 'success' | 'error' | 'skipped'
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ScheduleExecution {
+  id: string
+  scheduleId: string
+  workflowId: string
+  trigger: 'manual' | 'schedule' | 'webhook'
+  status: 'success' | 'error' | 'cancelled'
+  result?: unknown
+  error?: string
+  startedAt: number
+  completedAt?: number
 }
 
 // Config types matching ~/.prompd/config.yaml schema

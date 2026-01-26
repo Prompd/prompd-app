@@ -1043,8 +1043,6 @@ select.input {
   border: 1px solid var(--border);
   border-radius: 4px;
   overflow-x: auto;
-  max-height: 300px;
-  overflow-y: auto;
 }
 
 .build-output-command-details pre {
@@ -1104,8 +1102,6 @@ select.input {
   color: var(--muted);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 100px;
-  overflow-y: auto;
 }
 
 /* Footer */
@@ -1118,6 +1114,191 @@ select.input {
 
 .build-output-timestamp {
   opacity: 0.7;
+}
+
+/* Bottom Panel Tabs - Unified tabbed interface */
+.bottom-panel-tabs {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  animation: build-panel-slide-up 0.15s ease-out;
+}
+
+.bottom-panel-tabs.resizing {
+  user-select: none;
+  transition: none;
+}
+
+.bottom-panel-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 1;
+}
+
+.bottom-panel-resize-handle:hover {
+  background: var(--accent);
+  opacity: 0.5;
+}
+
+.bottom-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 12px 0 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex-shrink: 0;
+}
+
+.bottom-panel-tabs-container {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.bottom-panel-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+  position: relative;
+}
+
+.bottom-panel-tab:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.bottom-panel-tab.active {
+  background: var(--hover);
+  color: var(--accent);
+}
+
+.bottom-panel-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: var(--error);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+.bottom-panel-tab-indicator {
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.bottom-panel-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.bottom-panel-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.bottom-panel-action:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.bottom-panel-action.active {
+  color: var(--accent);
+}
+
+.bottom-panel-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.bottom-panel-tab-content {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Override BuildOutputPanel styles when inside tabs */
+.bottom-panel-tab-content .build-output-panel-docked {
+  position: static;
+  left: auto;
+  right: auto;
+  border: none;
+  height: 100%;
+}
+
+/* Hide BuildOutputPanel header when inside tabs (tabs handle this) */
+.bottom-panel-tab-content .build-output-header {
+  display: none;
+}
+
+/* Hide BuildOutputPanel resize handle when inside tabs */
+.bottom-panel-tab-content .build-output-resize-handle {
+  display: none;
+}
+
+/* Make BuildOutputPanel content take full height when inside tabs */
+.bottom-panel-tab-content .build-output-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Override WorkflowExecutionPanel styles when inside tabs */
+.bottom-panel-tab-content .workflow-execution-panel {
+  position: static;
+  border: none;
+  height: 100%;
+}
+
+/* Hide WorkflowExecutionPanel header when inside tabs */
+.bottom-panel-tab-content .workflow-execution-header {
+  display: none;
+}
+
+/* Hide WorkflowExecutionPanel resize handle when inside tabs */
+.bottom-panel-tab-content .workflow-resize-handle {
+  display: none;
 }
 
 /* Workflow Execution Panel - Docked Bottom Panel */

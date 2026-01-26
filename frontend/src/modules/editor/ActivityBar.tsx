@@ -1,7 +1,7 @@
-import { Files, Package, GitBranch, History } from 'lucide-react'
+import { Files, Package, GitBranch, History, Clock } from 'lucide-react'
 import { PrompdIcon } from '../components/PrompdIcon'
 
-type SideKey = 'explorer' | 'packages' | 'ai' | 'git' | 'history'
+type SideKey = 'explorer' | 'packages' | 'ai' | 'git' | 'history' | 'scheduler'
 
 type Props = {
   showSidebar: boolean
@@ -81,6 +81,16 @@ export default function ActivityBar({ showSidebar, active, onSelect, onToggleSid
           <History
             size={iconSize}
             color={active === 'history' && showSidebar ? iconColor : inactiveIconColor}
+          />
+        </button>
+        <button
+          className={`ab-item ${active === 'scheduler' && showSidebar ? 'active' : ''}`}
+          title="Scheduler"
+          onClick={() => handleClick('scheduler')}
+        >
+          <Clock
+            size={iconSize}
+            color={active === 'scheduler' && showSidebar ? iconColor : inactiveIconColor}
           />
         </button>
       </div>

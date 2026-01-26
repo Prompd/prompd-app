@@ -242,3 +242,6 @@ export const MergeNode = memo(({ id, data, selected }: MergeNodeProps) => {
 })
 
 MergeNode.displayName = 'MergeNode'
+
+// Export properties component
+export { MergeNodeProperties } from './MergeNodeProperties'

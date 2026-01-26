@@ -132,7 +132,7 @@
   "dependencies": {
     "@clerk/clerk-react": "^5.58.1",
     "@monaco-editor/react": "^4.6.0",
-    "@prompd/cli": "^0.3.3",
+    "@prompd/cli": "^0.4.2",
     "@prompd/react": "file:../packages/react",
     "@xyflow/react": "^12.10.0",
     "chokidar": "^3.6.0",

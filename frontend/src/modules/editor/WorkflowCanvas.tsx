@@ -33,9 +33,9 @@ import { ContextMenu } from '../components/workflow/ContextMenu'
 import { useWorkflowStore } from '../../stores/workflowStore'
 import { useUIStore, selectWorkflowPanelPinned } from '../../stores/uiStore'
 import { useEditorStore } from '../../stores/editorStore'
-import type { WorkflowNodeType, WorkflowResult } from '../services/workflowTypes'
-import { createWorkflowExecutor, type ExecutionMode, type CheckpointEvent, type ExecutionTrace, type DebugState } from '../services/workflowExecutor'
+import type { WorkflowNodeType, WorkflowResult } from '@prompd/cli'
 import { parseWorkflow } from '../services/workflowParser'
+import { createWorkflowExecutor, type ExecutionMode, type CheckpointEvent, type ExecutionTrace, type DebugState } from '../services/workflowExecutor'
 import { executionRouter } from '../services/executionRouter'
 import { localCompiler } from '../services/localCompiler'
 
@@ -46,17 +46,24 @@ interface WorkflowCanvasProps {
   readOnly?: boolean
 }
 
-function WorkflowCanvasInner({ content, onChange, readOnly = false }: WorkflowCanvasProps) {
+function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false }: WorkflowCanvasProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const reactFlowInstance = useReactFlow()
 
   // Track selected node position for quick actions toolbar
   const [quickActionsPosition, setQuickActionsPosition] = useState<{ x: number; y: number } | null>(null)
 
-  // Execution state
+  // Execution state (from store - persists across tab switches)
+  const executionResult = useWorkflowStore(state => state.executionResult)
+  const checkpoints = useWorkflowStore(state => state.checkpoints)
+  const promptsSent = useWorkflowStore(state => state.promptsSent)
+  const setExecutionResult = useWorkflowStore(state => state.setExecutionResult)
+  const setCheckpoints = useWorkflowStore(state => state.setCheckpoints)
+  const setPromptsSent = useWorkflowStore(state => state.setPromptsSent)
+  const clearExecutionState = useWorkflowStore(state => state.clearExecutionState)
+
+  // Local execution state (doesn't need to persist)
   const [showExecutionPanel, setShowExecutionPanel] = useState(false)
-  const [executionResult, setExecutionResult] = useState<(WorkflowResult & { trace?: ExecutionTrace }) | null>(null)
-  const [checkpoints, setCheckpoints] = useState<CheckpointEvent[]>([])
   const [isPaused, setIsPaused] = useState(false)
   const [pendingCheckpoint, setPendingCheckpoint] = useState<CheckpointEvent | null>(null)
   const [pendingUserInput, setPendingUserInput] = useState<UserInputRequest | null>(null)
@@ -73,17 +80,6 @@ function WorkflowCanvasInner({ content, onChange, readOnly = false }: WorkflowCa
   // Workflow settings dialog state
   const [showWorkflowSettings, setShowWorkflowSettings] = useState(false)
 
-  // Debug: track prompts sent to LLM
-  const [promptsSent, setPromptsSent] = useState<Array<{
-    nodeId: string
-    source: string
-    resolvedPath?: string
-    compiledPrompt: string
-    params: Record<string, unknown>
-    provider?: string
-    model?: string
-    timestamp: number
-  }>>([])
   const currentNodeIdRef = useRef<string | null>(null)
 
   // Workflow store state
@@ -127,11 +123,16 @@ function WorkflowCanvasInner({ content, onChange, readOnly = false }: WorkflowCa
   const showContextMenu = useWorkflowStore(state => state.showContextMenu)
   const hideContextMenu = useWorkflowStore(state => state.hideContextMenu)
 
+  // Editor store for getting current tab info
+  const tabs = useEditorStore(state => state.tabs)
+
   // UI store for theme and panel pinned state
   const theme = useUIStore((state: { theme: 'light' | 'dark' }) => state.theme)
   const isWorkflowPanelPinned = useUIStore(selectWorkflowPanelPinned)
   const showConnectionsPanel = useUIStore(state => state.showConnectionsPanel)
   const setShowConnectionsPanel = useUIStore(state => state.setShowConnectionsPanel)
+  const setBuildOutput = useUIStore(state => state.setBuildOutput)
+  const setShowBuildPanel = useUIStore(state => state.setShowBuildPanel)
 
   // Compute selected node's screen position for quick actions toolbar
   useEffect(() => {
@@ -557,6 +558,51 @@ function WorkflowCanvasInner({ content, onChange, readOnly = false }: WorkflowCa
     }
   }, [isDirty, onChange, serializeToJson, setDirty])
 
+  // Push validation errors to BuildOutputPanel
+  useEffect(() => {
+    if (errors.length > 0) {
+      // Get the actual file name from the active tab instead of workflow metadata
+      const currentTab = activeTabId ? tabs.find(t => t.id === activeTabId) : null
+      const fileName = currentTab?.name || workflowFile?.metadata?.name || 'Workflow'
+      const json = serializeToJson()
+
+      // Convert WorkflowValidationErrors to BuildErrors with line numbers
+      const buildErrors = errors.map(error => {
+        const node = nodes.find(n => n.id === error.nodeId)
+        const nodeLabel = node?.data?.label || error.nodeId || 'Unknown'
+
+        // Find line number in JSON where this node is defined
+        let lineNumber: number | undefined
+        if (error.nodeId) {
+          // Search for the node ID in the JSON to find its line number
+          const lines = json.split('\n')
+          const nodeIdPattern = new RegExp(`"id":\\s*"${error.nodeId}"`)
+          for (let i = 0; i < lines.length; i++) {
+            if (nodeIdPattern.test(lines[i])) {
+              lineNumber = i + 1 // Line numbers are 1-based
+              break
+            }
+          }
+        }
+
+        return {
+          file: fileName,
+          message: `Node '${nodeLabel}': ${error.message}`,
+          line: lineNumber,
+          column: undefined,
+        }
+      })
+
+      setBuildOutput({
+        status: 'error',
+        message: `Workflow has ${errors.length} validation error${errors.length > 1 ? 's' : ''}`,
+        errors: buildErrors,
+        timestamp: Date.now(),
+      })
+      setShowBuildPanel(true)
+    }
+  }, [errors, nodes, workflowFile, activeTabId, tabs, setBuildOutput, setShowBuildPanel, serializeToJson])
+
   // Listen for execute-workflow event from EditorHeader play button
   useEffect(() => {
     const handleExecuteWorkflow = () => {
@@ -934,7 +980,7 @@ function WorkflowCanvasInner({ content, onChange, readOnly = false }: WorkflowCa
         console.error(`Node ${nodeId} failed:`, error)
       },
       onCheckpoint: async (event) => {
-        setCheckpoints(prev => [...prev, event])
+        setCheckpoints([...checkpoints, event])
 
         // Check if this checkpoint requires pausing
         const shouldPause = event.behaviors.requireApproval ||
@@ -1092,7 +1138,7 @@ function WorkflowCanvasInner({ content, onChange, readOnly = false }: WorkflowCa
         console.log('[WorkflowCanvas] Executing with compiled prompt (first 200 chars):', compiledPrompt.substring(0, 200))
 
         // Track this prompt for debugging
-        setPromptsSent(prev => [...prev, {
+        setPromptsSent([...promptsSent, {
           nodeId: currentNodeIdRef.current || 'unknown',
           source,
           resolvedPath,
@@ -1139,7 +1185,7 @@ function WorkflowCanvasInner({ content, onChange, readOnly = false }: WorkflowCa
         fullPrompt += 'Assistant:'
 
         // Track for debugging
-        setPromptsSent(prev => [...prev, {
+        setPromptsSent([...promptsSent, {
           nodeId: request.nodeId,
           source: 'agent-llm-call',
           compiledPrompt: fullPrompt,
@@ -1184,6 +1230,8 @@ function WorkflowCanvasInner({ content, onChange, readOnly = false }: WorkflowCa
       console.log('[WorkflowCanvas] Starting execution with mode:', mode)
       const result = await executor.execute()
       console.log('[WorkflowCanvas] Execution completed:', result)
+      console.log('[WorkflowCanvas] Result has trace:', !!result.trace)
+      console.log('[WorkflowCanvas] Trace entries:', result.trace?.entries?.length || 0)
       setExecutionResult(result)
       setExecutionState({
         workflowId: workflowFile.metadata.id,
@@ -1309,6 +1357,14 @@ function WorkflowCanvasInner({ content, onChange, readOnly = false }: WorkflowCa
   const showPinnedPanel = showExecutionPanel && isWorkflowPanelPinned
   const showFloatingPanel = showExecutionPanel && !isWorkflowPanelPinned
 
+  const onReactFlowError = useCallback((id: string, message: string): void => {
+    console.error(`[WorkflowCanvas] ReactFlow error (ID: ${id}): ${message}`)
+  }, [])
+
+  const onReactFlowErrorCapture = useCallback((event: React.SyntheticEvent<HTMLDivElement>) => {
+    console.error('[WorkflowCanvas] ReactFlow error (capture):', event)
+  }, [])
+
   return (
     <div className="flex h-full w-full">
       {/* Node Palette Sidebar */}
@@ -1328,6 +1384,8 @@ function WorkflowCanvasInner({ content, onChange, readOnly = false }: WorkflowCa
           style={{ position: 'relative' }}
         >
           <ReactFlow
+            onError={onReactFlowError}
+            onErrorCapture={onReactFlowErrorCapture}
             nodes={visibleNodes}
             edges={edges}
             onNodesChange={readOnly ? undefined : (onNodesChange as any)}

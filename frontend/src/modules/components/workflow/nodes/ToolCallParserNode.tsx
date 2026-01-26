@@ -299,3 +299,6 @@ export const ToolCallParserNode = memo(({ id, data, selected }: ToolCallParserNo
 })
 
 ToolCallParserNode.displayName = 'ToolCallParserNode'
+
+// Export properties component
+export { ToolCallParserNodeProperties } from './ToolCallParserNodeProperties'

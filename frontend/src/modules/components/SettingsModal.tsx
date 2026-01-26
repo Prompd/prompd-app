@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
-import { X, Keyboard, User, Key, BarChart3, Trash2, Plus, Eye, EyeOff, Check, AlertCircle, ExternalLink, ChevronDown, Star, Database, Globe, Code, Layout, Shield, Package, Loader, RefreshCw } from 'lucide-react'
+import { X, Keyboard, User, Key, BarChart3, Trash2, Plus, Eye, EyeOff, Check, AlertCircle, ExternalLink, ChevronDown, Star, Database, Globe, Code, Layout, Shield, Package, Loader, RefreshCw, Clock, Wifi, Server } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { OrganizationSwitcher } from '@clerk/clerk-react'
 import { useAuthenticatedUser } from '../auth/ClerkWrapper'
 import HotkeySettings from './HotkeySettings'
 import { isElectron } from '../auth/ClerkWrapper'
+import { WebhookSettings } from './settings/WebhookSettings'
+import { ServiceSettings } from './settings/ServiceSettings'
+import { ScheduleSettings } from './settings/ScheduleSettings'
 import {
   getLLMProviders,
   setLlmApiKey as setLlmApiKeyRemote,
@@ -109,7 +112,7 @@ interface SettingsModalProps {
   initialTab?: TabType
 }
 
-type TabType = 'profile' | 'api-keys' | 'registries' | 'usage' | 'shortcuts'
+type TabType = 'profile' | 'api-keys' | 'registries' | 'usage' | 'shortcuts' | 'schedules' | 'webhooks' | 'service'
 
 // Default View Mode Button Component
 function DefaultViewModeButton({
@@ -585,6 +588,7 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
   // Theme-aware colors
   const colors = {
     bg: theme === 'dark' ? '#1e293b' : '#ffffff',
+    bgPrimary: theme === 'dark' ? '#1e293b' : '#ffffff',
     bgSecondary: theme === 'dark' ? '#0f172a' : '#f8fafc',
     bgTertiary: theme === 'dark' ? '#334155' : '#e2e8f0',
     border: theme === 'dark' ? 'rgba(71, 85, 105, 0.3)' : '#e2e8f0',
@@ -1022,12 +1026,27 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
     )
   }
 
-  const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
+  const sidebarItems: Array<{
+    id: TabType
+    label: string
+    icon: React.ReactNode
+    children?: Array<{ id: TabType; label: string; icon: React.ReactNode }>
+  }> = [
     { id: 'profile', label: 'Profile', icon: <User size={16} /> },
     { id: 'api-keys', label: 'API Keys', icon: <Key size={16} /> },
     { id: 'registries', label: 'Registries', icon: <Database size={16} /> },
     { id: 'usage', label: 'Usage', icon: <BarChart3 size={16} /> },
-    { id: 'shortcuts', label: 'Shortcuts', icon: <Keyboard size={16} /> }
+    { id: 'shortcuts', label: 'Shortcuts', icon: <Keyboard size={16} /> },
+    {
+      id: 'schedules',
+      label: 'Scheduler',
+      icon: <Clock size={16} />,
+      children: [
+        { id: 'schedules', label: 'Schedules', icon: <Clock size={14} /> },
+        { id: 'webhooks', label: 'Webhooks', icon: <Wifi size={14} /> },
+        { id: 'service', label: 'Service', icon: <Server size={14} /> }
+      ]
+    }
   ]
 
   return (
@@ -1053,7 +1072,7 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
           border: `1px solid ${colors.border}`,
           borderRadius: '12px',
           width: '90%',
-          maxWidth: '800px',
+          maxWidth: '1000px',
           maxHeight: '85vh',
           display: 'flex',
           flexDirection: 'column',
@@ -1099,51 +1118,120 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
           </button>
         </div>
 
-        {/* Tabs */}
+        {/* Sidebar + Content Layout */}
         <div
           style={{
             display: 'flex',
-            gap: '4px',
-            padding: '12px 24px',
-            borderBottom: `1px solid ${colors.border}`,
-            background: colors.bgSecondary,
-            overflowX: 'auto'
-          }}
-        >
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                fontSize: '14px',
-                fontWeight: 500,
-                border: 'none',
-                borderRadius: '6px',
-                background: activeTab === tab.id ? colors.bg : 'transparent',
-                color: activeTab === tab.id ? colors.text : colors.textSecondary,
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Content */}
-        <div
-          style={{
             flex: 1,
-            overflow: 'auto',
-            padding: '24px'
+            overflow: 'hidden'
           }}
         >
+          {/* Sidebar Navigation */}
+          <div
+            style={{
+              width: '220px',
+              borderRight: `1px solid ${colors.border}`,
+              background: colors.bgSecondary,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'auto'
+            }}
+          >
+            <div style={{ padding: '12px' }}>
+              {sidebarItems.map(item => (
+                <div key={item.id}>
+                  <button
+                    onClick={() => setActiveTab(item.id)}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '10px 12px',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      border: 'none',
+                      borderRadius: '6px',
+                      background: activeTab === item.id && !item.children ? colors.primary : 'transparent',
+                      color: activeTab === item.id && !item.children ? 'white' : colors.text,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                      textAlign: 'left',
+                      marginBottom: '2px'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (activeTab !== item.id || item.children) {
+                        e.currentTarget.style.background = colors.hover
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (activeTab !== item.id || item.children) {
+                        e.currentTarget.style.background = 'transparent'
+                      } else if (!item.children) {
+                        e.currentTarget.style.background = colors.primary
+                      }
+                    }}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </button>
+
+                  {/* Sub-items for hierarchical navigation */}
+                  {item.children && (
+                    <div style={{ paddingLeft: '24px', marginTop: '4px', marginBottom: '8px' }}>
+                      {item.children.map(child => (
+                        <button
+                          key={child.id}
+                          onClick={() => setActiveTab(child.id)}
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '8px 10px',
+                            fontSize: '12px',
+                            fontWeight: 500,
+                            border: 'none',
+                            borderRadius: '5px',
+                            background: activeTab === child.id ? colors.primary : 'transparent',
+                            color: activeTab === child.id ? 'white' : colors.textSecondary,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                            textAlign: 'left',
+                            marginBottom: '2px'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (activeTab !== child.id) {
+                              e.currentTarget.style.background = colors.hover
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (activeTab !== child.id) {
+                              e.currentTarget.style.background = 'transparent'
+                            } else {
+                              e.currentTarget.style.background = colors.primary
+                            }
+                          }}
+                        >
+                          {child.icon}
+                          {child.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Content Area */}
+          <div
+            style={{
+              flex: 1,
+              overflow: 'auto',
+              padding: '24px'
+            }}
+          >
           {/* Profile Tab */}
           {activeTab === 'profile' && (
             <div>
@@ -2830,8 +2918,24 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
               <HotkeySettings theme={theme} onClose={() => {}} inline={true} />
             </div>
           )}
+
+          {/* Scheduler Tabs */}
+          {activeTab === 'schedules' && <ScheduleSettings colors={colors} />}
+
+          {activeTab === 'webhooks' && (
+            <div>
+              <WebhookSettings />
+            </div>
+          )}
+
+          {activeTab === 'service' && (
+            <div>
+              <ServiceSettings />
+            </div>
+          )}
         </div>
       </div>
+    </div>
 
       {/* Confirm Dialog */}
       <ConfirmDialogComponent />

@@ -19,6 +19,7 @@ const os = require('os')
 // Tray and trigger services for background workflow execution
 const { trayManager } = require('./tray')
 const { triggerService } = require('./services/triggerService')
+const { TraySchedulerService, createWorkflowExecutor } = require('./services/trayScheduler')
 
 // Set app name for protocol handler display
 app.setName('Prompd')
@@ -40,6 +41,9 @@ async function getPrompdCli() {
   }
   return prompdCliModule
 }
+
+// Tray scheduler instance (initialized in createWindow)
+let trayScheduler = null
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling
 // Only needed for Squirrel.Windows installer (not NSIS)
@@ -413,6 +417,27 @@ function createMenu() {
             }
           }
         },
+        {
+          label: 'Scheduler',
+          submenu: [
+            {
+              label: 'Manage Schedules',
+              click: () => {
+                if (mainWindow) {
+                  mainWindow.webContents.send('menu-scheduler-settings')
+                }
+              }
+            },
+            {
+              label: 'Service Settings',
+              click: () => {
+                if (mainWindow) {
+                  mainWindow.webContents.send('menu-scheduler-service')
+                }
+              }
+            }
+          ]
+        },
         { type: 'separator' },
         { role: 'quit' }
       ]
@@ -746,6 +771,22 @@ app.whenReady().then(() => {
     console.error('[Electron] Failed to initialize trigger service:', err)
   })
 
+  // Initialize tray scheduler (persistent workflow scheduling)
+  try {
+    const workflowExecutor = createWorkflowExecutor(mainWindow)
+    trayScheduler = new TraySchedulerService({
+      mainWindow,
+      trayManager,
+      workflowExecutor
+    })
+    trayScheduler.start()
+    console.log('[Electron] Tray scheduler initialized')
+  } catch (error) {
+    console.error('[Electron] Failed to initialize tray scheduler:', error.message)
+    console.error('[Electron] Scheduled workflows will not work. Make sure scheduler-shared dependencies are installed.')
+    trayScheduler = null
+  }
+
   // Tray event handlers
   trayManager.on('show-workflows', () => {
     if (mainWindow) {
@@ -760,13 +801,31 @@ app.whenReady().then(() => {
   })
 
   trayManager.on('pause-all-schedules', async () => {
-    // Will be implemented when schedulerService is added
-    console.log('[Tray] Pause all schedules requested')
+    if (trayScheduler) {
+      const schedules = trayScheduler.getActiveSchedules()
+      for (const schedule of schedules) {
+        trayScheduler.updateSchedule(schedule.id, { enabled: false })
+      }
+      trayManager.showNotification({
+        title: 'Schedules Paused',
+        body: `Paused ${schedules.length} scheduled workflow(s)`,
+        type: 'info'
+      })
+    }
   })
 
   trayManager.on('resume-all-schedules', async () => {
-    // Will be implemented when schedulerService is added
-    console.log('[Tray] Resume all schedules requested')
+    if (trayScheduler) {
+      const schedules = trayScheduler.getSchedules({ enabled: false })
+      for (const schedule of schedules) {
+        trayScheduler.updateSchedule(schedule.id, { enabled: true })
+      }
+      trayManager.showNotification({
+        title: 'Schedules Resumed',
+        body: `Resumed ${schedules.length} scheduled workflow(s)`,
+        type: 'info'
+      })
+    }
   })
 
   trayManager.on('stop-all-file-watchers', async () => {
@@ -3674,3 +3733,778 @@ ipcMain.handle('trigger:runManually', async (_event, workflowId) => {
     return { success: false, error: err.message }
   }
 })
+
+/**
+ * Scheduler IPC handlers - Persistent workflow scheduling
+ */
+
+/**
+ * Get all schedules
+ */
+ipcMain.handle('scheduler:getSchedules', async (_event, filters) => {
+  if (!trayScheduler) {
+    return { success: false, error: 'Scheduler not initialized' }
+  }
+  try {
+    const schedules = trayScheduler.getSchedules(filters || {})
+    return { success: true, schedules }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+/**
+ * Add a new schedule
+ */
+ipcMain.handle('scheduler:addSchedule', async (_event, config) => {
+  if (!trayScheduler) {
+    return { success: false, error: 'Scheduler not initialized' }
+  }
+  try {
+    const scheduleId = trayScheduler.addSchedule(config)
+    return { success: true, scheduleId }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+/**
+ * Update a schedule
+ */
+ipcMain.handle('scheduler:updateSchedule', async (_event, scheduleId, updates) => {
+  if (!trayScheduler) {
+    return { success: false, error: 'Scheduler not initialized' }
+  }
+  try {
+    const success = trayScheduler.updateSchedule(scheduleId, updates)
+    return { success }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+/**
+ * Delete a schedule
+ */
+ipcMain.handle('scheduler:deleteSchedule', async (_event, scheduleId) => {
+  if (!trayScheduler) {
+    return { success: false, error: 'Scheduler not initialized' }
+  }
+  try {
+    const success = trayScheduler.deleteSchedule(scheduleId)
+    return { success }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+/**
+ * Execute a schedule immediately (manual trigger)
+ */
+ipcMain.handle('scheduler:executeNow', async (_event, scheduleId) => {
+  if (!trayScheduler) {
+    return { success: false, error: 'Scheduler not initialized' }
+  }
+  try {
+    const result = await trayScheduler.executeScheduleNow(scheduleId)
+    return { success: true, result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+/**
+ * Get execution history
+ */
+ipcMain.handle('scheduler:getHistory', async (_event, workflowId, options) => {
+  if (!trayScheduler) {
+    return { success: false, error: 'Scheduler not initialized' }
+  }
+  try {
+    const history = trayScheduler.getExecutionHistory(workflowId, options || {})
+    return { success: true, history }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+/**
+ * Get next run times for a schedule
+ */
+ipcMain.handle('scheduler:getNextRunTimes', async (_event, scheduleId, count) => {
+  if (!trayScheduler) {
+    return { success: false, error: 'Scheduler not initialized' }
+  }
+  try {
+    const times = trayScheduler.getNextRunTimes(scheduleId, count || 5)
+    return { success: true, times }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ============================================================================
+// Workflow Execution IPC Handlers
+// Event-based execution with live updates (single event loop)
+// ============================================================================
+
+// Track running executions and pending user input requests
+const runningExecutions = new Map()
+const pendingUserInputs = new Map() // requestId -> { resolve, reject }
+
+// Import CLI modules once at startup (prevents blocking on first execution)
+let cliModules = null
+let configManager = null
+let prompdExecutor = null
+
+// Initialize CLI modules asynchronously
+;(async () => {
+  try {
+    cliModules = await import('@prompd/cli')
+    const { ConfigManager, PrompdExecutor } = cliModules
+    configManager = new ConfigManager()
+    prompdExecutor = new PrompdExecutor()
+    console.log('[Main Process] @prompd/cli modules initialized and ready')
+  } catch (err) {
+    console.error('[Main Process] Failed to initialize CLI modules:', err)
+  }
+})()
+
+/**
+ * Execute a workflow using @prompd/cli (non-blocking with live events)
+ * workflow: ParsedWorkflow object
+ * params: Execution parameters
+ * options: Serializable options only (executionMode, breakpoints array)
+ * Returns: { executionId: string } immediately, emits events during execution
+ */
+ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
+  const executionId = `exec-${Date.now()}-${Math.random().toString(36).substring(7)}`
+  const sender = event.sender
+
+  console.log(`[Workflow Executor] Starting execution: ${executionId}`)
+
+  // Start execution in background (non-blocking)
+  setImmediate(async () => {
+    try {
+      // Check if CLI modules are ready
+      if (!cliModules || !configManager || !prompdExecutor) {
+        throw new Error('CLI modules not initialized yet. Please try again.')
+      }
+
+      const { executeWorkflow } = cliModules
+
+      // Build options with event-emitting callbacks
+      const executorOptions = {
+        ...options,
+        onNodeStart: (nodeId) => {
+          sender.send('workflow:event', {
+            type: 'node-start',
+            executionId,
+            nodeId,
+            timestamp: Date.now()
+          })
+        },
+        onNodeComplete: (nodeId, output) => {
+          sender.send('workflow:event', {
+            type: 'node-complete',
+            executionId,
+            nodeId,
+            data: { output },
+            timestamp: Date.now()
+          })
+        },
+        onNodeError: (nodeId, error) => {
+          sender.send('workflow:event', {
+            type: 'node-error',
+            executionId,
+            nodeId,
+            data: { error },
+            timestamp: Date.now()
+          })
+        },
+        onProgress: (state) => {
+          sender.send('workflow:event', {
+            type: 'progress',
+            executionId,
+            data: state,
+            timestamp: Date.now()
+          })
+        },
+        onTraceEntry: (entry) => {
+          sender.send('workflow:event', {
+            type: 'trace-entry',
+            executionId,
+            data: entry,
+            timestamp: Date.now()
+          })
+        },
+        // Bidirectional: Request user input from renderer
+        onUserInput: async (request) => {
+          const requestId = `input-${Date.now()}-${Math.random().toString(36).substring(7)}`
+
+          // Emit request event
+          sender.send('workflow:event', {
+            type: 'user-input-request',
+            executionId,
+            requestId,
+            data: request,
+            timestamp: Date.now()
+          })
+
+          // Wait for response
+          return new Promise((resolve, reject) => {
+            pendingUserInputs.set(requestId, { resolve, reject })
+
+            // Timeout after 5 minutes
+            setTimeout(() => {
+              if (pendingUserInputs.has(requestId)) {
+                pendingUserInputs.delete(requestId)
+                reject(new Error('User input request timed out'))
+              }
+            }, 300000)
+          })
+        },
+        // Bidirectional: Request checkpoint confirmation from renderer
+        onCheckpoint: async (event) => {
+          const requestId = `checkpoint-${Date.now()}-${Math.random().toString(36).substring(7)}`
+
+          // Emit request event
+          sender.send('workflow:event', {
+            type: 'checkpoint-request',
+            executionId,
+            requestId,
+            data: event,
+            timestamp: Date.now()
+          })
+
+          // Wait for response (boolean: continue or not)
+          return new Promise((resolve, reject) => {
+            pendingUserInputs.set(requestId, { resolve, reject })
+
+            // Timeout after 5 minutes
+            setTimeout(() => {
+              if (pendingUserInputs.has(requestId)) {
+                pendingUserInputs.delete(requestId)
+                reject(new Error('Checkpoint request timed out'))
+              }
+            }, 300000)
+          })
+        },
+        // Local prompt execution through CLI (centralized compilation + execution)
+        executePrompt: async (source, promptParams, provider, model) => {
+          let tempFilePath = null
+          try {
+            console.log(`[Workflow Executor] Executing prompt via CLI: ${source}`)
+
+            // Determine file path to execute
+            let fileToExecute = source
+
+            if (source.startsWith('./') || source.startsWith('../') || source.startsWith('@')) {
+              // File path - resolve to absolute path
+              fileToExecute = path.resolve(source)
+            } else if (source.startsWith('raw:')) {
+              // Raw inline prompt - write to temp file
+              const rawText = source.substring(4)
+              const uniqueId = `raw-prompt-${Date.now()}`
+              const promptContent = [
+                '---',
+                `id: ${uniqueId}`,
+                'name: "Raw Prompt"',
+                'version: 0.0.1',
+                'description: "Inline raw prompt from workflow"',
+                '---',
+                '',
+                rawText
+              ].join('\n')
+
+              // Write to temp file
+              tempFilePath = path.join(app.getPath('temp'), `${uniqueId}.prmd`)
+              await fs.writeFile(tempFilePath, promptContent, 'utf-8')
+              fileToExecute = tempFilePath
+            } else {
+              // Assume it's .prmd content - write to temp file
+              const uniqueId = `inline-prompt-${Date.now()}`
+              tempFilePath = path.join(app.getPath('temp'), `${uniqueId}.prmd`)
+              await fs.writeFile(tempFilePath, source, 'utf-8')
+              fileToExecute = tempFilePath
+            }
+
+            // Get API key
+            const config = await configManager.load()
+            const apiKey = config.api_keys?.[provider] || process.env[`${provider.toUpperCase()}_API_KEY`]
+
+            if (!apiKey) {
+              throw new Error(`No API key found for provider: ${provider}`)
+            }
+
+            // Execute through CLI (centralized compilation + execution)
+            const executeResult = await prompdExecutor.execute(fileToExecute, {
+              provider: provider || 'openai',
+              model: model || 'gpt-4o',
+              apiKey,
+              params: promptParams
+            })
+
+            // Clean up temp file
+            if (tempFilePath) {
+              await fs.unlink(tempFilePath).catch(() => {})
+            }
+
+            return executeResult.response || executeResult.content || ''
+          } catch (err) {
+            // Clean up temp file on error
+            if (tempFilePath) {
+              await fs.unlink(tempFilePath).catch(() => {})
+            }
+            console.error('[Workflow Executor] executePrompt failed:', err)
+            throw err
+          }
+        },
+        // Agent LLM execution (for chat-agent nodes)
+        onPromptExecute: async (request) => {
+          let tempFilePath = null
+          try {
+            console.log(`[Workflow Executor] Agent LLM request from node: ${request.nodeId}`)
+
+            // Get API key from config
+            const config = await configManager.load()
+            const apiKey = config.api_keys?.[request.provider] || process.env[`${request.provider.toUpperCase()}_API_KEY`]
+
+            if (!apiKey) {
+              return {
+                success: false,
+                error: `No API key found for provider: ${request.provider}`
+              }
+            }
+
+            // Format prompt with system message and conversation history
+            let fullPrompt = request.prompt + '\n\n'
+            for (const msg of request.messages) {
+              if (msg.role === 'user') {
+                fullPrompt += `User: ${msg.content}\n\n`
+              } else if (msg.role === 'assistant') {
+                fullPrompt += `Assistant: ${msg.content}\n\n`
+              }
+            }
+            fullPrompt += 'Assistant:'
+
+            // Write to temp .prmd file (PrompdExecutor requires file path)
+            const uniqueId = `agent-prompt-${Date.now()}`
+            const promptContent = [
+              '---',
+              `id: ${uniqueId}`,
+              'name: "Agent Prompt"',
+              'version: 0.0.1',
+              'description: "Chat agent LLM request"',
+              '---',
+              '',
+              fullPrompt
+            ].join('\n')
+
+            tempFilePath = path.join(app.getPath('temp'), `${uniqueId}.prmd`)
+            await fs.writeFile(tempFilePath, promptContent, 'utf-8')
+
+            // Execute through CLI (centralized compilation + execution)
+            const executeResult = await prompdExecutor.execute(tempFilePath, {
+              provider: request.provider || 'openai',
+              model: request.model || 'gpt-4o',
+              apiKey,
+              params: {}
+            })
+
+            // Clean up temp file
+            await fs.unlink(tempFilePath).catch(() => {})
+
+            return {
+              success: true,
+              response: executeResult.response || executeResult.content || ''
+            }
+          } catch (err) {
+            // Clean up temp file on error
+            if (tempFilePath) {
+              await fs.unlink(tempFilePath).catch(() => {})
+            }
+            console.error('[Workflow Executor] onPromptExecute failed:', err)
+            return {
+              success: false,
+              error: err.message || 'Unknown error'
+            }
+          }
+        }
+      }
+
+      // Store execution reference for cancellation
+      runningExecutions.set(executionId, { cancelled: false })
+
+      // Execute workflow with live callbacks
+      const result = await executeWorkflow(workflow, params, executorOptions)
+
+      console.log('[Workflow Executor] Result keys:', Object.keys(result))
+      console.log('[Workflow Executor] Has trace:', !!result.trace)
+      console.log('[Workflow Executor] Trace entries:', result.trace?.entries?.length || 0)
+
+      // Send completion event
+      sender.send('workflow:event', {
+        type: 'complete',
+        executionId,
+        data: result,
+        timestamp: Date.now()
+      })
+
+      // Cleanup
+      runningExecutions.delete(executionId)
+
+      console.log(`[Workflow Executor] Execution completed: ${executionId}`)
+    } catch (err) {
+      console.error(`[Workflow Executor] Execution failed: ${executionId}`, err)
+
+      // Send error event
+      sender.send('workflow:event', {
+        type: 'error',
+        executionId,
+        data: { error: err.message, stack: err.stack },
+        timestamp: Date.now()
+      })
+
+      // Cleanup
+      runningExecutions.delete(executionId)
+    }
+  })
+
+  return { executionId }
+})
+
+/**
+ * Cancel running execution
+ */
+ipcMain.handle('workflow:cancel', async (_event, executionId) => {
+  const execution = runningExecutions.get(executionId)
+  if (execution) {
+    execution.cancelled = true
+    console.log(`[Workflow Executor] Cancelled execution: ${executionId}`)
+  }
+})
+
+/**
+ * Respond to user input request (bidirectional IPC)
+ */
+ipcMain.handle('workflow:user-input-response', async (_event, requestId, response) => {
+  const pending = pendingUserInputs.get(requestId)
+  if (pending) {
+    pendingUserInputs.delete(requestId)
+    pending.resolve(response)
+    console.log(`[Workflow Executor] User input received: ${requestId}`)
+  } else {
+    console.warn(`[Workflow Executor] No pending request for: ${requestId}`)
+  }
+})
+
+/**
+ * Respond to checkpoint request (bidirectional IPC)
+ */
+ipcMain.handle('workflow:checkpoint-response', async (_event, requestId, shouldContinue) => {
+  const pending = pendingUserInputs.get(requestId)
+  if (pending) {
+    pendingUserInputs.delete(requestId)
+    pending.resolve(shouldContinue)
+    console.log(`[Workflow Executor] Checkpoint response received: ${requestId}, continue: ${shouldContinue}`)
+  } else {
+    console.warn(`[Workflow Executor] No pending request for: ${requestId}`)
+  }
+})
+
+/**
+ * Download execution trace to file
+ * trace: ExecutionTrace object
+ * filename: Optional custom filename
+ */
+ipcMain.handle('workflow:downloadTrace', async (_event, trace, filename) => {
+  try {
+    // Dynamic import @prompd/cli in main process
+    const { downloadTrace } = await import('@prompd/cli')
+
+    // Download trace
+    await downloadTrace(trace, filename)
+  } catch (err) {
+    console.error('[Workflow Executor] Download trace failed:', err)
+    throw err
+  }
+})
+
+// ============================================================================
+// Service Management IPC Handlers
+// For controlling standalone scheduler service (separate Node.js process)
+// ============================================================================
+
+/**
+ * Start the standalone scheduler service
+ */
+ipcMain.handle('service:start', async () => {
+  try {
+    // Check if service is already running
+    const status = await checkServiceHealth()
+    if (status.running) {
+      return {
+        success: false,
+        error: 'Service is already running',
+        message: `Service running on port ${status.port}`
+      }
+    }
+
+    // Start service process
+    const { spawn } = require('child_process')
+    const servicePath = path.join(__dirname, '../../prompd-service/src/server.js')
+
+    // Check if service path exists
+    if (!fs.existsSync(servicePath)) {
+      return {
+        success: false,
+        error: 'Service not found',
+        message: 'prompd-service not installed. Please run: cd prompd-service && npm install'
+      }
+    }
+
+    // Spawn service process (detached so it continues running)
+    const serviceProcess = spawn('node', [servicePath], {
+      detached: true,
+      stdio: 'ignore',
+      cwd: path.dirname(servicePath)
+    })
+
+    serviceProcess.unref() // Allow parent to exit independently
+
+    // Wait a moment for service to start
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    // Verify service started
+    const newStatus = await checkServiceHealth()
+    if (newStatus.running) {
+      return {
+        success: true,
+        message: `Service started on port ${newStatus.port}`
+      }
+    } else {
+      return {
+        success: false,
+        error: 'Service failed to start',
+        message: 'Check service logs for details'
+      }
+    }
+
+  } catch (err) {
+    console.error('[Service] Start failed:', err)
+    return {
+      success: false,
+      error: err.message,
+      message: 'Failed to start service'
+    }
+  }
+})
+
+/**
+ * Stop the standalone scheduler service
+ */
+ipcMain.handle('service:stop', async () => {
+  try {
+    // Call service shutdown endpoint
+    const config = await loadServiceConfig()
+    const serviceUrl = `http://${config.host}:${config.port}`
+
+    const response = await fetch(`${serviceUrl}/api/shutdown`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    })
+
+    if (response.ok) {
+      return {
+        success: true,
+        message: 'Service stopped successfully'
+      }
+    } else {
+      return {
+        success: false,
+        error: `Service responded with status ${response.status}`,
+        message: 'Failed to stop service'
+      }
+    }
+
+  } catch (err) {
+    console.error('[Service] Stop failed:', err)
+    return {
+      success: false,
+      error: err.message,
+      message: 'Failed to stop service (may already be stopped)'
+    }
+  }
+})
+
+/**
+ * Restart the standalone scheduler service
+ */
+ipcMain.handle('service:restart', async () => {
+  try {
+    // Stop the service first
+    const stopResult = await ipcMain.handle('service:stop', async () => {})()
+
+    // Wait for service to fully shut down
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    // Start the service again
+    const startResult = await ipcMain.handle('service:start', async () => {})()
+
+    if (startResult.success) {
+      return {
+        success: true,
+        message: 'Service restarted successfully'
+      }
+    } else {
+      return {
+        success: false,
+        error: startResult.error,
+        message: 'Failed to restart service'
+      }
+    }
+
+  } catch (err) {
+    console.error('[Service] Restart failed:', err)
+    return {
+      success: false,
+      error: err.message,
+      message: 'Failed to restart service'
+    }
+  }
+})
+
+/**
+ * Get service status
+ */
+ipcMain.handle('service:getStatus', async () => {
+  try {
+    const status = await checkServiceHealth()
+    return {
+      success: true,
+      running: status.running,
+      port: status.port,
+      uptime: status.uptime
+    }
+  } catch (err) {
+    return {
+      success: false,
+      running: false,
+      error: err.message
+    }
+  }
+})
+
+/**
+ * Save service configuration
+ */
+ipcMain.handle('service:saveConfig', async (_event, config) => {
+  try {
+    const configPath = getServiceConfigPath()
+    const configDir = path.dirname(configPath)
+
+    // Ensure config directory exists
+    if (!fs.existsSync(configDir)) {
+      fs.mkdirSync(configDir, { recursive: true })
+    }
+
+    // Write config to JSON file
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
+
+    return {
+      success: true,
+      path: configPath
+    }
+  } catch (err) {
+    console.error('[Service] Save config failed:', err)
+    return {
+      success: false,
+      error: err.message
+    }
+  }
+})
+
+/**
+ * Load service configuration
+ */
+ipcMain.handle('service:loadConfig', async () => {
+  try {
+    const config = await loadServiceConfig()
+    return {
+      success: true,
+      config
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message
+    }
+  }
+})
+
+// ============================================================================
+// Service Helper Functions
+// ============================================================================
+
+/**
+ * Get path to service config file
+ */
+function getServiceConfigPath() {
+  const userDataPath = app.getPath('userData')
+  return path.join(userDataPath, '.prompd', 'service-config.json')
+}
+
+/**
+ * Load service configuration with defaults
+ */
+async function loadServiceConfig() {
+  const configPath = getServiceConfigPath()
+
+  const defaultConfig = {
+    port: 9876,
+    host: '127.0.0.1',
+    enableWebhooks: true,
+    dbPath: path.join(app.getPath('userData'), '.prompd', 'scheduler', 'schedules.db')
+  }
+
+  try {
+    if (fs.existsSync(configPath)) {
+      const content = fs.readFileSync(configPath, 'utf-8')
+      const config = JSON.parse(content)
+      return { ...defaultConfig, ...config }
+    }
+  } catch (err) {
+    console.error('[Service] Failed to load config:', err)
+  }
+
+  return defaultConfig
+}
+
+/**
+ * Check if service is running by hitting health endpoint
+ */
+async function checkServiceHealth() {
+  const config = await loadServiceConfig()
+  const serviceUrl = `http://${config.host}:${config.port}`
+
+  try {
+    const response = await fetch(`${serviceUrl}/health`, {
+      signal: AbortSignal.timeout(2000)
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      return {
+        running: true,
+        port: config.port,
+        uptime: data.uptime,
+        activeSchedules: data.activeSchedules
+      }
+    }
+  } catch (err) {
+    // Service not responding
+  }
+
+  return { running: false }
+}

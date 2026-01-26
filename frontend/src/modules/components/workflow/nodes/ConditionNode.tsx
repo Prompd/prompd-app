@@ -250,3 +250,6 @@ export const ConditionNode = memo(({ id, data, selected }: ConditionNodeProps) =
 })
 
 ConditionNode.displayName = 'ConditionNode'
+
+// Export properties component
+export { ConditionNodeProperties } from './ConditionNodeProperties'

@@ -29,3 +29,6 @@ export const ParallelNode = memo(({ id, data, selected }: ParallelNodeProps) => 
 })
 
 ParallelNode.displayName = 'ParallelNode'
+
+// Export properties component
+export { ParallelNodeProperties } from './ParallelNodeProperties'

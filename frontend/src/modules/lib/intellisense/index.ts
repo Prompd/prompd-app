@@ -19,6 +19,33 @@ export * from './types'
 export { setCurrentFilePath, enableCompilerDiagnostics } from './validation'
 export { ALL_FILTERS, PROMPD_FILTERS, NUNJUCKS_BUILTIN_FILTERS } from './filters'
 
+// Re-export new IntelliSense enhancements
+export {
+  getRegistrySync,
+  initializeRegistrySync,
+  cleanupRegistrySync,
+  type PackageStatus,
+  type RegistrySyncOptions
+} from './registrySync'
+
+export {
+  analyzeParameterUsage,
+  extractParameterDefinitions,
+  extractParameterReferences,
+  getParameterUsageStats,
+  type ParameterUsageDiagnostic,
+  type ParameterDefinition,
+  type ParameterReference
+} from './crossReference'
+
+export {
+  detectPatterns,
+  getSuggestedParameters,
+  getDetectedCategories,
+  PROMPT_PATTERNS,
+  type PatternSuggestion
+} from './promptPatterns'
+
 // Guard to ensure we only register IntelliSense once
 // Use window property to survive HMR (Hot Module Replacement) in development
 const INTELLISENSE_REGISTERED_KEY = '__PROMPD_INTELLISENSE_REGISTERED__'

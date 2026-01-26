@@ -9,19 +9,23 @@ interface PackageSearchResult {
 
 interface PackageSelectorProps {
   selectedPackage: { name: string; version: string } | null
+  selectedLocalFile?: string  // Selected local file path (for display)
   onSelect: (packageName: string, version: string) => void
   onSearch: (query: string) => Promise<PackageSearchResult[]>
-  onLocalFileSearch?: (query: string) => Promise<string[]>  // Search local .prmd files
+  onLocalFileSearch?: (query: string) => Promise<string[]>  // Search local files
   onLocalFileSelect?: (filePath: string) => void  // Handle local file selection
+  fileExtensions?: string[]  // File extensions to display (e.g., ['.prmd'], ['.pdflow'], ['.prmd', '.pdflow'])
   className?: string
 }
 
 export default function PackageSelector({
   selectedPackage,
+  selectedLocalFile = '',
   onSelect,
   onSearch,
   onLocalFileSearch,
   onLocalFileSelect,
+  fileExtensions = ['.prmd'],
   className = ''
 }: PackageSelectorProps) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -135,7 +139,7 @@ export default function PackageSelector({
         Package
       </label>
 
-      {/* Selected package display OR search input */}
+      {/* Selected package display OR selected local file display OR search input */}
       {selectedPackage ? (
         <div style={{
           display: 'flex',
@@ -161,6 +165,60 @@ export default function PackageSelector({
           <button
             onClick={() => {
               onSelect('', '')
+              // Focus the search input after clearing selection
+              setTimeout(() => {
+                inputRef.current?.focus()
+              }, 0)
+            }}
+            style={{
+              padding: '4px',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+              borderRadius: '4px',
+              transition: 'all 0.2s',
+              fontSize: '10px'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--hover)'
+              e.currentTarget.style.color = 'var(--accent)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent'
+              e.currentTarget.style.color = 'var(--text-secondary)'
+            }}
+          >
+            Change
+          </button>
+        </div>
+      ) : selectedLocalFile ? (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '8px 12px',
+          background: 'var(--input-bg)',
+          border: '1px solid var(--input-border)',
+          borderRadius: '6px'
+        }}>
+          <FileText size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+          <code style={{
+            fontSize: '12px',
+            color: 'var(--text)',
+            fontFamily: 'monospace',
+            flex: 1,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}>
+            {selectedLocalFile}
+          </code>
+          <button
+            onClick={() => {
+              if (onLocalFileSelect) {
+                onLocalFileSelect('')
+              }
               // Focus the search input after clearing selection
               setTimeout(() => {
                 inputRef.current?.focus()
@@ -244,7 +302,7 @@ export default function PackageSelector({
                   setShowDropdown(false)
                 }
               }}
-              placeholder="Search packages (or type . for local files)..."
+              placeholder={`Search packages (or type . for local ${fileExtensions.join(', ')} files)...`}
               style={{
                 width: '100%',
                 padding: '8px 12px 8px 32px',
@@ -282,7 +340,7 @@ export default function PackageSelector({
               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
               maxHeight: '200px',
               overflowY: 'auto',
-              zIndex: 1000
+              zIndex: 10000
             }}>
               {localFileResults.map((filePath, index) => (
                 <div
@@ -341,7 +399,7 @@ export default function PackageSelector({
               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
               maxHeight: '200px',
               overflowY: 'auto',
-              zIndex: 1000
+              zIndex: 10000
             }}>
               {searchResults.map((pkg, index) => (
                 <div
@@ -398,7 +456,7 @@ export default function PackageSelector({
               borderRadius: '6px',
               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
               textAlign: 'center',
-              zIndex: 1000
+              zIndex: 10000
             }}>
               <p style={{
                 fontSize: '11px',
@@ -407,7 +465,7 @@ export default function PackageSelector({
                 margin: 0
               }}>
                 {isLocalSearch
-                  ? `No local .prmd files found matching "${searchQuery}"`
+                  ? `No local ${fileExtensions.join(', ')} files found matching "${searchQuery}"`
                   : `No packages found for "${searchQuery}"`}
               </p>
             </div>

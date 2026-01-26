@@ -342,3 +342,5 @@ export const TriggerNode = memo(({ id, data, selected }: TriggerNodeProps) => {
 })
 
 TriggerNode.displayName = 'TriggerNode'
+
+export { TriggerNodeProperties } from './TriggerNodeProperties'

@@ -1,6 +1,12 @@
 /**
  * Workflow Parser - Parse and validate .pdflow JSON files
  * Converts between .pdflow format and React Flow format
+ *
+ * This is a frontend-specific implementation that works in browser contexts.
+ * For Node.js contexts (CLI, service mode), use @prompd/cli's workflowParser instead.
+ *
+ * Note: This file contains a complete implementation to avoid bundling Node.js
+ * dependencies. The logic is kept in sync with the CLI version.
  */
 
 import type { Node, Edge } from '@xyflow/react'
@@ -13,6 +19,7 @@ import type {
   WorkflowNodeType,
   BaseNodeData,
 } from './workflowTypes'
+import { validateWorkflow } from './workflowValidator'
 
 // Use simple React Flow types for parser output
 type WorkflowCanvasNode = Node<BaseNodeData>
@@ -108,6 +115,11 @@ export function parseWorkflow(json: string): ParsedWorkflow {
 
   // Validate data flow
   validateDataFlow(file, errors, warnings)
+
+  // Run comprehensive validation (includes node-specific checks like empty containers)
+  const validationResult = validateWorkflow(file)
+  errors.push(...validationResult.errors)
+  warnings.push(...validationResult.warnings)
 
   return {
     file,

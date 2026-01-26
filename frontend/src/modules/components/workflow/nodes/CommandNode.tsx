@@ -305,3 +305,6 @@ export const CommandNode = memo(({ id, data, selected }: CommandNodeProps) => {
 })
 
 CommandNode.displayName = 'CommandNode'
+
+// Export properties component
+export { CommandNodeProperties } from './CommandNodeProperties'

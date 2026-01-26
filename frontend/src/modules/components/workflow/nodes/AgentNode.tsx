@@ -576,3 +576,5 @@ export const AgentNode = memo(({ id, data, selected }: AgentNodeProps) => {
 })
 
 AgentNode.displayName = 'AgentNode'
+
+export { AgentNodeProperties } from './AgentNodeProperties'

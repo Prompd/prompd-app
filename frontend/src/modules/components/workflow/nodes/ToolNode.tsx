@@ -299,6 +299,8 @@ export const ToolNode = memo(({ id, data, selected }: ToolNodeProps) => {
 
 ToolNode.displayName = 'ToolNode'
 
+export { ToolNodeProperties } from './ToolNodeProperties'
+
 // Helper function to truncate long URLs
 function truncateUrl(url: string, maxLength = 25): string {
   if (url.length <= maxLength) return url

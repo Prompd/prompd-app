@@ -318,3 +318,5 @@ export const GuardrailNode = memo(({ id, data, selected }: GuardrailNodeProps) =
 })
 
 GuardrailNode.displayName = 'GuardrailNode'
+
+export { GuardrailNodeProperties } from './GuardrailNodeProperties'

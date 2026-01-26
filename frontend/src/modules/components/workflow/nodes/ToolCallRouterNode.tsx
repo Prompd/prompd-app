@@ -480,3 +480,6 @@ export const ToolCallRouterNode = memo(({ id, data, selected }: ToolCallRouterNo
 })
 
 ToolCallRouterNode.displayName = 'ToolCallRouterNode'
+
+// Export properties component
+export { ToolCallRouterNodeProperties } from './ToolCallRouterNodeProperties'

@@ -348,3 +348,5 @@ export const MemoryNode = memo(({ id, data, selected }: MemoryNodeProps) => {
 })
 
 MemoryNode.displayName = 'MemoryNode'
+
+export { MemoryNodeProperties } from './MemoryNodeProperties'

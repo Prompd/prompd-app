@@ -9,12 +9,38 @@ import { createFilterHover } from './filters'
 import { getEnvVarsCache } from './envCache'
 
 /**
+ * Register command to open package details modal
+ */
+function registerOpenPackageCommand(monaco: typeof monacoEditor): void {
+  // Register command that dispatches custom event for App.tsx to handle
+  monaco.editor.registerCommand('prompd.openPackage', (_accessor, args) => {
+    try {
+      const params = typeof args === 'string' ? JSON.parse(decodeURIComponent(args)) : args
+      console.log('[IntelliSense] Opening package:', params)
+
+      // Dispatch custom event that App.tsx will listen for
+      window.dispatchEvent(new CustomEvent('prompd-open-package', {
+        detail: {
+          name: params.name,
+          version: params.version
+        }
+      }))
+    } catch (error) {
+      console.error('[IntelliSense] Failed to open package:', error)
+    }
+  })
+}
+
+/**
  * Register the hover provider
  */
 export function registerHoverProvider(
   monaco: typeof monacoEditor,
   languageId: string
 ): monacoEditor.IDisposable {
+  // Register package open command (only once)
+  registerOpenPackageCommand(monaco)
+
   return monaco.languages.registerHoverProvider(languageId, {
     async provideHover(model, position) {
       const word = model.getWordAtPosition(position)
@@ -85,10 +111,14 @@ export function registerHoverProvider(
 
             // Use specified version if provided, otherwise show latest from registry
             const displayVersion = specifiedVersion || packageInfo.version
+            const fullPackageName = `${packageInfo.name}@${displayVersion}`
 
-            // Package header with icon and version
+            // Clickable package header with full name (@namespace/package@version)
+            // Using command: protocol to trigger custom event
             contents.push({
-              value: `**${packageInfo.name}** \`v${displayVersion}\``
+              value: `### [${fullPackageName}](command:prompd.openPackage?${encodeURIComponent(JSON.stringify({ name: packageInfo.name, version: displayVersion }))})`,
+              isTrusted: true,
+              supportHtml: true
             })
 
             // Description
@@ -116,9 +146,17 @@ export function registerHoverProvider(
             // Repository link
             if (packageInfo.repository) {
               contents.push({
-                value: `[Repository](${packageInfo.repository})`
+                value: `[Repository](${packageInfo.repository})`,
+                isTrusted: true
               })
             }
+
+            // Click hint
+            contents.push({ value: '---' })
+            contents.push({
+              value: `_Click package name to view details_`,
+              isTrusted: true
+            })
 
             // Usage example - use the displayed version
             if (packageInfo.examples && packageInfo.examples.length > 0) {
@@ -242,8 +280,12 @@ export function registerHoverProvider(
           }
 
           contents.push({ value: '---' })
+
+          // Show example with actual type if available, otherwise show generic example
+          const exampleType = paramInfo?.type || 'string'
+          const exampleDescription = paramInfo?.description || '...'
           contents.push({
-            value: `\`\`\`yaml\nparameters:\n  ${paramName}: { type: string, description: "..." }\n\`\`\``
+            value: `\`\`\`yaml\nparameters:\n  ${paramName}: { type: ${exampleType}, description: "${exampleDescription}" }\n\`\`\``
           })
 
           return { range, contents }

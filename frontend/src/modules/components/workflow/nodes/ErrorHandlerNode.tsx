@@ -324,3 +324,6 @@ export const ErrorHandlerNode = memo(({ id, data, selected }: ErrorHandlerNodePr
 })
 
 ErrorHandlerNode.displayName = 'ErrorHandlerNode'
+
+// Export properties component
+export { ErrorHandlerNodeProperties } from './ErrorHandlerNodeProperties'

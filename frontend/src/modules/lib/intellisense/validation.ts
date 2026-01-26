@@ -4,6 +4,8 @@
 import type * as monacoEditor from 'monaco-editor'
 import { parse as parseYAML } from 'yaml'
 import type { CompilationDiagnostic } from '../../../electron.d'
+import { getRegistrySync } from './registrySync'
+import { analyzeParameterUsage } from './crossReference'
 
 const LANGUAGE_ID = 'prompd'
 
@@ -447,6 +449,12 @@ function validateJsonSyntax(
   markers: monacoEditor.editor.IMarkerData[],
   monaco: typeof monacoEditor
 ) {
+  // Skip validation if the code contains Jinja2 template syntax
+  // This allows JSON code blocks with {{ }} or {% %} to pass without errors
+  if (code.includes('{{') || code.includes('{%')) {
+    return // Skip validation for templated JSON
+  }
+
   try {
     JSON.parse(code)
   } catch (e: unknown) {
@@ -681,6 +689,14 @@ function validateNunjucksTemplates(
 
     // Check if it's an opening block tag
     if (blockPairs[tag]) {
+      // Special handling for 'set' - check if it's self-closing (has '=') or block form
+      if (tag === 'set') {
+        const fullMatch = match[0]
+        // If it contains '=' it's a self-closing assignment, don't push to stack
+        if (fullMatch.includes('=')) {
+          continue // Self-closing, skip
+        }
+      }
       blockStack.push({ tag, lineNumber, column })
     }
     // Check if it's a closing tag
@@ -820,6 +836,132 @@ function validateNunjucksTemplates(
       })
     }
   }
+}
+
+/**
+ * Validate package references exist in registry
+ * Checks inherits: and using: package references
+ * Also checks for deprecated packages and shows warnings
+ */
+async function validatePackageReferences(
+  yamlContent: string,
+  fullContent: string,
+  monaco: typeof monacoEditor
+): Promise<monacoEditor.editor.IMarkerData[]> {
+  const markers: monacoEditor.editor.IMarkerData[] = []
+  const registrySync = getRegistrySync()
+
+  // Helper to parse package reference into namespace and name
+  const parsePackageRef = (pkgRef: string): { namespace: string; name: string; version?: string } | null => {
+    // Format: @namespace/package-name@version or @namespace/package-name
+    const match = pkgRef.match(/^(@[\w-]+)\/([\w-]+)(?:@([\w.-]+))?$/)
+    if (!match) return null
+    return {
+      namespace: match[1],
+      name: match[2],
+      version: match[3]
+    }
+  }
+
+  // Extract inherits reference
+  const inheritsMatch = yamlContent.match(/^\s*inherits:\s*["']?(@[\w/-]+@?[\w.-]*)["']?/m)
+  if (inheritsMatch) {
+    const pkgRef = inheritsMatch[1]
+    const lineNumber = fullContent.substring(0, fullContent.indexOf(inheritsMatch[0])).split('\n').length
+    const parsed = parsePackageRef(pkgRef)
+
+    // Validate format
+    if (!parsed) {
+      markers.push({
+        severity: monaco.MarkerSeverity.Error,
+        startLineNumber: lineNumber,
+        startColumn: inheritsMatch[0].indexOf(pkgRef) + 1,
+        endLineNumber: lineNumber,
+        endColumn: inheritsMatch[0].indexOf(pkgRef) + pkgRef.length + 1,
+        message: `Invalid package reference format. Use @namespace/package-name@version`,
+        code: 'invalid-package-reference'
+      })
+    } else {
+      // Check if version is specified
+      if (!parsed.version) {
+        markers.push({
+          severity: monaco.MarkerSeverity.Error,
+          startLineNumber: lineNumber,
+          startColumn: inheritsMatch[0].indexOf(pkgRef) + 1,
+          endLineNumber: lineNumber,
+          endColumn: inheritsMatch[0].indexOf(pkgRef) + pkgRef.length + 1,
+          message: `Package '${pkgRef}' must include version (e.g., ${pkgRef}@1.0.0)`,
+          code: 'missing-package-version'
+        })
+      }
+
+      // Check if package is deprecated
+      if (registrySync.isDeprecated(parsed.namespace, parsed.name)) {
+        const deprecationMsg = registrySync.getDeprecationMessage(parsed.namespace, parsed.name)
+        markers.push({
+          severity: monaco.MarkerSeverity.Warning,
+          startLineNumber: lineNumber,
+          startColumn: inheritsMatch[0].indexOf(pkgRef) + 1,
+          endLineNumber: lineNumber,
+          endColumn: inheritsMatch[0].indexOf(pkgRef) + pkgRef.length + 1,
+          message: deprecationMsg || `Package '${pkgRef}' is deprecated`,
+          code: 'deprecated-package',
+          tags: [monaco.MarkerTag.Deprecated]
+        })
+      }
+    }
+  }
+
+  // Extract using references
+  const usingMatches = Array.from(yamlContent.matchAll(/-\s*["']?(@[\w/-]+@?[\w.-]*)["']?/g))
+  for (const match of usingMatches) {
+    const pkgRef = match[1]
+    const lineNumber = fullContent.substring(0, fullContent.indexOf(match[0])).split('\n').length
+    const parsed = parsePackageRef(pkgRef)
+
+    if (!parsed) {
+      markers.push({
+        severity: monaco.MarkerSeverity.Error,
+        startLineNumber: lineNumber,
+        startColumn: match.index! + match[0].indexOf(pkgRef) + 1,
+        endLineNumber: lineNumber,
+        endColumn: match.index! + match[0].indexOf(pkgRef) + pkgRef.length + 1,
+        message: `Invalid package reference format. Use @namespace/package-name@version`,
+        code: 'invalid-package-reference'
+      })
+      continue
+    }
+
+    // Validate version is specified
+    if (!parsed.version) {
+      markers.push({
+        severity: monaco.MarkerSeverity.Warning,
+        startLineNumber: lineNumber,
+        startColumn: match.index! + match[0].indexOf(pkgRef) + 1,
+        endLineNumber: lineNumber,
+        endColumn: match.index! + match[0].indexOf(pkgRef) + pkgRef.length + 1,
+        message: `Package '${pkgRef}' should include version (e.g., ${pkgRef}@1.0.0)`,
+        code: 'missing-package-version'
+      })
+    }
+
+    // Check if package is deprecated
+    if (registrySync.isDeprecated(parsed.namespace, parsed.name)) {
+      const deprecationMsg = registrySync.getDeprecationMessage(parsed.namespace, parsed.name)
+      markers.push({
+        severity: monaco.MarkerSeverity.Warning,
+        startLineNumber: lineNumber,
+        startColumn: match.index! + match[0].indexOf(pkgRef) + 1,
+        endLineNumber: lineNumber,
+        endColumn: match.index! + match[0].indexOf(pkgRef) + pkgRef.length + 1,
+        message: deprecationMsg || `Package '${pkgRef}' is deprecated`,
+        code: 'deprecated-package',
+        tags: [monaco.MarkerTag.Deprecated]
+      })
+    }
+  }
+
+  return markers
 }
 
 /**
@@ -972,24 +1114,9 @@ export async function validateModel(
         }
       }
 
-      // Validate package references format
-      const usingMatches = Array.from(yamlContent.matchAll(/-\s*["']?(@[\w/-]+@?[\w.-]*)["']?/g))
-      for (const match of usingMatches) {
-        const pkgRef = match[1]
-        const lineNumber = content.substring(0, content.indexOf(match[0])).split('\n').length
-
-        // Check if package reference has version
-        if (!pkgRef.includes('@', 1)) { // Check for @ after first character
-          markers.push({
-            severity: monaco.MarkerSeverity.Warning,
-            startLineNumber: lineNumber,
-            startColumn: match.index! + match[0].indexOf(pkgRef) + 1,
-            endLineNumber: lineNumber,
-            endColumn: match.index! + match[0].indexOf(pkgRef) + pkgRef.length + 1,
-            message: `Package reference '${pkgRef}' should include version (e.g., ${pkgRef}@1.0.0)`
-          })
-        }
-      }
+      // Validate package references (inherits + using)
+      const pkgRefMarkers = await validatePackageReferences(yamlContent, content, monaco)
+      markers.push(...pkgRefMarkers)
 
       // Validate parameters format (should be array, not object)
       const contentLines = content.split(/\r?\n/)
@@ -1191,6 +1318,16 @@ export async function validateModel(
         validateCodeBlocks(body, bodyStartOffset, content, markers, monaco)
       }
     } // End of isPrompdFile check
+  }
+
+  // Cross-reference analysis for parameter usage (unused/undefined parameters)
+  if (isPrompdFile) {
+    try {
+      const crossRefDiagnostics = analyzeParameterUsage(content, monaco)
+      markers.push(...crossRefDiagnostics)
+    } catch (error) {
+      console.warn('[intellisense] Error during cross-reference analysis:', error)
+    }
   }
 
   // Fetch compiler diagnostics (inheritance errors, dependency resolution, etc.)

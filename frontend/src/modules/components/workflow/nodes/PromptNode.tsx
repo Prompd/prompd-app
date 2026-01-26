@@ -223,3 +223,5 @@ export const PromptNode = memo(({ id, data, selected }: PromptNodeProps) => {
 })
 
 PromptNode.displayName = 'PromptNode'
+
+export { PromptNodeProperties } from './PromptNodeProperties'

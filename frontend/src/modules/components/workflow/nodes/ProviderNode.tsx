@@ -345,3 +345,6 @@ export const ProviderNode = memo(({ id, data, selected }: ProviderNodeProps) => 
 })
 
 ProviderNode.displayName = 'ProviderNode'
+
+// Export properties component
+export { ProviderNodeProperties } from './ProviderNodeProperties'

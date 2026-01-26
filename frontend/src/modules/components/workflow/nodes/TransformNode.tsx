@@ -311,3 +311,6 @@ export const TransformNode = memo(({ id, data, selected }: TransformNodeProps) =
 })
 
 TransformNode.displayName = 'TransformNode'
+
+// Export properties component
+export { TransformerNodeProperties } from './TransformerNodeProperties'

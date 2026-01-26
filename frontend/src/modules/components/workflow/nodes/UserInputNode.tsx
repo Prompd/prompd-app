@@ -261,3 +261,6 @@ export const UserInputNode = memo(({ id, data, selected }: UserInputNodeProps) =
 })
 
 UserInputNode.displayName = 'UserInputNode'
+
+// Export properties component
+export { UserInputNodeProperties } from './UserInputNodeProperties'

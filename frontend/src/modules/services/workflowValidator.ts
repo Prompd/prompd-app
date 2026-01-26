@@ -35,7 +35,7 @@ export function validateWorkflow(workflow: WorkflowFile): ValidationResult {
   // Validate workflow structure
   if (!workflow.nodes || workflow.nodes.length === 0) {
     errors.push({
-      message: 'Workflow must contain at least one node',
+      message: 'Workflow is empty. Drag a node from the Node Palette on the left to get started.',
       code: 'EMPTY_WORKFLOW',
     })
     return { errors, warnings, isValid: false }
@@ -58,9 +58,11 @@ export function validateWorkflow(workflow: WorkflowFile): ValidationResult {
   // Check for disconnected nodes (warnings)
   const disconnectedNodes = findDisconnectedNodes(workflow)
   for (const nodeId of disconnectedNodes) {
+    const node = workflow.nodes.find(n => n.id === nodeId)
+    const nodeLabel = node?.data?.label || nodeId
     warnings.push({
       nodeId,
-      message: 'Node is not connected to any other nodes',
+      message: `Node '${nodeLabel}' is not connected. Connect it to other nodes to include it in the workflow.`,
       code: 'DISCONNECTED_NODE',
     })
   }
@@ -146,9 +148,15 @@ function validateNode(node: WorkflowNode, workflow: WorkflowFile): WorkflowValid
   if (['loop', 'parallel', 'tool-call-router', 'chat-agent'].includes(node.type)) {
     const children = workflow.nodes.filter(n => n.parentId === node.id)
     if (children.length === 0 && node.type !== 'chat-agent') {
+      const containerTypeHelp: Record<string, string> = {
+        'loop': 'Drag nodes inside this loop container to define the loop body.',
+        'parallel': 'Drag nodes inside this parallel container to run them concurrently.',
+        'tool-call-router': 'Drag tool nodes inside this router to handle different tool calls.',
+      }
+
       errors.push({
         nodeId: node.id,
-        message: `Container node '${node.type}' should contain child nodes`,
+        message: `Container '${node.type}' (${node.data?.label || node.id}) is empty. ${containerTypeHelp[node.type] || 'Drag nodes inside this container.'}`,
         code: 'EMPTY_CONTAINER',
       })
     }
@@ -168,17 +176,17 @@ function validateTriggerNode(node: WorkflowNode): WorkflowValidationError[] {
     errors.push({
       nodeId: node.id,
       field: 'triggerType',
-      message: 'Trigger node must specify a trigger type',
+      message: `Trigger '${data.label || node.id}' is missing a trigger type. Select Manual, Schedule, Webhook, or Event in the properties panel.`,
       code: 'MISSING_TRIGGER_TYPE',
     })
   }
 
-  // Validate schedule trigger
-  if (data.triggerType === 'schedule' && !data.schedule) {
+  // Validate schedule trigger - check BOTH fields
+  if (data.triggerType === 'schedule' && !data.schedule && !data.scheduleCron) {
     errors.push({
       nodeId: node.id,
       field: 'schedule',
-      message: 'Schedule trigger must have a schedule defined',
+      message: `Schedule trigger '${data.label || node.id}' needs a schedule. Enter a cron expression in the properties panel.`,
       code: 'MISSING_SCHEDULE',
     })
   }
@@ -188,7 +196,7 @@ function validateTriggerNode(node: WorkflowNode): WorkflowValidationError[] {
     errors.push({
       nodeId: node.id,
       field: 'webhookPath',
-      message: 'Webhook trigger must have a path defined',
+      message: `Webhook trigger '${data.label || node.id}' needs a webhook path. Enter a URL path (e.g., /api/trigger) in the properties panel.`,
       code: 'MISSING_WEBHOOK_PATH',
     })
   }
@@ -203,10 +211,11 @@ function validatePromptNode(node: WorkflowNode): WorkflowValidationError[] {
   const errors: WorkflowValidationError[] = []
   const data = node.data as PromptNodeData
 
-  if (!data.source && !data.content) {
+  // Check if prompt has content from ANY source
+  if (!data.source && !data.content && !data.rawPrompt) {
     errors.push({
       nodeId: node.id,
-      message: 'Prompt node must have either a source file or content',
+      message: `Prompt '${data.label || node.id}' has no content. Either select a .prmd file or enter prompt text in the properties panel.`,
       code: 'MISSING_PROMPT_CONTENT',
     })
   }
@@ -225,7 +234,7 @@ function validateConditionNode(node: WorkflowNode): WorkflowValidationError[] {
     errors.push({
       nodeId: node.id,
       field: 'conditions',
-      message: 'Condition node must have at least one condition defined',
+      message: `Condition '${data.label || node.id}' has no conditions. Add at least one condition in the properties panel.`,
       code: 'MISSING_CONDITIONS',
     })
   }
@@ -244,7 +253,7 @@ function validateLoopNode(node: WorkflowNode): WorkflowValidationError[] {
     errors.push({
       nodeId: node.id,
       field: 'loopType',
-      message: 'Loop node must specify a loop type',
+      message: `Loop '${data.label || node.id}' is missing a loop type. Select While, For-Each, or Count in the properties panel.`,
       code: 'MISSING_LOOP_TYPE',
     })
   }
@@ -253,7 +262,7 @@ function validateLoopNode(node: WorkflowNode): WorkflowValidationError[] {
     errors.push({
       nodeId: node.id,
       field: 'condition',
-      message: 'While loop must have a condition',
+      message: `While loop '${data.label || node.id}' needs a condition. Enter a condition expression in the properties panel.`,
       code: 'MISSING_LOOP_CONDITION',
     })
   }
@@ -262,7 +271,7 @@ function validateLoopNode(node: WorkflowNode): WorkflowValidationError[] {
     errors.push({
       nodeId: node.id,
       field: 'arraySource',
-      message: 'For-each loop must have an array source',
+      message: `For-Each loop '${data.label || node.id}' needs an array source. Specify the array variable in the properties panel.`,
       code: 'MISSING_ARRAY_SOURCE',
     })
   }
@@ -271,7 +280,7 @@ function validateLoopNode(node: WorkflowNode): WorkflowValidationError[] {
     errors.push({
       nodeId: node.id,
       field: 'count',
-      message: 'Count loop must have a count value',
+      message: `Count loop '${data.label || node.id}' needs a count value. Enter the number of iterations in the properties panel.`,
       code: 'MISSING_COUNT',
     })
   }
@@ -286,10 +295,11 @@ function validateAgentNode(node: WorkflowNode): WorkflowValidationError[] {
   const errors: WorkflowValidationError[] = []
   const data = node.data as AgentNodeData
 
-  if (!data.model && !data.provider) {
+  // Check if agent has EITHER inline model config OR provider node reference
+  if (!data.model && !data.provider && !data.providerNodeId) {
     errors.push({
       nodeId: node.id,
-      message: 'Agent node must have a model or provider configured',
+      message: `Agent '${data.label || node.id}' has no model configured. Select an LLM provider and model in the properties panel, or connect to a Provider node.`,
       code: 'MISSING_AGENT_MODEL',
     })
   }
@@ -311,7 +321,7 @@ function validateConnection(
   if (!sourceNode) {
     errors.push({
       connectionId: `${connection.source}-${connection.target}`,
-      message: `Source node '${connection.source}' not found`,
+      message: `Invalid connection: source node '${connection.source}' no longer exists. Delete this connection.`,
       code: 'INVALID_SOURCE_NODE',
     })
   }
@@ -321,16 +331,18 @@ function validateConnection(
   if (!targetNode) {
     errors.push({
       connectionId: `${connection.source}-${connection.target}`,
-      message: `Target node '${connection.target}' not found`,
+      message: `Invalid connection: target node '${connection.target}' no longer exists. Delete this connection.`,
       code: 'INVALID_TARGET_NODE',
     })
   }
 
   // Check for self-edges
   if (connection.source === connection.target) {
+    const selfNode = workflow.nodes.find(n => n.id === connection.source)
+    const nodeLabel = selfNode?.data?.label || connection.source
     errors.push({
       connectionId: `${connection.source}-${connection.target}`,
-      message: 'Node cannot connect to itself',
+      message: `Node '${nodeLabel}' cannot connect to itself. Remove this connection.`,
       code: 'SELF_CONNECTION',
     })
   }
@@ -370,7 +382,7 @@ function detectCircularDependencies(workflow: WorkflowFile): string[][] {
   const visited = new Set<string>()
   const recursionStack = new Set<string>()
 
-  // Build adjacency list
+  // Build adjacency list, excluding special edge types
   const graph = new Map<string, string[]>()
   for (const node of workflow.nodes) {
     graph.set(node.id, [])
@@ -378,6 +390,24 @@ function detectCircularDependencies(workflow: WorkflowFile): string[][] {
 
   if (workflow.edges) {
     for (const connection of workflow.edges) {
+      // Exclude docked edges (agent <-> tool-router feedback loops)
+      const isDocked = connection.id?.startsWith('docked-') ||
+        connection.sourceHandle === 'ai-output' ||
+        connection.targetHandle === 'ai-input' ||
+        connection.targetHandle === 'toolResult'
+
+      // Exclude loop container edges (loop-start, loop-end are valid cycles)
+      const sourceNode = workflow.nodes.find(n => n.id === connection.source)
+      const isLoopEdge = sourceNode?.type === 'loop' && (
+        connection.sourceHandle === 'loop-start' ||
+        connection.sourceHandle === 'loop-end'
+      )
+
+      // Skip these edge types in cycle detection
+      if (isDocked || isLoopEdge) {
+        continue
+      }
+
       const targets = graph.get(connection.source) || []
       targets.push(connection.target)
       graph.set(connection.source, targets)

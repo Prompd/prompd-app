@@ -34,10 +34,18 @@ export default defineConfig({
       'monaco-editor/esm/vs/editor/editor.api',
       'monaco-editor/esm/vs/basic-languages/yaml/yaml',
       'monaco-editor/esm/vs/basic-languages/markdown/markdown'
+    ],
+    exclude: [
+      '@prompd/cli'  // Exclude main export (executor requires Node.js, goes via IPC in Electron)
+      // Note: Subpath exports (@prompd/cli/parser, /types, /validator) are browser-compatible
     ]
   },
   build: {
     rollupOptions: {
+      external: [
+        '@prompd/cli'  // Main export external (executor uses IPC in Electron main process)
+        // Note: Browser-compatible subpaths (/parser, /types, /validator) can be bundled if needed
+      ],
       output: {
         manualChunks: {
           monaco: ['monaco-editor']

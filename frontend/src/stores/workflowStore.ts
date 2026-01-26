@@ -368,6 +368,20 @@ interface WorkflowStoreState {
   // Execution state
   executionState: WorkflowExecutionState | null
 
+  // Execution panel state (persists across tab switches)
+  executionResult: (import('../modules/services/workflowTypes').WorkflowResult & { trace?: import('../modules/services/workflowExecutor').ExecutionTrace }) | null
+  checkpoints: import('../modules/services/workflowExecutor').CheckpointEvent[]
+  promptsSent: Array<{
+    nodeId: string
+    source: string
+    resolvedPath?: string
+    compiledPrompt: string
+    params: Record<string, unknown>
+    provider?: string
+    model?: string
+    timestamp: number
+  }>
+
   // UI state
   isDirty: boolean
   isExecuting: boolean
@@ -455,6 +469,21 @@ interface WorkflowStoreState {
   setExecutionState: (state: WorkflowExecutionState | null) => void
   updateNodeExecutionStatus: (nodeId: string, status: NodeExecutionStatus, output?: unknown) => void
 
+  // Execution panel
+  setExecutionResult: (result: (import('../modules/services/workflowTypes').WorkflowResult & { trace?: import('../modules/services/workflowExecutor').ExecutionTrace }) | null) => void
+  setCheckpoints: (checkpoints: import('../modules/services/workflowExecutor').CheckpointEvent[]) => void
+  setPromptsSent: (prompts: Array<{
+    nodeId: string
+    source: string
+    resolvedPath?: string
+    compiledPrompt: string
+    params: Record<string, unknown>
+    provider?: string
+    model?: string
+    timestamp: number
+  }>) => void
+  clearExecutionState: () => void
+
   // UI
   toggleMinimap: () => void
   toggleGrid: () => void
@@ -495,6 +524,9 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
     errors: [],
     warnings: [],
     executionState: null,
+    executionResult: null,
+    checkpoints: [],
+    promptsSent: [],
     isDirty: false,
     isExecuting: false,
     showMinimap: true,
@@ -2045,6 +2077,39 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
           }
           state.executionState.currentNodeId = status === 'running' ? nodeId : state.executionState.currentNodeId
         }
+      })
+    },
+
+    // Execution panel actions
+    setExecutionResult: (result) => {
+      set(state => {
+        state.executionResult = result
+        if (result) {
+          // Trigger bottom panel to show execution tab
+          const uiStore = require('./uiStore').useUIStore.getState()
+          uiStore.setShowBottomPanel(true)
+          uiStore.setActiveBottomTab('execution')
+        }
+      })
+    },
+
+    setCheckpoints: (checkpoints) => {
+      set(state => {
+        state.checkpoints = checkpoints
+      })
+    },
+
+    setPromptsSent: (prompts) => {
+      set(state => {
+        state.promptsSent = prompts
+      })
+    },
+
+    clearExecutionState: () => {
+      set(state => {
+        state.executionResult = null
+        state.checkpoints = []
+        state.promptsSent = []
       })
     },
 

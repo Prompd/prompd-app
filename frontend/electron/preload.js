@@ -78,6 +78,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu-settings', handler)
     return () => ipcRenderer.removeListener('menu-settings', handler)
   },
+  onMenuSchedulerSettings: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-scheduler-settings', handler)
+    return () => ipcRenderer.removeListener('menu-scheduler-settings', handler)
+  },
+  onMenuSchedulerService: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-scheduler-service', handler)
+    return () => ipcRenderer.removeListener('menu-scheduler-service', handler)
+  },
   onMenuAbout: (callback) => {
     const handler = () => callback()
     ipcRenderer.on('menu-about', handler)
@@ -360,6 +370,42 @@ contextBridge.exposeInMainWorld('electronAPI', {
     runManually: (workflowId) => ipcRenderer.invoke('trigger:runManually', workflowId)
   },
 
+  // Scheduler service - persistent cron-based workflow scheduling
+  // Handles scheduled workflows with SQLite persistence across app restarts
+  scheduler: {
+    // Get all schedules with optional filters
+    // filters: { enabled?, workflowId? }
+    // Returns: { success, schedules?, error? }
+    getSchedules: (filters) => ipcRenderer.invoke('scheduler:getSchedules', filters),
+
+    // Add a new schedule
+    // config: { workflowId, workflowPath, name, cronExpression, timezone?, enabled?, parameters? }
+    // Returns: { success, scheduleId?, error? }
+    addSchedule: (config) => ipcRenderer.invoke('scheduler:addSchedule', config),
+
+    // Update a schedule
+    // Returns: { success, error? }
+    updateSchedule: (scheduleId, updates) => ipcRenderer.invoke('scheduler:updateSchedule', scheduleId, updates),
+
+    // Delete a schedule
+    // Returns: { success, error? }
+    deleteSchedule: (scheduleId) => ipcRenderer.invoke('scheduler:deleteSchedule', scheduleId),
+
+    // Execute a schedule immediately (manual trigger)
+    // Returns: { success, result?, error? }
+    executeNow: (scheduleId) => ipcRenderer.invoke('scheduler:executeNow', scheduleId),
+
+    // Get execution history
+    // workflowId: Optional workflow ID filter
+    // options: { limit?, offset? }
+    // Returns: { success, history?, error? }
+    getHistory: (workflowId, options) => ipcRenderer.invoke('scheduler:getHistory', workflowId, options),
+
+    // Get next N run times for a schedule
+    // Returns: { success, times?, error? } where times is array of Date timestamps
+    getNextRunTimes: (scheduleId, count) => ipcRenderer.invoke('scheduler:getNextRunTimes', scheduleId, count)
+  },
+
   // Trigger service events (from main process to renderer)
   onTriggerExecutionStart: (callback) => {
     const handler = (event, data) => callback(data)
@@ -387,5 +433,52 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (event, executionId) => callback(executionId)
     ipcRenderer.on('tray:show-execution', handler)
     return () => ipcRenderer.removeListener('tray:show-execution', handler)
+  },
+
+  // Service management (for standalone scheduler service)
+  startService: () => ipcRenderer.invoke('service:start'),
+  stopService: () => ipcRenderer.invoke('service:stop'),
+  restartService: () => ipcRenderer.invoke('service:restart'),
+  getServiceStatus: () => ipcRenderer.invoke('service:getStatus'),
+  saveServiceConfig: (config) => ipcRenderer.invoke('service:saveConfig', config),
+  loadServiceConfig: () => ipcRenderer.invoke('service:loadConfig'),
+
+  // Workflow execution (proxies to @prompd/cli in main process)
+  workflow: {
+    // Execute a workflow (non-blocking, uses events for live updates)
+    // workflow: ParsedWorkflow object
+    // params: Execution parameters
+    // options: Serializable options only (executionMode, breakpoints array)
+    // Returns: Promise<{ executionId: string }> - resolves when execution starts
+    execute: (workflow, params, options) => ipcRenderer.invoke('workflow:execute', workflow, params, options),
+
+    // Listen to workflow execution events (single event loop with type-based routing)
+    // Event types: 'node-start', 'node-complete', 'node-error', 'progress', 'checkpoint', 'complete', 'error'
+    // callback: (event) => void where event = { type, executionId, nodeId?, data?, timestamp }
+    // Returns: cleanup function to remove listener
+    onEvent: (callback) => {
+      const handler = (_event, data) => callback(data)
+      ipcRenderer.on('workflow:event', handler)
+      return () => ipcRenderer.removeListener('workflow:event', handler)
+    },
+
+    // Cancel running execution
+    // executionId: ID returned from execute()
+    cancel: (executionId) => ipcRenderer.invoke('workflow:cancel', executionId),
+
+    // Download execution trace to file
+    // trace: ExecutionTrace object
+    // filename: Optional custom filename
+    downloadTrace: (trace, filename) => ipcRenderer.invoke('workflow:downloadTrace', trace, filename),
+
+    // Respond to user input request (bidirectional IPC)
+    // requestId: ID from user-input-request event
+    // response: UserInputResponse object
+    respondToUserInput: (requestId, response) => ipcRenderer.invoke('workflow:user-input-response', requestId, response),
+
+    // Respond to checkpoint request (bidirectional IPC)
+    // requestId: ID from checkpoint-request event
+    // shouldContinue: boolean - whether to continue execution
+    respondToCheckpoint: (requestId, shouldContinue) => ipcRenderer.invoke('workflow:checkpoint-response', requestId, shouldContinue)
   }
 })

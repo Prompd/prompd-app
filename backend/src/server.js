@@ -28,6 +28,7 @@ import usageRoutes from './routes/usage.js'
 import startupRoutes from './routes/startup.js'
 import errorReportRoutes from './routes/errors.js'
 import webhookRoutes from './routes/webhooks.js'
+import webhookProxyRoutes from './routes/webhookProxy.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import { pricingService } from './services/PricingService.js'
 import { requestLogger } from './middleware/logger.js'
@@ -105,6 +106,7 @@ app.use('/api/usage', usageRoutes)
 app.use('/api/startup', startupRoutes)
 app.use('/api/errors', errorReportRoutes)
 app.use('/api/webhooks', webhookRoutes)
+app.use('/api/webhook-proxy', webhookProxyRoutes)
 
 // Health check
 app.get('/health', (req, res) => {

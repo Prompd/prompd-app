@@ -27,7 +27,7 @@ import WelcomeView from './components/WelcomeView'
 import CloseWorkspaceDialog from './components/CloseWorkspaceDialog'
 import FileChangesModal from './components/FileChangesModal'
 import ToastContainer from './components/ToastContainer'
-import BuildOutputPanel from './components/BuildOutputPanel'
+import BottomPanelTabs from './components/BottomPanelTabs'
 import { CommandPalette } from './components/CommandPalette'
 import { FirstTimeSetupWizard, isOnboardingComplete, isWizardDismissed } from './components/FirstTimeSetupWizard'
 import { InlineHints } from './components/InlineHints'
@@ -48,11 +48,12 @@ import { hotkeyManager } from './services/hotkeyManager'
 import { setWorkspaceFiles, clearWorkspaceFiles } from './services/workspaceService'
 import { buildPrompdFile, executePrompdConfig } from './services/executionService'
 import { usageTracker } from './services/usageTracker'
+import { initializeRegistrySync, cleanupRegistrySync } from './lib/intellisense/registrySync'
 import { useMonaco } from '@monaco-editor/react'
 import { initializeMonaco } from './lib/monacoConfig'
 import { getLanguageFromExtension } from './lib/languageDetection'
 import { usePrompdLLMClient, usePrompdUsage } from '@prompd/react'
-import { useEditorStore, useUIStore } from '../stores'
+import { useEditorStore, useUIStore, useWorkflowStore } from '../stores'
 import type { Tab, BuildError } from '../stores/types'
 import { useTabManager } from './hooks/useTabManager'
 
@@ -294,6 +295,11 @@ export default function App() {
   const executingTabs = useEditorStore(state => state.executingTabs)
   const setExecutingTab = useEditorStore(state => state.setExecutingTab)
 
+  // Workflow execution state (persists across tab switches)
+  const executionResult = useWorkflowStore(state => state.executionResult)
+  const checkpoints = useWorkflowStore(state => state.checkpoints)
+  const promptsSent = useWorkflowStore(state => state.promptsSent)
+
   // Workspace state management
   const saveWorkspaceState = useEditorStore(state => state.saveWorkspaceState)
 
@@ -409,10 +415,24 @@ export default function App() {
     initializeMonaco()
     console.log('Monaco editor initialized with YAML and Markdown support')
 
+    // Initialize registry sync for IntelliSense enhancements
+    const registrySync = initializeRegistrySync({
+      syncInterval: 15 * 60 * 1000, // 15 minutes
+      autoStart: true
+    })
+    registrySync.start()
+    console.log('Registry sync initialized for IntelliSense')
+
     // Load saved text if not already loaded
     const savedText = localStorage.getItem('prompd.editor.text')
     if (savedText && !text) {
       setText(savedText)
+    }
+
+    // Cleanup on unmount
+    return () => {
+      cleanupRegistrySync()
+      console.log('Registry sync cleaned up')
     }
   }, [])
 
@@ -1485,6 +1505,8 @@ version: 1.0.0
   const removeToast = useUIStore(state => state.removeToast)
   const setBuildOutput = useUIStore(state => state.setBuildOutput)
   const setShowBuildPanel = useUIStore(state => state.setShowBuildPanel)
+  const setShowBottomPanel = useUIStore(state => state.setShowBottomPanel)
+  const setActiveBottomTab = useUIStore(state => state.setActiveBottomTab)
   const aiShowNotification = useCallback((message: string, type?: 'info' | 'warning' | 'error' | 'success', duration?: number) => {
     addToast(message, type || 'info', duration)
   }, [addToast])
@@ -1681,13 +1703,121 @@ version: 1.0.0
       return
     }
 
-    // Update build status - don't change panel visibility on start
-    // Panel will show status if already visible, otherwise notification handles it
+    // Show validation status
     setBuildOutput({
       status: 'building',
-      message: 'Building package...',
+      message: 'Validating compilable files...',
       timestamp: Date.now()
     })
+
+    // Validate all compilable files (.prmd and .pdflow) before building
+    // Other files (content files, user personas, etc.) are allowed to not compile
+    console.log('[App] Validating compilable files before build...')
+    const compilableFiles = explorerEntries.filter(entry =>
+      entry.kind === 'file' && (entry.name.endsWith('.prmd') || entry.name.endsWith('.pdflow'))
+    )
+
+    if (compilableFiles.length > 0) {
+      const validationErrors: Array<{ file: string; message: string; line?: number; column?: number }> = []
+
+      for (const file of compilableFiles) {
+        try {
+          // Read the file
+          const fullPath = `${electronPath}/${file.path}`
+          const result = await window.electronAPI.readFile(fullPath)
+
+          if (result.success && result.content) {
+            if (file.name.endsWith('.pdflow')) {
+              // Validate workflow files
+              const { parseWorkflow } = await import('./services/workflowParser')
+              const parsed = parseWorkflow(result.content)
+
+              if (parsed.errors && parsed.errors.length > 0) {
+                // Add errors with file context
+                for (const error of parsed.errors) {
+                  const node = parsed.nodes?.find(n => n.id === error.nodeId)
+                  const nodeLabel = node?.data?.label || error.nodeId || 'Unknown'
+
+                  // Find line number in JSON
+                  let lineNumber: number | undefined
+                  if (error.nodeId) {
+                    const lines = result.content.split('\n')
+                    const nodeIdPattern = new RegExp(`"id":\\s*"${error.nodeId}"`)
+                    for (let i = 0; i < lines.length; i++) {
+                      if (nodeIdPattern.test(lines[i])) {
+                        lineNumber = i + 1
+                        break
+                      }
+                    }
+                  }
+
+                  validationErrors.push({
+                    file: file.path,
+                    message: `Node '${nodeLabel}': ${error.message}`,
+                    line: lineNumber,
+                    column: undefined,
+                  })
+                }
+              }
+            } else if (file.name.endsWith('.prmd')) {
+              // Validate .prmd files with comprehensive validation (includes Jinja2 template syntax)
+              const { validatePrompdComprehensive } = await import('./lib/prompdParser')
+              const parsed = validatePrompdComprehensive(result.content)
+
+              if (parsed.issues && parsed.issues.length > 0) {
+                // Filter for errors only (not warnings or info)
+                const errors = parsed.issues.filter(issue => issue.severity === 'error')
+                for (const error of errors) {
+                  validationErrors.push({
+                    file: file.path,
+                    message: error.message,
+                    line: error.line,
+                    column: error.column,
+                  })
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`[App] Error validating ${file.path}:`, err)
+          validationErrors.push({
+            file: file.path,
+            message: `Failed to validate: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          })
+        }
+      }
+
+      // If there are validation errors, prevent the build
+      if (validationErrors.length > 0) {
+        setBuildOutput({
+          status: 'error',
+          message: `Build cancelled: ${validationErrors.length} validation error${validationErrors.length > 1 ? 's' : ''} found`,
+          errors: validationErrors,
+          timestamp: Date.now(),
+        })
+        setShowBottomPanel(true)
+        setActiveBottomTab('output')
+        aiShowNotification(`Build cancelled: Fix ${validationErrors.length} error${validationErrors.length > 1 ? 's' : ''} first`, 'error', 8000)
+        console.error('[App] Build cancelled due to validation errors:', validationErrors)
+        return
+      }
+
+      console.log(`[App] All ${compilableFiles.length} compilable files validated successfully`)
+
+      // Show validation success status briefly
+      setBuildOutput({
+        status: 'building',
+        message: `Validated ${compilableFiles.length} file${compilableFiles.length > 1 ? 's' : ''} successfully. Building package...`,
+        timestamp: Date.now()
+      })
+    } else {
+      // No compilable files, just show building status
+      setBuildOutput({
+        status: 'building',
+        message: 'Building package...',
+        timestamp: Date.now()
+      })
+    }
 
     // Show building notification (short duration, will be replaced by result)
     const buildingToastId = addToast('Building package...', 'info', 0) // 0 = persistent until removed
@@ -1703,9 +1833,15 @@ version: 1.0.0
       if (result.success) {
         // Clear any previous build error markers
         clearBuildErrorMarkers()
+
+        // Build success message with validation info
+        const validationInfo = compilableFiles.length > 0
+          ? `Validated ${compilableFiles.length} file${compilableFiles.length > 1 ? 's' : ''}. `
+          : ''
+
         setBuildOutput({
           status: 'success',
-          message: result.message || 'Package created successfully!',
+          message: validationInfo + (result.message || 'Package created successfully!'),
           outputPath: result.outputPath,
           fileName: result.fileName,
           fileCount: result.fileCount,
@@ -1734,7 +1870,8 @@ version: 1.0.0
           timestamp: Date.now()
         })
         // Show output panel on error (no toast - panel shows details)
-        setShowBuildPanel(true)
+        setShowBottomPanel(true)
+        setActiveBottomTab('output')
         console.error('[App] Package build failed:', result.error)
       }
     } catch (err) {
@@ -1750,10 +1887,11 @@ version: 1.0.0
         timestamp: Date.now()
       })
       // Show output panel on error (no toast - panel shows details)
-      setShowBuildPanel(true)
+      setShowBottomPanel(true)
+      setActiveBottomTab('output')
       console.error('[App] Package build error:', message)
     }
-  }, [explorerDirHandle, aiShowNotification, openModal, setBuildOutput, setShowBuildPanel, parseBuildErrors, addToast, removeToast, setBuildErrorMarkers, clearBuildErrorMarkers])
+  }, [explorerDirHandle, explorerEntries, aiShowNotification, openModal, setBuildOutput, setShowBuildPanel, parseBuildErrors, addToast, removeToast, setBuildErrorMarkers, clearBuildErrorMarkers])
 
   // Note: Keyboard shortcuts are handled by Electron menu accelerators (main.js)
   // which send IPC messages to the renderer. No standalone keyboard listeners needed.
@@ -1766,13 +1904,14 @@ version: 1.0.0
     const handleToggleOutputPanel = () => {
       console.log('[App.tsx] toggle-output-panel event received')
       const currentState = useUIStore.getState()
-      const isCurrentlyVisible = currentState.showBuildPanel
+      const isCurrentlyVisible = currentState.showBottomPanel
       if (isCurrentlyVisible) {
         // If visible, hide it
-        currentState.setShowBuildPanel(false)
+        currentState.setShowBottomPanel(false)
       } else {
         // If hidden, show it and dispatch expand event
-        currentState.setShowBuildPanel(true)
+        currentState.setShowBottomPanel(true)
+        currentState.setActiveBottomTab('output')
         // Also expand the panel (it may have been auto-minimized on editor focus)
         window.dispatchEvent(new CustomEvent('expand-output-panel'))
       }
@@ -2266,6 +2405,29 @@ version: 1.0.0
     return () => window.removeEventListener('prompd:openSettings', handleOpenSettings)
   }, [openSettingsModal])
 
+  // Listen for package open events (from IntelliSense hover links)
+  useEffect(() => {
+    const handleOpenPackage = async (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (!detail?.name) return
+
+      try {
+        console.log('[App] Opening package from hover:', detail.name, detail.version)
+        const packageInfo = await registryApi.getPackageInfo(detail.name)
+        if (packageInfo) {
+          setSelectedRegistryPackage(packageInfo)
+        } else {
+          console.warn('[App] Package not found:', detail.name)
+        }
+      } catch (error) {
+        console.error('[App] Failed to load package:', error)
+      }
+    }
+
+    window.addEventListener('prompd-open-package', handleOpenPackage)
+    return () => window.removeEventListener('prompd-open-package', handleOpenPackage)
+  }, [])
+
   // Save As - always shows file picker
   const saveAs = useCallback(async (tabId?: string) => {
     try {
@@ -2571,6 +2733,36 @@ version: 1.0.0
     })
     if (unsubSettings) cleanups.push(unsubSettings)
 
+    // Menu: Scheduler - Manage Schedules
+    const unsubSchedulerSettings = electronAPI.onMenuSchedulerSettings?.(() => {
+      console.log('[App.tsx] Menu Scheduler Settings')
+      openModal('settings')
+      // Switch to schedules tab after a brief delay to ensure modal is open
+      setTimeout(() => {
+        const settingsModal = document.querySelector('[data-settings-modal]')
+        if (settingsModal) {
+          const schedulesButton = settingsModal.querySelector('[data-tab="schedules"]') as HTMLButtonElement
+          schedulesButton?.click()
+        }
+      }, 100)
+    })
+    if (unsubSchedulerSettings) cleanups.push(unsubSchedulerSettings)
+
+    // Menu: Scheduler - Service Settings
+    const unsubSchedulerService = electronAPI.onMenuSchedulerService?.(() => {
+      console.log('[App.tsx] Menu Scheduler Service')
+      openModal('settings')
+      // Switch to service tab after a brief delay to ensure modal is open
+      setTimeout(() => {
+        const settingsModal = document.querySelector('[data-settings-modal]')
+        if (settingsModal) {
+          const serviceButton = settingsModal.querySelector('[data-tab="service"]') as HTMLButtonElement
+          serviceButton?.click()
+        }
+      }, 100)
+    })
+    if (unsubSchedulerService) cleanups.push(unsubSchedulerService)
+
     // Menu: About
     const unsubAbout = electronAPI.onMenuAbout?.(() => {
       console.log('[App.tsx] Menu About')
@@ -2746,7 +2938,8 @@ Write your prompt here...
         message: 'Installing dependencies...',
         timestamp: Date.now()
       })
-      setShowBuildPanel(true)
+      setShowBottomPanel(true)
+      setActiveBottomTab('output')
 
       try {
         const result = await electronAPI.package.installAll(explorerDirPath)
@@ -3313,7 +3506,8 @@ Write your prompt here...
                 message: 'Installing dependencies...',
                 timestamp: Date.now()
               })
-              setShowBuildPanel(true)
+              setShowBottomPanel(true)
+        setActiveBottomTab('output')
 
               try {
                 const result = await electronAPI.package.installAll(explorerDirPath)
@@ -3483,7 +3677,7 @@ Write your prompt here...
         />
 
         {hasOpenTab ? (
-          <div style={{ flex: 1, minHeight: 0, paddingBottom: 'var(--build-panel-height, 0px)' }}>
+          <div style={{ flex: 1, minHeight: 0, paddingBottom: 'var(--bottom-panel-height, 0px)' }}>
             {(() => {
               // Use tabs.find() instead of getActiveTab() to ensure React tracks the dependency
               const activeTab = tabs.find(t => t.id === activeTabId)
@@ -4391,7 +4585,8 @@ Write your prompt here...
               errors: monacoMarkers,
               timestamp: Date.now()
             })
-            setShowBuildPanel(true)
+            setShowBottomPanel(true)
+        setActiveBottomTab('output')
             // Dispatch event to expand the panel
             window.dispatchEvent(new CustomEvent('expand-output-panel'))
           }
@@ -4525,8 +4720,13 @@ Write your prompt here...
       {/* Toast Notifications */}
       <ToastContainer />
 
-      {/* Build Output Panel */}
-      <BuildOutputPanel onOpenFile={handleOpenBuildErrorFile} />
+      {/* Bottom Panel Tabs (Output + Execution) */}
+      <BottomPanelTabs
+        onOpenFile={handleOpenBuildErrorFile}
+        workflowResult={executionResult}
+        checkpoints={checkpoints}
+        promptsSent={promptsSent}
+      />
 
       {/* Command Palette */}
       <CommandPalette
