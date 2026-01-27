@@ -30,6 +30,7 @@ import type {
   CustomCommandConfig,
 } from '../modules/services/workflowTypes'
 import { DOCKABLE_NODE_TYPES, DOCKABLE_HANDLES } from '../modules/services/workflowTypes'
+import { useUIStore } from './uiStore'
 
 // Use generic Node/Edge types for React Flow compatibility
 type WorkflowCanvasNode = Node<BaseNodeData>
@@ -382,6 +383,28 @@ interface WorkflowStoreState {
     timestamp: number
   }>
 
+  // Execution history (last 20 executions)
+  executionHistory: Array<{
+    id: string
+    workflowId: string
+    workflowName: string
+    timestamp: number
+    duration: number
+    status: 'success' | 'error' | 'cancelled'
+    result: (import('../modules/services/workflowTypes').WorkflowResult & { trace?: import('../modules/services/workflowExecutor').ExecutionTrace })
+    checkpoints: import('../modules/services/workflowExecutor').CheckpointEvent[]
+    promptsSent: Array<{
+      nodeId: string
+      source: string
+      resolvedPath?: string
+      compiledPrompt: string
+      params: Record<string, unknown>
+      provider?: string
+      model?: string
+      timestamp: number
+    }>
+  }>
+
   // UI state
   isDirty: boolean
   isExecuting: boolean
@@ -483,6 +506,8 @@ interface WorkflowStoreState {
     timestamp: number
   }>) => void
   clearExecutionState: () => void
+  loadExecutionFromHistory: (historyId: string) => void
+  clearExecutionHistory: () => void
 
   // UI
   toggleMinimap: () => void
@@ -527,6 +552,7 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
     executionResult: null,
     checkpoints: [],
     promptsSent: [],
+    executionHistory: [],
     isDirty: false,
     isExecuting: false,
     showMinimap: true,
@@ -2085,10 +2111,32 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
       set(state => {
         state.executionResult = result
         if (result) {
-          // Trigger bottom panel to show execution tab
-          const uiStore = require('./uiStore').useUIStore.getState()
+          // Add to execution history (max 20 entries)
+          const historyEntry = {
+            id: `exec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            workflowId: state.workflowFile.metadata.id,
+            workflowName: state.workflowFile.metadata.name,
+            timestamp: Date.now(),
+            duration: result.endTime - result.startTime,
+            status: (result.success ? 'success' : 'error') as 'success' | 'error' | 'cancelled',
+            result,
+            checkpoints: state.checkpoints,
+            promptsSent: state.promptsSent,
+          }
+
+          // Add to front of array (newest first)
+          state.executionHistory.unshift(historyEntry)
+
+          // Keep only last 20 executions
+          if (state.executionHistory.length > 20) {
+            state.executionHistory = state.executionHistory.slice(0, 20)
+          }
+
+          // Trigger bottom panel to show execution tab and expand
+          const uiStore = useUIStore.getState()
           uiStore.setShowBottomPanel(true)
           uiStore.setActiveBottomTab('execution')
+          uiStore.setBottomPanelMinimized(false)
         }
       })
     },
@@ -2110,6 +2158,23 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         state.executionResult = null
         state.checkpoints = []
         state.promptsSent = []
+      })
+    },
+
+    loadExecutionFromHistory: (historyId: string) => {
+      set(state => {
+        const entry = state.executionHistory.find(h => h.id === historyId)
+        if (entry) {
+          state.executionResult = entry.result
+          state.checkpoints = entry.checkpoints
+          state.promptsSent = entry.promptsSent
+        }
+      })
+    },
+
+    clearExecutionHistory: () => {
+      set(state => {
+        state.executionHistory = []
       })
     },
 

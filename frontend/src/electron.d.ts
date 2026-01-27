@@ -312,8 +312,8 @@ export interface ElectronAPI {
     // Cancel execution
     cancel: (executionId: string) => Promise<void>
 
-    // Download trace
-    downloadTrace: (trace: unknown, filename?: string) => Promise<void>
+    // Download trace (shows save dialog and writes to disk)
+    downloadTrace: (trace: unknown, filename?: string) => Promise<{ success: boolean; filePath?: string; cancelled?: boolean }>
 
     // Respond to user input request (bidirectional IPC)
     respondToUserInput: (requestId: string, response: unknown) => Promise<void>

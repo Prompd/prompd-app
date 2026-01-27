@@ -32,6 +32,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { FirstTimeSetupWizard, isOnboardingComplete, isWizardDismissed } from './components/FirstTimeSetupWizard'
 import { InlineHints } from './components/InlineHints'
 import { markHintSeen } from './services/onboardingService'
+import { DiffDemo } from './components/DiffDemo'
 import type { FileNode } from './services/packageCache'
 import type { RegistryPackage } from './services/registryApi'
 import { parsePrompd } from './lib/prompdParser'
@@ -299,6 +300,12 @@ export default function App() {
   const executionResult = useWorkflowStore(state => state.executionResult)
   const checkpoints = useWorkflowStore(state => state.checkpoints)
   const promptsSent = useWorkflowStore(state => state.promptsSent)
+
+  // Demo mode (show diff examples via ?demo=diff query param)
+  const [showDiffDemo, setShowDiffDemo] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get('demo') === 'diff'
+  })
 
   // Workspace state management
   const saveWorkspaceState = useEditorStore(state => state.saveWorkspaceState)
@@ -1513,6 +1520,7 @@ version: 1.0.0
 
   // Sync Monaco markers to build output panel whenever they change
   // Live update - show errors when present, clear when fixed
+  const setBottomPanelMinimized = useUIStore(state => state.setBottomPanelMinimized)
   useEffect(() => {
     if (monacoMarkers.length > 0) {
       setBuildOutput({
@@ -1521,6 +1529,10 @@ version: 1.0.0
         errors: monacoMarkers,
         timestamp: Date.now()
       })
+      // Auto-open and expand output panel when errors appear
+      setShowBottomPanel(true)
+      setActiveBottomTab('output')
+      setBottomPanelMinimized(false)
     } else {
       // Clear errors when all markers are resolved
       setBuildOutput({
@@ -1530,7 +1542,7 @@ version: 1.0.0
         timestamp: Date.now()
       })
     }
-  }, [monacoMarkers, setBuildOutput])
+  }, [monacoMarkers, setBuildOutput, setShowBottomPanel, setActiveBottomTab, setBottomPanelMinimized])
 
   // Parse build error string into structured errors
   // Supports multiple formats:
@@ -2315,6 +2327,8 @@ version: 1.0.0
               readOnly: false,
               packageSource: undefined
             })
+            // Notify editor to reset change tracking baseline
+            window.dispatchEvent(new CustomEvent('prompd-file-saved'))
           }
         } else if ((window as any).showSaveFilePicker) {
           // Browser: use File System Access API
@@ -2345,6 +2359,8 @@ version: 1.0.0
               readOnly: false,
               packageSource: undefined
             })
+            // Notify editor to reset change tracking baseline
+            window.dispatchEvent(new CustomEvent('prompd-file-saved'))
           }
         } else {
           // Fallback: download
@@ -2373,6 +2389,8 @@ version: 1.0.0
 
         if (activeTabId) {
           updateTab(activeTabId, { dirty: false, text, savedText: text })
+          // Notify editor to reset change tracking baseline
+          window.dispatchEvent(new CustomEvent('prompd-file-saved'))
         }
       }
     } catch (err) {
@@ -3298,6 +3316,17 @@ Write your prompt here...
     }
   }, [onOpenFile])
 
+  // Show diff demo if requested via query param
+  if (showDiffDemo) {
+    return <DiffDemo onClose={() => {
+      setShowDiffDemo(false)
+      // Remove query param from URL
+      const url = new URL(window.location.href)
+      url.searchParams.delete('demo')
+      window.history.replaceState({}, '', url.toString())
+    }} />
+  }
+
   return (
     <div
       className={`layout${showSidebar ? '' : ' no-sidebar'}`}
@@ -3664,7 +3693,7 @@ Write your prompt here...
         <div className="sidebar-resizer" onMouseDown={beginResize} />
       </div>
 
-      <div className="main-content" style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
+      <div className="main-content" style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: 'calc(100% - var(--bottom-panel-height, 0px) + 24px)' }}>
         <TabsBar
           tabs={tabs}
           activeTabId={activeTabId}
@@ -3677,7 +3706,10 @@ Write your prompt here...
         />
 
         {hasOpenTab ? (
-          <div style={{ flex: 1, minHeight: 0, paddingBottom: 'var(--bottom-panel-height, 0px)' }}>
+          <div style={{
+            flex: 1,
+            minHeight: 0
+          }}>
             {(() => {
               // Use tabs.find() instead of getActiveTab() to ensure React tracks the dependency
               const activeTab = tabs.find(t => t.id === activeTabId)

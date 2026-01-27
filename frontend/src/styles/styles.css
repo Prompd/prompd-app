@@ -229,8 +229,170 @@ body { background: var(--bg); color: var(--text); font: 14px/1.4 Inter, system-u
 }
 
 /* Monaco editor spacing between line numbers and code */
+/* TEMPORARILY DISABLED - Testing if this causes the find widget grey line issue
 .monaco-editor .lines-content {
   padding-left: 6px;
+}
+*/
+
+/* Monaco find widget tooltip fix handled via MutationObserver in PrompdEditor.tsx */
+.left.monaco-component {
+  border-right: none !important;
+  display: none !important;
+}
+
+/* Monaco diff decorations (inline change preview) */
+/* Use !important to override Monaco's default styling */
+.monaco-editor .diff-insert-inline {
+  background-color: rgba(16, 185, 129, 0.3) !important;
+  border-left: 3px solid #10b981 !important;
+}
+
+.monaco-editor .diff-delete-inline {
+  background-color: rgba(239, 68, 68, 0.3) !important;
+  border-left: 3px solid #ef4444 !important;
+  text-decoration: line-through !important;
+  opacity: 0.7 !important;
+}
+
+.monaco-editor .diff-modify-inline {
+  background-color: rgba(59, 130, 246, 0.3) !important;
+  border-left: 3px solid #3b82f6 !important;
+}
+
+.diff-insert-glyph {
+  background-color: #10b981;
+  width: 4px !important;
+  margin-left: 3px;
+}
+
+.diff-delete-glyph {
+  background-color: #ef4444;
+  width: 4px !important;
+  margin-left: 3px;
+}
+
+.diff-modify-glyph {
+  background-color: #3b82f6;
+  width: 4px !important;
+  margin-left: 3px;
+}
+
+/* Change tracking line decorations (for unsaved edits) */
+/* These appear in the lines decoration area between line numbers and code */
+
+.monaco-editor .change-tracking-added-line {
+  background: #10b981 !important;
+  width: 4px !important;
+  margin-left: 3px !important;
+}
+
+.monaco-editor .change-tracking-modified-line {
+  background: #3b82f6 !important;
+  width: 4px !important;
+  margin-left: 3px !important;
+}
+
+.monaco-editor .change-tracking-deleted-line {
+  position: relative !important;
+  width: 12px !important;
+  margin-left: 0px !important;
+}
+
+.monaco-editor .change-tracking-deleted-line::after {
+  content: '▸';
+  color: #ef4444;
+  font-size: 11px;
+  position: absolute;
+  left: 2px;
+  top: 0;
+  font-weight: bold;
+}
+
+/* Monaco Diff Editor - comprehensive styling for visibility */
+.monaco-diff-editor {
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+  position: relative !important;
+}
+
+/* Ensure Monaco's split view container gets proper dimensions */
+.monaco-diff-editor .monaco-split-view2 {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Ensure individual editor panes get dimensions */
+.monaco-diff-editor .split-view-view {
+  width: 50% !important;
+  height: 100% !important;
+}
+
+/* Force the editor containers within split view to be visible */
+.monaco-diff-editor .editor.original,
+.monaco-diff-editor .editor.modified {
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+}
+
+.monaco-diff-editor .line-insert,
+.monaco-diff-editor .char-insert {
+  background-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+.monaco-diff-editor .line-delete,
+.monaco-diff-editor .char-delete {
+  background-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+/* Force diff decorations to show on both sides */
+.monaco-diff-editor .original-in-monaco-diff-editor .line-insert,
+.monaco-diff-editor .original-in-monaco-diff-editor .char-insert {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+}
+
+.monaco-diff-editor .modified-in-monaco-diff-editor .line-insert,
+.monaco-diff-editor .modified-in-monaco-diff-editor .char-insert {
+  background-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+.monaco-diff-editor .original-in-monaco-diff-editor .line-delete,
+.monaco-diff-editor .original-in-monaco-diff-editor .char-delete {
+  background-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+.monaco-diff-editor .modified-in-monaco-diff-editor .line-delete,
+.monaco-diff-editor .modified-in-monaco-diff-editor .char-delete {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+}
+
+.monaco-diff-editor .diffOverview {
+  background-color: transparent !important;
+}
+
+/* Diff editor side-by-side split visibility */
+.monaco-diff-editor .split-view-view {
+  background-color: var(--bg) !important;
+}
+
+.monaco-diff-editor .editor.modified {
+  border-left: 1px solid var(--border) !important;
+}
+
+/* Ensure both editor containers are visible */
+.monaco-diff-editor .editor-container {
+  background-color: transparent !important;
+}
+
+.monaco-diff-editor .overflow-guard {
+  background-color: transparent !important;
+}
+
+/* Make sure the editor scrollable areas are visible */
+.monaco-diff-editor .monaco-scrollable-element {
+  background-color: transparent !important;
 }
 
 .layout {
@@ -267,6 +429,7 @@ body { background: var(--bg); color: var(--text); font: 14px/1.4 Inter, system-u
 .sidebar-resizer::after { content: ''; position: absolute; left: 2px; top: 0; bottom: 0; width: 2px; background: var(--border); opacity: 0.7; }
 .sidebar-resizer:hover::after { background: var(--ring); opacity: 0.9; }
 .left { grid-area: left; border-right: 1px solid var(--border); min-width: 0; min-height: 0; height: 100%; }
+
 .rightbar, .right { display: none; }
 .right { grid-area: right; display: grid; grid-template-rows: 1fr 1fr 1fr; }
 .panel { background: var(--panel); }
@@ -1119,7 +1282,7 @@ select.input {
 /* Bottom Panel Tabs - Unified tabbed interface */
 .bottom-panel-tabs {
   position: fixed;
-  bottom: 0;
+  bottom: 24px; /* Height of status bar (6px padding top + 12px text + 6px padding bottom) */
   right: 0;
   background: var(--panel);
   border-top: 1px solid var(--border);

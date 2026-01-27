@@ -5,7 +5,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { X, ChevronDown, ChevronUp, FileWarning, Zap, Pin, PinOff } from 'lucide-react'
+import { X, FileWarning, Zap, Pin, PinOff, ChevronUp, ChevronDown } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import BuildOutputPanel from './BuildOutputPanel'
 import { WorkflowExecutionPanel } from './workflow/WorkflowExecutionPanel'
@@ -43,16 +43,17 @@ export function BottomPanelTabs({
   const activeBottomTab = useUIStore(state => state.activeBottomTab)
   const bottomPanelHeight = useUIStore(state => state.bottomPanelHeight)
   const bottomPanelPinned = useUIStore(state => state.bottomPanelPinned)
+  const bottomPanelMinimized = useUIStore(state => state.bottomPanelMinimized)
   const setShowBottomPanel = useUIStore(state => state.setShowBottomPanel)
   const setActiveBottomTab = useUIStore(state => state.setActiveBottomTab)
   const setBottomPanelHeight = useUIStore(state => state.setBottomPanelHeight)
   const setBottomPanelPinned = useUIStore(state => state.setBottomPanelPinned)
+  const setBottomPanelMinimized = useUIStore(state => state.setBottomPanelMinimized)
 
   const buildOutput = useUIStore(state => state.buildOutput)
   const showSidebar = useUIStore(state => state.showSidebar)
   const sidebarWidth = useUIStore(state => state.sidebarWidth)
 
-  const [isExpanded, setIsExpanded] = useState(true)
   const [isResizing, setIsResizing] = useState(false)
   const resizeStartY = useRef(0)
   const resizeStartHeight = useRef(0)
@@ -88,38 +89,37 @@ export function BottomPanelTabs({
     }
   }, [isResizing, setBottomPanelHeight])
 
-  // Auto-collapse when editor gains focus (if not pinned)
+  // Auto-minimize when editor gains focus (if not pinned)
   useEffect(() => {
     const handleEditorFocus = () => {
-      if (!bottomPanelPinned && isExpanded) {
-        setIsExpanded(false)
+      if (!bottomPanelPinned && !bottomPanelMinimized) {
+        setBottomPanelMinimized(true)
       }
     }
     window.addEventListener('editor-focused', handleEditorFocus)
     return () => window.removeEventListener('editor-focused', handleEditorFocus)
-  }, [bottomPanelPinned, isExpanded])
-
-  // Listen for expand event (from hotkey toggle)
-  useEffect(() => {
-    const handleExpand = () => {
-      setIsExpanded(true)
-    }
-    window.addEventListener('expand-output-panel', handleExpand)
-    return () => window.removeEventListener('expand-output-panel', handleExpand)
-  }, [])
-
-  // Calculate actual panel height
-  const actualPanelHeight = showBottomPanel
-    ? (isExpanded ? bottomPanelHeight : 32)
-    : 0
+  }, [bottomPanelPinned, bottomPanelMinimized, setBottomPanelMinimized])
 
   // Expose panel height via CSS custom property
+  // Panel is always part of layout when visible (whether pinned or unpinned)
+  // Pin only controls auto-minimize behavior, not layout integration
   useEffect(() => {
-    document.documentElement.style.setProperty('--bottom-panel-height', `${actualPanelHeight}px`)
-    return () => {
-      document.documentElement.style.setProperty('--bottom-panel-height', '0px')
+    const STATUS_BAR_HEIGHT = 24  // Must match panel's bottom: 24px positioning
+    let heightToReserve = 0
+    if (showBottomPanel) {
+      if (bottomPanelMinimized) {
+        heightToReserve = 33  // Tab row (32px) + border-top (1px)
+      } else {
+        heightToReserve = bottomPanelHeight + 1  // Full panel height + border-top (1px)
+      }
     }
-  }, [actualPanelHeight])
+    // Always add status bar height
+    heightToReserve += STATUS_BAR_HEIGHT
+    document.documentElement.style.setProperty('--bottom-panel-height', `${heightToReserve}px`)
+    return () => {
+      document.documentElement.style.setProperty('--bottom-panel-height', '24px')  // Reset to status bar height
+    }
+  }, [showBottomPanel, bottomPanelMinimized, bottomPanelHeight])
 
   // Check for errors in build output
   const hasErrors = buildOutput.status === 'error' && (buildOutput.errors?.length || 0) > 0
@@ -131,18 +131,22 @@ export function BottomPanelTabs({
   // Calculate left position based on sidebar state
   const leftPosition = showSidebar ? 48 + sidebarWidth : 48
 
+  // Tab row is always visible (VS Code style)
+  // Only hide completely if user explicitly closed the panel
   if (!showBottomPanel) return null
 
   return (
     <div
-      className={`bottom-panel-tabs ${isResizing ? 'resizing' : ''}`}
-      style={{ left: leftPosition, height: isExpanded ? bottomPanelHeight : 'auto' }}
+      className={`bottom-panel-tabs ${isResizing ? 'resizing' : ''} ${bottomPanelMinimized ? 'minimized' : ''}`}
+      style={{ left: leftPosition, height: bottomPanelMinimized ? 'auto' : bottomPanelHeight, paddingTop: 0 }}
     >
-      {/* Resize handle on top edge */}
-      <div
-        className="bottom-panel-resize-handle"
-        onMouseDown={handleResizeMouseDown}
-      />
+      {/* Resize handle on top edge (only when expanded) */}
+      {!bottomPanelMinimized && (
+        <div
+          className="bottom-panel-resize-handle"
+          onMouseDown={handleResizeMouseDown}
+        />
+      )}
 
       {/* Header with tabs */}
       <div className="bottom-panel-header">
@@ -151,7 +155,7 @@ export function BottomPanelTabs({
             className={`bottom-panel-tab ${activeBottomTab === 'output' ? 'active' : ''}`}
             onClick={() => {
               setActiveBottomTab('output')
-              setIsExpanded(true)
+              if (bottomPanelMinimized) setBottomPanelMinimized(false)
             }}
           >
             <FileWarning size={14} />
@@ -165,7 +169,7 @@ export function BottomPanelTabs({
             className={`bottom-panel-tab ${activeBottomTab === 'execution' ? 'active' : ''}`}
             onClick={() => {
               setActiveBottomTab('execution')
-              setIsExpanded(true)
+              if (bottomPanelMinimized) setBottomPanelMinimized(false)
             }}
           >
             <Zap size={14} />
@@ -179,48 +183,48 @@ export function BottomPanelTabs({
         <div className="bottom-panel-actions">
           <button
             className="bottom-panel-action"
-            onClick={() => setIsExpanded(!isExpanded)}
-            title={isExpanded ? 'Minimize panel' : 'Expand panel'}
+            onClick={() => setBottomPanelMinimized(!bottomPanelMinimized)}
+            title={bottomPanelMinimized ? 'Maximize panel' : 'Minimize panel'}
           >
-            {isExpanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            {bottomPanelMinimized ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
           <button
             className={`bottom-panel-action ${bottomPanelPinned ? 'active' : ''}`}
             onClick={() => setBottomPanelPinned(!bottomPanelPinned)}
-            title={bottomPanelPinned ? 'Unpin panel (will auto-hide on editor focus)' : 'Pin panel (keep visible)'}
+            title={bottomPanelPinned ? 'Unpin panel (will auto-minimize on editor focus)' : 'Pin panel (keep expanded)'}
           >
             {bottomPanelPinned ? <Pin size={14} /> : <PinOff size={14} />}
           </button>
           <button
             className="bottom-panel-action"
             onClick={() => setShowBottomPanel(false)}
-            title="Close"
+            title="Close panel (will reopen automatically when errors occur or workflow executes)"
           >
             <X size={14} />
           </button>
         </div>
       </div>
 
-      {/* Panel content */}
-      {isExpanded && (
+      {/* Panel content (only when expanded) */}
+      {!bottomPanelMinimized && (
         <div className="bottom-panel-content">
-          {activeBottomTab === 'output' && (
-            <div className="bottom-panel-tab-content">
-              <BuildOutputPanel onOpenFile={onOpenFile} embedded={true} />
-            </div>
-          )}
+            {activeBottomTab === 'output' && (
+              <div className="bottom-panel-tab-content">
+                <BuildOutputPanel onOpenFile={onOpenFile} embedded={true} />
+              </div>
+            )}
 
-          {activeBottomTab === 'execution' && (
-            <div className="bottom-panel-tab-content">
-              <WorkflowExecutionPanel
-                onClose={() => setShowBottomPanel(false)}
-                result={workflowResult}
-                checkpoints={checkpoints}
-                promptsSent={promptsSent}
-                embedded={true}
-              />
-            </div>
-          )}
+            {activeBottomTab === 'execution' && (
+              <div className="bottom-panel-tab-content">
+                <WorkflowExecutionPanel
+                  onClose={() => setShowBottomPanel(false)}
+                  result={workflowResult}
+                  checkpoints={checkpoints}
+                  promptsSent={promptsSent}
+                  embedded={true}
+                />
+              </div>
+            )}
         </div>
       )}
     </div>

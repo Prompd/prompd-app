@@ -134,6 +134,7 @@ interface UIState {
   activeBottomTab: 'output' | 'execution'
   bottomPanelHeight: number
   bottomPanelPinned: boolean
+  bottomPanelMinimized: boolean
 
   // Auto-save settings
   autoSaveEnabled: boolean
@@ -212,6 +213,7 @@ interface UIActions {
   setActiveBottomTab: (tab: 'output' | 'execution') => void
   setBottomPanelHeight: (height: number) => void
   setBottomPanelPinned: (pinned: boolean) => void
+  setBottomPanelMinimized: (minimized: boolean) => void
 
   // Auto-save settings
   setAutoSaveEnabled: (enabled: boolean) => void
@@ -259,6 +261,7 @@ export const useUIStore = create<UIStore>()(
           activeBottomTab: 'output',
           bottomPanelHeight: 200,
           bottomPanelPinned: false,
+          bottomPanelMinimized: false,
           autoSaveEnabled: true, // Default to enabled
 
           // View mode
@@ -804,6 +807,10 @@ export const useUIStore = create<UIStore>()(
             state.bottomPanelPinned = pinned
           }),
 
+          setBottomPanelMinimized: (minimized) => set((state) => {
+            state.bottomPanelMinimized = minimized
+          }),
+
           // Auto-save settings
           setAutoSaveEnabled: (enabled) => set((state) => {
             state.autoSaveEnabled = enabled
@@ -841,6 +848,7 @@ export const useUIStore = create<UIStore>()(
             activeBottomTab: state.activeBottomTab,
             bottomPanelHeight: state.bottomPanelHeight,
             bottomPanelPinned: state.bottomPanelPinned,
+            bottomPanelMinimized: state.bottomPanelMinimized,
             autoSaveEnabled: state.autoSaveEnabled
           }),
           // After hydration, set mode from defaultViewMode so the app opens in user's preferred view

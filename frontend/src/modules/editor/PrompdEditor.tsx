@@ -6,6 +6,7 @@ import { parsePrompd } from '../lib/prompdParser'
 import { triggerValidation, setCurrentFilePath } from '../lib/intellisense'
 import { editorConfigManager, type MonacoEditorOptions } from '../lib/editorconfig'
 import { hotkeyManager } from '../services/hotkeyManager'
+import { enableChangeTracking } from '../lib/monacoDiff'
 
 // Monaco command disposables - stored globally to allow re-registration
 let monacoCommandDisposables: { dispose: () => void }[] = []
@@ -58,6 +59,15 @@ function registerMonacoHotkeys(editor: any, monaco: any): void {
       // Skip if no modifier keys are pressed (allow normal typing with Shift for capitals)
       // Only intercept when Ctrl, Meta, or Alt is pressed
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        return
+      }
+
+      // Don't intercept if Monaco's find widget is open
+      // The find widget adds .find-widget class to its container
+      const editorDom = editor.getDomNode()
+      const findWidget = editorDom?.querySelector('.find-widget')
+      if (findWidget && !findWidget.classList.contains('hiddenEditor')) {
+        // Find widget is visible - let Monaco handle keyboard events
         return
       }
 
@@ -173,6 +183,9 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
   // EditorConfig settings
   const [editorConfigOptions, setEditorConfigOptions] = useState<MonacoEditorOptions>({})
 
+  // Change tracking for unsaved edits
+  const changeTrackerRef = useRef<ReturnType<typeof enableChangeTracking> | null>(null)
+
 
   // Update the IntelliSense current file path for compiler diagnostics
   // This enables proper inherits validation when file is from disk
@@ -251,9 +264,9 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
   // Update validation decorations
   // Note: This provides visual decorations (glyph margin, minimap) separate from Monaco markers (squiggly lines)
   useEffect(() => {
-    if (!editorRef.current || language !== 'prompd') return
-
     const editor = editorRef.current
+    if (!editor || language !== 'prompd') return
+
     const model = editor.getModel()
     if (!model) return
 
@@ -289,7 +302,7 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
     // This properly clears old decorations when issues are resolved
     const newIds = editor.deltaDecorations(validationDecorations, newDecorations)
     setValidationDecorations(newIds)
-  }, [validation, editorRef.current, language])
+  }, [validation, language])  // FIXED: Removed unstable editorRef.current dependency
 
   // Handle editor mount
   const onMount: OnMount = useCallback((editor, monaco) => {
@@ -385,11 +398,68 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
     // These are dynamically updated when settings change
     registerMonacoHotkeys(editor, monaco)
 
+    // Enable change tracking for unsaved edits (gutter markers)
+    const editorModel = editor.getModel()
+    if (editorModel) {
+      const initialText = editorModel.getValue()
+      console.log('[PrompdEditor] Enabling change tracking with initial text:', initialText.substring(0, 100) + '...')
+      changeTrackerRef.current = enableChangeTracking(editor, monaco, initialText)
+      console.log('[PrompdEditor] Change tracker created:', changeTrackerRef.current)
+
+      // Listen for content changes and update gutter markers
+      editor.onDidChangeModelContent(() => {
+        console.log('[PrompdEditor] Content changed, checking for changes...')
+        if (changeTrackerRef.current) {
+          const hasChanges = changeTrackerRef.current.hasChanges()
+          console.log('[PrompdEditor] hasChanges:', hasChanges)
+          if (hasChanges) {
+            console.log('[PrompdEditor] Applying gutter markers...')
+            changeTrackerRef.current.applyGutterMarkers()
+          } else {
+            console.log('[PrompdEditor] No changes, clearing gutter markers...')
+            changeTrackerRef.current.clearGutterMarkers()
+          }
+        }
+      })
+    }
+
     // Auto-collapse build panel when editor gains focus (if not pinned)
     // We collapse the panel content (minimize) but keep it visible via a custom event
     editor.onDidFocusEditorWidget(() => {
       window.dispatchEvent(new CustomEvent('editor-focused'))
     })
+
+    // Fix Monaco find widget tooltip grey line issue
+    // Watch for Monaco creating tooltip elements with .left class and remove border
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node instanceof HTMLElement) {
+            // Target elements with both monaco-component/context AND left classes
+            if ((node.classList.contains('monaco-component') || node.classList.contains('context')) &&
+                node.classList.contains('left')) {
+              // Force remove all borders via inline style (highest specificity)
+              node.style.border = 'none'
+              node.style.borderRight = 'none'
+              node.style.borderLeft = 'none'
+              node.style.width = '0'
+              node.style.height = '0'
+              node.style.display = 'none'
+            }
+          }
+        })
+      })
+    })
+
+    // Observe the editor DOM and body for tooltip additions
+    const editorDom = editor.getDomNode()
+    if (editorDom) {
+      observer.observe(editorDom, { childList: true, subtree: true })
+      observer.observe(document.body, { childList: true, subtree: true })
+    }
+
+    // Clean up observer on dispose
+    editor.onDidDispose(() => observer.disconnect())
 
     // Minimap: keep slider visible and enable click-to-scroll
     try {
@@ -551,6 +621,19 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
       editor.onDidDispose(() => disposable.dispose())
     }
   }, [onCursorChange, language])
+
+  // Listen for file save event and reset change tracking baseline
+  useEffect(() => {
+    const handleFileSaved = () => {
+      if (changeTrackerRef.current) {
+        console.log('[PrompdEditor] File saved, resetting change tracker baseline')
+        changeTrackerRef.current.reset()
+      }
+    }
+
+    window.addEventListener('prompd-file-saved', handleFileSaved)
+    return () => window.removeEventListener('prompd-file-saved', handleFileSaved)
+  }, [])
 
   // Subscribe to hotkey changes and re-register Monaco keybindings
   useEffect(() => {
@@ -773,6 +856,18 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
         // Bracket matching
         'editorBracketMatch.background': '#2c4f7640',
         'editorBracketMatch.border': '#82aaff',
+
+        // Find widget
+        'editorWidget.background': '#1a1f2e',
+        'editorWidget.border': '#2c3e50',
+        'editorWidget.foreground': '#e0e0e0',
+        'input.background': '#0b1220',
+        'input.border': '#2c3e50',
+        'input.foreground': '#e0e0e0',
+        'input.placeholderForeground': '#6b7280',
+        'inputOption.activeBackground': '#2c4f76',
+        'inputOption.activeForeground': '#e0e0e0',
+        'inputOption.activeBorder': '#82aaff',
       }
     })
     
@@ -971,6 +1066,18 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
         // Bracket matching
         'editorBracketMatch.background': '#c8e1ff40',
         'editorBracketMatch.border': '#0071bc',
+
+        // Find widget
+        'editorWidget.background': '#f6f8fa',
+        'editorWidget.border': '#d1d5da',
+        'editorWidget.foreground': '#24292e',
+        'input.background': '#ffffff',
+        'input.border': '#d1d5da',
+        'input.foreground': '#24292e',
+        'input.placeholderForeground': '#6a737d',
+        'inputOption.activeBackground': '#c8e1ff',
+        'inputOption.activeForeground': '#24292e',
+        'inputOption.activeBorder': '#0071bc',
       }
     })
     
@@ -1533,6 +1640,8 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
           tabSize: 2,
           bracketPairColorization: { enabled: true },
           renderWhitespace: 'selection',
+          // Enable glyph margin for change tracking markers
+          glyphMargin: true,
           // Show lightbulb for code actions (on = show on all lines, onCode = only code lines)
           lightbulb: { enabled: 'on' as monacoEditor.editor.ShowLightbulbIconMode },
           // EditorConfig overrides (tabSize, insertSpaces, wordWrap, etc.)

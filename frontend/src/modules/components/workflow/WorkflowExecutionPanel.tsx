@@ -19,7 +19,9 @@ import {
   Timer,
   FileText,
   Sparkles,
-  Copy
+  Copy,
+  History,
+  Trash2
 } from 'lucide-react'
 import { useWorkflowStore } from '../../../stores/workflowStore'
 import type { WorkflowResult } from '../../services/workflowTypes'
@@ -61,7 +63,7 @@ export function WorkflowExecutionPanel({
   pendingCheckpoint,
   embedded = false
 }: WorkflowExecutionPanelProps) {
-  const [activeTab, setActiveTab] = useState<'progress' | 'output' | 'prompts' | 'checkpoints' | 'trace'>('progress')
+  const [activeTab, setActiveTab] = useState<'progress' | 'output' | 'prompts' | 'checkpoints' | 'trace' | 'history'>('progress')
   const [traceFilter, setTraceFilter] = useState<TraceEntry['type'] | 'all'>('all')
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
   const [expandedTraceIndices, setExpandedTraceIndices] = useState<Set<number>>(new Set())
@@ -69,23 +71,20 @@ export function WorkflowExecutionPanel({
   // Get trace from result
   const trace = result?.trace
 
-  // Debug logging for trace
-  useEffect(() => {
-    console.log('[WorkflowExecutionPanel] Result changed')
-    console.log('[WorkflowExecutionPanel] Has result:', !!result)
-    console.log('[WorkflowExecutionPanel] Has trace:', !!trace)
-    console.log('[WorkflowExecutionPanel] Trace entries:', trace?.entries?.length || 0)
-  }, [result, trace])
-
   // Workflow store state
   const executionState = useWorkflowStore(state => state.executionState)
   const isExecuting = useWorkflowStore(state => state.isExecuting)
   const workflowFile = useWorkflowStore(state => state.workflowFile)
+  const executionHistory = useWorkflowStore(state => state.executionHistory)
+  const loadExecutionFromHistory = useWorkflowStore(state => state.loadExecutionFromHistory)
+  const clearExecutionHistory = useWorkflowStore(state => state.clearExecutionHistory)
 
-  // Auto-switch to output tab when complete
-  if (result && !isExecuting && activeTab === 'progress') {
-    setActiveTab('output')
-  }
+  // Auto-switch to output tab when complete (must be in useEffect, not during render)
+  useEffect(() => {
+    if (result && !isExecuting && activeTab === 'progress') {
+      setActiveTab('output')
+    }
+  }, [result, isExecuting, activeTab])
 
   // Get node label from workflow file
   const getNodeLabel = (nodeId: string) => {
@@ -183,6 +182,13 @@ export function WorkflowExecutionPanel({
             Trace ({trace.entries.length})
           </button>
         )}
+        <button
+          className={`workflow-panel-tab ${activeTab === 'history' ? 'active' : ''}`}
+          onClick={() => setActiveTab('history')}
+        >
+          <History size={12} />
+          History ({executionHistory.length})
+        </button>
       </div>
 
       {/* Content */}
@@ -369,6 +375,47 @@ export function WorkflowExecutionPanel({
             <div>
               {trace ? (
                 <>
+                  {/* Trace header with download button */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '0 12px' }}>
+                    <div style={{ display: 'flex', gap: '16px', fontSize: '11px', color: 'var(--muted)' }}>
+                      {(() => {
+                        const summary = getTraceSummary(trace)
+                        return (
+                          <>
+                            <span>{summary.totalNodes} nodes</span>
+                            <span>{summary.completedNodes} completed</span>
+                            {summary.errorNodes > 0 && (
+                              <span style={{ color: 'var(--error)' }}>{summary.errorNodes} errors</span>
+                            )}
+                            <span>{formatDuration(summary.totalDuration)}</span>
+                          </>
+                        )
+                      })()}
+                    </div>
+                    <button
+                      className="workflow-action-button"
+                      onClick={async () => {
+                        try {
+                          const result = await downloadTrace(trace)
+                          if (result.success && result.filePath) {
+                            console.log('[WorkflowExecutionPanel] Trace saved to:', result.filePath)
+                            // Could show a toast notification here if we have a toast system
+                          } else if (result.cancelled) {
+                            console.log('[WorkflowExecutionPanel] Download cancelled by user')
+                          }
+                        } catch (err) {
+                          console.error('[WorkflowExecutionPanel] Failed to download trace:', err)
+                          alert('Failed to download trace: ' + (err instanceof Error ? err.message : String(err)))
+                        }
+                      }}
+                      title="Download trace as JSON"
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', fontSize: '11px' }}
+                    >
+                      <Download size={12} />
+                      Download Trace
+                    </button>
+                  </div>
+
                   {/* Filter chips */}
                   <div className="workflow-filter-chips">
                     <button
@@ -501,6 +548,141 @@ export function WorkflowExecutionPanel({
                 <div className="workflow-empty-state">
                   <Clock size={24} />
                   <div style={{ fontSize: '12px' }}>No trace data</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* History Tab */}
+          {activeTab === 'history' && (
+            <div style={{ padding: '12px' }}>
+              {executionHistory.length > 0 ? (
+                <>
+                  {/* Header with clear button */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                      Last {executionHistory.length} execution{executionHistory.length !== 1 ? 's' : ''}
+                    </div>
+                    <button
+                      className="workflow-action-button"
+                      onClick={() => {
+                        if (confirm('Clear all execution history?')) {
+                          clearExecutionHistory()
+                        }
+                      }}
+                      title="Clear history"
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', fontSize: '11px' }}
+                    >
+                      <Trash2 size={12} />
+                      Clear History
+                    </button>
+                  </div>
+
+                  {/* History list */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {executionHistory.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="workflow-history-entry"
+                        onClick={() => loadExecutionFromHistory(entry.id)}
+                        style={{
+                          background: result?.startTime === entry.result.startTime ? 'var(--hover)' : 'var(--panel-2)',
+                          border: result?.startTime === entry.result.startTime ? '1px solid var(--primary)' : '1px solid var(--border)',
+                          borderRadius: '6px',
+                          padding: '12px',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (result?.startTime !== entry.result.startTime) {
+                            e.currentTarget.style.background = 'var(--hover)'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (result?.startTime !== entry.result.startTime) {
+                            e.currentTarget.style.background = 'var(--panel-2)'
+                          }
+                        }}
+                      >
+                        {/* Header row with workflow name and status */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {entry.status === 'success' ? (
+                              <CheckCircle size={14} style={{ color: 'var(--success)' }} />
+                            ) : entry.status === 'error' ? (
+                              <AlertCircle size={14} style={{ color: 'var(--error)' }} />
+                            ) : (
+                              <Square size={14} style={{ color: 'var(--warning)' }} />
+                            )}
+                            <span style={{ fontWeight: 500, fontSize: '12px' }}>
+                              {entry.workflowName}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: '10px', color: 'var(--muted)' }}>
+                            {new Date(entry.timestamp).toLocaleTimeString()}
+                          </span>
+                        </div>
+
+                        {/* Stats row */}
+                        <div style={{ display: 'flex', gap: '16px', fontSize: '11px', color: 'var(--muted)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Timer size={10} />
+                            {formatDuration(entry.duration)}
+                          </div>
+                          {entry.result.trace && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Zap size={10} />
+                              {(() => {
+                                const summary = getTraceSummary(entry.result.trace)
+                                return `${summary.completedNodes}/${summary.totalNodes} nodes`
+                              })()}
+                            </div>
+                          )}
+                          {entry.promptsSent.length > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Sparkles size={10} />
+                              {entry.promptsSent.length} prompt{entry.promptsSent.length !== 1 ? 's' : ''}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Error message if failed */}
+                        {entry.status === 'error' && entry.result.errors && entry.result.errors.length > 0 && (
+                          <div style={{
+                            marginTop: '8px',
+                            padding: '6px 8px',
+                            background: 'var(--error-bg)',
+                            border: '1px solid var(--error)',
+                            borderRadius: '4px',
+                            fontSize: '10px',
+                            color: 'var(--error)',
+                          }}>
+                            {entry.result.errors[0].message}
+                          </div>
+                        )}
+
+                        {/* Active indicator */}
+                        {result?.startTime === entry.result.startTime && (
+                          <div style={{
+                            marginTop: '8px',
+                            fontSize: '10px',
+                            color: 'var(--primary)',
+                            fontWeight: 500,
+                          }}>
+                            Currently viewing
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="workflow-empty-state">
+                  <History size={24} />
+                  <div style={{ fontSize: '12px' }}>No execution history</div>
+                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>
+                    Execute a workflow to see history here
+                  </div>
                 </div>
               )}
             </div>

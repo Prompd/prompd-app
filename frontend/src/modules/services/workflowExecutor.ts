@@ -153,11 +153,6 @@ export function createWorkflowExecutor(
           const result = event.data as WorkflowResult & { trace: ExecutionTrace }
           currentTrace = result.trace || null
 
-          console.log('[WorkflowExecutor] Complete event received')
-          console.log('[WorkflowExecutor] Result keys:', Object.keys(result))
-          console.log('[WorkflowExecutor] Has trace:', !!result.trace)
-          console.log('[WorkflowExecutor] Trace entries:', result.trace?.entries?.length || 0)
-
           // Clean up event listener
           eventCleanup?.()
           eventCleanup = null
@@ -266,14 +261,15 @@ export function createWorkflowExecutor(
 }
 
 // Re-export utility functions via IPC
-export async function downloadTrace(trace: ExecutionTrace, filename?: string): Promise<void> {
+export async function downloadTrace(trace: ExecutionTrace, filename?: string): Promise<{ success: boolean; filePath?: string; cancelled?: boolean }> {
   const isElectron = typeof window !== 'undefined' && window.electronAPI?.isElectron
 
   if (!isElectron || !window.electronAPI?.workflow) {
     throw new Error('downloadTrace requires Electron environment')
   }
 
-  return window.electronAPI.workflow.downloadTrace(trace, filename)
+  const result = await window.electronAPI.workflow.downloadTrace(trace, filename)
+  return result
 }
 
 export function getTraceSummary(trace: ExecutionTrace): {

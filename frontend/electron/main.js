@@ -2769,6 +2769,23 @@ ipcMain.handle('config:load', async (_event, workspacePath) => {
       // Resolve ${VAR_NAME} syntax in config values
       config = resolveEnvVars(config)
 
+      // Ensure config is complete with all fields and clean up any corrupted camelCase duplicates
+      const cleanedConfig = ensureConfigComplete(config)
+
+      // Auto-fix: If we cleaned up corrupted fields, save the clean version back to disk
+      if (JSON.stringify(config) !== JSON.stringify(cleanedConfig)) {
+        console.log('[Config] Detected and cleaned corrupted config fields, auto-saving...')
+        try {
+          const yamlContent = yaml.stringify(cleanedConfig, { indent: 2, lineWidth: 0 })
+          await fs.promises.writeFile(globalPath, yamlContent, 'utf-8')
+          console.log('[Config] Auto-saved cleaned config to:', globalPath)
+        } catch (saveError) {
+          console.error('[Config] Failed to auto-save cleaned config:', saveError.message)
+        }
+      }
+
+      config = cleanedConfig
+
       const result = {
         success: true,
         config,
@@ -2796,6 +2813,47 @@ ipcMain.handle('config:load', async (_event, workspacePath) => {
   return configLoadingPromise
 })
 
+// Ensure config has all required fields with proper structure
+// Strips any camelCase duplicate fields and ensures snake_case only
+function ensureConfigComplete(config) {
+  // Start with full default structure
+  const complete = JSON.parse(JSON.stringify(DEFAULT_CONFIG))
+
+  // List of known camelCase duplicates to remove (these are corrupted fields)
+  const camelCaseDuplicates = ['apiKeys', 'customProviders', 'providerConfigs', 'maxRetries', 'defaultProvider', 'defaultModel']
+
+  // Merge user config into defaults, preserving their values
+  function deepMerge(target, source) {
+    if (!source || typeof source !== 'object') return target
+
+    for (const key of Object.keys(source)) {
+      // Skip camelCase duplicates - these are corrupted and should be removed
+      if (camelCaseDuplicates.includes(key)) {
+        console.warn(`[Config] Removing corrupted camelCase field: ${key}`)
+        continue
+      }
+
+      const sourceVal = source[key]
+      const targetVal = target[key]
+
+      if (sourceVal === undefined || sourceVal === null) {
+        continue
+      }
+
+      if (typeof sourceVal === 'object' && !Array.isArray(sourceVal) &&
+          typeof targetVal === 'object' && !Array.isArray(targetVal)) {
+        target[key] = deepMerge(targetVal, sourceVal)
+      } else {
+        target[key] = sourceVal
+      }
+    }
+
+    return target
+  }
+
+  return deepMerge(complete, config)
+}
+
 // Save config to file (global or local)
 // location: 'global' | 'local'
 ipcMain.handle('config:save', async (_event, config, location, workspacePath) => {
@@ -2817,8 +2875,11 @@ ipcMain.handle('config:save', async (_event, config, location, workspacePath) =>
     const configDir = path.dirname(configPath)
     await fs.promises.mkdir(configDir, { recursive: true })
 
+    // Ensure config is complete and strip camelCase duplicates
+    const completeConfig = ensureConfigComplete(config)
+
     // Convert to YAML and write
-    const yamlContent = yaml.stringify(config, {
+    const yamlContent = yaml.stringify(completeConfig, {
       indent: 2,
       lineWidth: 0 // Don't wrap lines
     })
@@ -3863,6 +3924,13 @@ let prompdExecutor = null
     cliModules = await import('@prompd/cli')
     const { ConfigManager, PrompdExecutor } = cliModules
     configManager = new ConfigManager()
+
+    // COMPATIBILITY SHIM: workflowExecutor expects load() but ConfigManager has loadConfig()
+    // This is a bug in @prompd/cli that should be fixed upstream
+    if (!configManager.load && configManager.loadConfig) {
+      configManager.load = configManager.loadConfig.bind(configManager)
+    }
+
     prompdExecutor = new PrompdExecutor()
     console.log('[Main Process] @prompd/cli modules initialized and ready')
   } catch (err) {
@@ -4218,13 +4286,40 @@ ipcMain.handle('workflow:checkpoint-response', async (_event, requestId, shouldC
  * trace: ExecutionTrace object
  * filename: Optional custom filename
  */
-ipcMain.handle('workflow:downloadTrace', async (_event, trace, filename) => {
+ipcMain.handle('workflow:downloadTrace', async (event, trace, filename) => {
   try {
-    // Dynamic import @prompd/cli in main process
-    const { downloadTrace } = await import('@prompd/cli')
+    // Import required modules
+    const { dialog } = require('electron')
+    const fs = require('fs').promises
+    const path = require('path')
 
-    // Download trace
-    await downloadTrace(trace, filename)
+    // Get the browser window that sent this request
+    const win = BrowserWindow.fromWebContents(event.sender)
+
+    // Show save dialog
+    const defaultFilename = filename || `workflow-trace-${trace.id || Date.now()}.json`
+    const { filePath, canceled } = await dialog.showSaveDialog(win, {
+      title: 'Save Execution Trace',
+      defaultPath: defaultFilename,
+      filters: [
+        { name: 'JSON Files', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    })
+
+    if (canceled || !filePath) {
+      console.log('[Workflow Executor] Download trace cancelled by user')
+      return { success: false, cancelled: true }
+    }
+
+    // Convert trace to JSON
+    const json = JSON.stringify(trace, null, 2)
+
+    // Write to file
+    await fs.writeFile(filePath, json, 'utf-8')
+
+    console.log(`[Workflow Executor] Trace saved to: ${filePath}`)
+    return { success: true, filePath }
   } catch (err) {
     console.error('[Workflow Executor] Download trace failed:', err)
     throw err

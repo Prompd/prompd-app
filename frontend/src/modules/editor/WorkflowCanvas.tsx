@@ -1227,11 +1227,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false 
     executorRef.current = executor
 
     try {
-      console.log('[WorkflowCanvas] Starting execution with mode:', mode)
       const result = await executor.execute()
-      console.log('[WorkflowCanvas] Execution completed:', result)
-      console.log('[WorkflowCanvas] Result has trace:', !!result.trace)
-      console.log('[WorkflowCanvas] Trace entries:', result.trace?.entries?.length || 0)
       setExecutionResult(result)
       setExecutionState({
         workflowId: workflowFile.metadata.id,
@@ -1316,9 +1312,10 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false 
       userInputResolveRef.current({ value: undefined, cancelled: true })
       userInputResolveRef.current = null
     }
+    // Just hide the panel - don't clear execution results (they persist in store)
     setShowExecutionPanel(false)
-    setExecutionResult(null)
-    setCheckpoints([])
+    // NOTE: Don't clear executionResult, checkpoints, or promptsSent - they persist in workflowStore
+    // so users can reopen the panel and see previous results
     setExecutionState(null)
     setIsPaused(false)
     setPendingCheckpoint(null)
