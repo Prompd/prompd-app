@@ -1,0 +1,393 @@
+/* Package Search Container */
+.package-search {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Search Header - no card styling since parent wizard-form provides it */
+.package-search-header {
+  /* Card styling removed - parent has the container */
+}
+
+.package-search-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.package-search-title h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.package-search-subtitle {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Search Container */
+.search-container {
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 12px 10px 38px;
+  font-size: 14px;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+/* Search Dropdown */
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 9001; /* Above hint overlay (8998) and hint panel (9000) */
+}
+
+.search-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.15s;
+}
+
+.search-result:last-child {
+  border-bottom: none;
+}
+
+.search-result:hover {
+  background: var(--hover);
+}
+
+.search-result.selected {
+  background: color-mix(in srgb, var(--success) 8%, var(--panel));
+}
+
+.search-result-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--button-bg);
+  border: 1px solid var(--button-border);
+  border-radius: 6px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.search-result-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-result-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.search-result-description {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result-check {
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+/* Selected Packages - subsection styling with subtle divider */
+.selected-packages {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.selected-packages-title {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.package-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+/* Package Card */
+.package-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px;
+  transition: all 0.2s;
+}
+
+.package-card:hover {
+  border-color: var(--accent);
+}
+
+.package-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.package-card-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.package-card-icon.valid {
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  color: var(--success);
+}
+
+.package-card-icon.invalid {
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+  color: var(--error);
+}
+
+.package-card-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.package-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 2px;
+}
+
+.package-card-version {
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--muted);
+}
+
+.package-card-remove {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.package-card-remove:hover {
+  background: var(--hover);
+  color: var(--error);
+}
+
+.package-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.package-card-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--error);
+  margin-top: 4px;
+}
+
+/* Base Template - subsection styling with subtle divider */
+.base-template {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.base-template-header {
+  margin-bottom: 12px;
+}
+
+.base-template-title {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.base-template-subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Template Dropdown */
+.template-dropdown-container {
+  position: relative;
+}
+
+.template-dropdown-button {
+  width: 100%;
+  padding: 10px 36px 10px 12px;
+  font-size: 14px;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.template-dropdown-button:hover {
+  background: var(--hover);
+  border-color: var(--accent);
+}
+
+.template-dropdown-button:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.template-dropdown-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.template-dropdown-arrow {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform 0.2s;
+}
+
+.template-dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+.template-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+}
+
+.template-dropdown-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.15s;
+}
+
+.template-dropdown-option:last-child {
+  border-bottom: none;
+}
+
+.template-dropdown-option:hover {
+  background: var(--hover);
+}
+
+.template-dropdown-option.selected {
+  background: color-mix(in srgb, var(--success) 8%, var(--panel));
+}
+
+.template-dropdown-option span {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.template-dropdown-check {
+  color: var(--success);
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+/* Footer */
+.package-search-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.package-search-next {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.package-search-next:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

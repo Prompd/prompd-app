@@ -1,0 +1,237 @@
+/**
+ * Prompd Chat Component Customization
+ *
+ * All PrompdChat components use semantic CSS classes that can be overridden
+ * to match your application's design system.
+ *
+ * Simply import this file after the @prompd/react styles.
+ */
+
+/* ============================================
+   Layout Customization
+   ============================================ */
+
+/* Adjust the max-width of the chat (default: 800px) */
+.prompd-messages-inner,
+.prompd-input-wrapper {
+  max-width: 100% !important; /* Full width for editor sidebar */
+}
+
+/* Adjust message container padding */
+.prompd-messages {
+  padding: 1rem;
+}
+
+/* Adjust input container styling */
+.prompd-input-container {
+  padding: 1rem;
+  background: var(--panel) !important; /* Match editor theme */
+  border-top: 1px solid var(--border) !important;
+}
+
+/* ============================================
+   Message Bubble Customization
+   ============================================ */
+
+/* Customize user message bubbles */
+.prompd-message-user .prompd-message-content {
+  /* Override gradient, borders, shadows, etc. */
+  /* background: your-custom-gradient !important; */
+}
+
+/* Customize assistant message bubbles */
+.prompd-message-assistant .prompd-message-content {
+  /* background: your-custom-color !important; */
+  /* border: your-custom-border !important; */
+}
+
+/* Customize system message bubbles */
+.prompd-message-system .prompd-message-content {
+  /* background: your-custom-color !important; */
+}
+
+/* Adjust message bubble border radius */
+.prompd-message-content {
+  border-radius: 12px !important; /* Squarer corners */
+}
+
+/* ============================================
+   Avatar Customization
+   ============================================ */
+
+/* Customize avatar size */
+.prompd-avatar-orb {
+  width: 32px !important;
+  height: 32px !important;
+}
+
+/* Customize avatar gradients */
+.prompd-message-user .prompd-avatar-orb {
+  /* background: your-custom-gradient !important; */
+}
+
+.prompd-message-assistant .prompd-avatar-orb {
+  /* background: your-custom-gradient !important; */
+}
+
+/* ============================================
+   Input Field Customization
+   ============================================ */
+
+/* Customize input field appearance */
+.prompd-input-field {
+  min-height: calc(40px + 4px) !important; /* 4px taller */
+  /* border-radius: 8px !important; */
+  /* background: your-color !important; */
+}
+
+/* Customize submit button */
+.prompd-submit-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  border-radius: 8px !important;
+  padding: 10px 16px !important;
+  border: none !important;
+  color: white !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.25) !important;
+  right: 0.25rem !important;
+  bottom: 0.4rem !important;
+}
+
+.prompd-submit-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.35) !important;
+}
+
+.prompd-submit-button:active:not(:disabled) {
+  transform: translateY(0) !important;
+  box-shadow: 0 1px 4px rgba(102, 126, 234, 0.25) !important;
+}
+
+.prompd-submit-button:disabled {
+  background: linear-gradient(135deg, #9ca3af 0%, #6b7280 100%) !important;
+  cursor: not-allowed !important;
+  opacity: 0.6 !important;
+  box-shadow: none !important;
+}
+
+/* Customize input helper text - Show AI disclaimer */
+.prompd-input-helper {
+  /* Keep visible but style for AI disclaimer */
+}
+
+/* Add AI disclaimer after input container */
+.prompd-input-container::after {
+  content: "AI may make mistakes. Please verify important information and syntax.";
+  display: block;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted, #6b7280);
+  opacity: 0.7;
+  padding: 8px 16px 0;
+  margin-top: -8px;
+}
+
+/* ============================================
+   Empty State Customization
+   ============================================ */
+
+/* Customize empty state */
+.prompd-empty-state {
+  /* padding: your-spacing !important; */
+}
+
+/* Customize suggested prompt cards */
+.prompd-suggested-prompt {
+  /* background: your-color !important; */
+  /* border: your-border !important; */
+  /* border-radius: 8px !important; */
+}
+
+/* ============================================
+   Metadata & Badges Customization
+   ============================================ */
+
+/* Customize metadata row (timestamp, badges) */
+.prompd-message-meta {
+  /* opacity: 0.7 !important; */
+  /* font-size: 11px !important; */
+}
+
+/* Hide specific metadata */
+.prompd-message-meta .prompd-provider-badge {
+  /* display: none !important; */
+}
+
+/* ============================================
+   Mode Dropdown Customization
+   ============================================ */
+
+/* Define prompd theme variables for hover states */
+:root {
+  --prompd-hover: rgba(255, 255, 255, 0.1);
+  --prompd-accent-subtle: rgba(99, 102, 241, 0.15);
+}
+
+/* Mode dropdown menu */
+.prompd-mode-menu {
+  background: var(--panel) !important;
+  border-color: var(--border) !important;
+}
+
+/* Mode option base styles */
+.prompd-mode-option {
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+/* Mode option hover effect */
+.prompd-mode-option:hover {
+  background: var(--prompd-hover) !important;
+}
+
+/* Active mode option */
+.prompd-mode-option-active,
+.prompd-mode-option-active:hover {
+  background: var(--prompd-accent-subtle) !important;
+}
+
+/* ============================================
+   Advanced: Matching Editor Theme
+   ============================================ */
+
+/* Make PrompdChat blend seamlessly with editor sidebar */
+.prompd-chat {
+  background: var(--sidebar-bg) !important;
+}
+
+.prompd-messages {
+  background: transparent !important;
+}
+
+.prompd-input-container {
+  background: var(--sidebar-bg) !important;
+  border-top: 1px solid var(--border) !important;
+}
+
+/* Use editor's scrollbar styles */
+.prompd-messages::-webkit-scrollbar {
+  width: 10px;
+}
+
+.prompd-messages::-webkit-scrollbar-track {
+  background: var(--scroll-track);
+}
+
+.prompd-messages::-webkit-scrollbar-thumb {
+  background-color: var(--scroll-thumb);
+  border-radius: 8px;
+  border: 2px solid var(--scroll-track);
+}
+
+.prompd-messages::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scroll-thumb-hover);
+}

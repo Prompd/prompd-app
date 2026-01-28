@@ -1,0 +1,194 @@
+/* Wizard Container - matches DesignView styling */
+.wizard-container {
+  height: 100%;
+  overflow: auto;
+  background: var(--panel);
+  padding: 24px;
+}
+
+/* Inner content wrapper with max-width like DesignView */
+.wizard-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Header */
+.wizard-header {
+  margin-bottom: 24px;
+}
+
+/* Title section styling */
+.wizard-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.wizard-title-section {
+  margin-bottom: 20px;
+}
+
+.wizard-title {
+  margin: 0 0 6px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wizard-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* Step Indicator */
+.wizard-steps {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: var(--button-bg);
+  border: 1px solid var(--button-border);
+  transition: all 0.2s ease;
+}
+
+.wizard-step.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--button-bg));
+}
+
+.wizard-step.completed {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 8%, var(--button-bg));
+}
+
+.wizard-step-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.wizard-step.active .wizard-step-icon {
+  color: var(--accent);
+}
+
+.wizard-step.completed .wizard-step-icon {
+  color: var(--success);
+}
+
+.wizard-step-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.wizard-step.active .wizard-step-label {
+  color: var(--text);
+}
+
+.wizard-step.completed .wizard-step-label {
+  color: var(--text);
+}
+
+.wizard-step-connector {
+  flex: 0 0 40px;
+  height: 2px;
+  position: relative;
+}
+
+.wizard-step-line {
+  height: 100%;
+  background: var(--border);
+  border-radius: 1px;
+  transition: all 0.3s ease;
+}
+
+.wizard-step-line.completed {
+  background: var(--success);
+}
+
+/* Form Section - card style like DesignView metadata */
+.wizard-form {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+/* Inner wrapper for spotlight targeting */
+.wizard-form-inner {
+  /* No max-width needed since parent wizard-inner handles it */
+}
+
+.wizard-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+/* Content Area - container for step content, no border since child components have their own cards */
+.wizard-content {
+  /* No card styling here - PackageSearchStep has its own card sections */
+}
+
+/* Success State */
+.wizard-success {
+  text-align: center;
+  padding: 48px 24px;
+  background: var(--panel);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.wizard-success-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--success);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+  animation: scaleIn 0.3s ease-out;
+}
+
+.wizard-success-title {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wizard-success-message {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

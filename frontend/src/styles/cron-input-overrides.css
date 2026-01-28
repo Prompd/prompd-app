@@ -1,0 +1,232 @@
+/**
+ * Cron Input Theme Overrides (react-cron-generator)
+ *
+ * Styles the react-cron-generator component to match Prompd's dark theme.
+ * Works with both light and dark mode via CSS variables.
+ */
+
+/* Import the library's base CSS */
+@import 'react-cron-generator/build/cron-builder.css';
+
+/* ============================================================================
+   Wrapper
+   ============================================================================ */
+
+.cron-input-wrapper {
+  width: 100%;
+}
+
+.cron-input-wrapper.cron-input-error .cron_builder {
+  border-color: var(--error) !important;
+}
+
+/* ============================================================================
+   Main Container
+   ============================================================================ */
+
+.cron_builder {
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  padding: 0 !important;
+  max-width: 100% !important;
+  font-family: Inter, system-ui, Arial, sans-serif !important;
+  font-size: 13px !important;
+  overflow: hidden !important;
+}
+
+/* ============================================================================
+   Tab Navigation
+   ============================================================================ */
+
+.cron_builder .nav.nav-tabs {
+  background: var(--panel-2) !important;
+  border-bottom: 1px solid var(--border) !important;
+  margin: 0 !important;
+  padding: 0 4px !important;
+}
+
+.cron_builder .nav li {
+  flex: 1 !important;
+}
+
+.cron_builder .nav li a,
+.cron_builder .nav li button {
+  background: transparent !important;
+  color: var(--muted) !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 10px 8px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  transition: color 0.15s, background 0.15s !important;
+}
+
+.cron_builder .nav li a:hover,
+.cron_builder .nav li button:hover {
+  color: var(--text) !important;
+  background: var(--hover) !important;
+}
+
+.cron_builder .nav-tabs .nav-link.active,
+.cron_builder .nav-tabs .nav-item.show .nav-link {
+  color: var(--accent) !important;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 2px solid var(--accent) !important;
+}
+
+.cron_builder .nav-tabs .nav-link.disabled {
+  color: var(--muted) !important;
+  background: transparent !important;
+  opacity: 0.5 !important;
+}
+
+/* ============================================================================
+   Content Area
+   ============================================================================ */
+
+.cron_builder .cron_builder_bordering {
+  background: var(--panel) !important;
+  border: none !important;
+  color: var(--text) !important;
+  padding: 16px !important;
+  text-align: left !important;
+}
+
+/* ============================================================================
+   Header Banner
+   ============================================================================ */
+
+.cron_builder .cron-builder-bg {
+  background: var(--accent) !important;
+  color: white !important;
+  padding: 8px 12px !important;
+  margin-bottom: 12px !important;
+  border-radius: 4px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+
+/* ============================================================================
+   Form Controls
+   ============================================================================ */
+
+.cron_builder .cron_builder_bordering input,
+.cron_builder .cron_builder_bordering select {
+  background: var(--input-bg) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 4px !important;
+  padding: 6px 10px !important;
+  font-size: 13px !important;
+  min-height: 32px !important;
+  margin: 4px !important;
+}
+
+.cron_builder .cron_builder_bordering input:focus,
+.cron_builder .cron_builder_bordering select:focus {
+  border-color: var(--accent) !important;
+  outline: none !important;
+}
+
+.cron_builder .cron_builder_bordering select {
+  cursor: pointer !important;
+  width: auto !important;
+  min-width: 80px !important;
+}
+
+.cron_builder .cron_builder_bordering select:disabled {
+  background: var(--panel-2) !important;
+  cursor: not-allowed !important;
+  opacity: 0.6 !important;
+}
+
+/* Radio buttons */
+.cron_builder .cron_builder_bordering input[type='radio'] {
+  width: 16px !important;
+  height: 16px !important;
+  margin-right: 8px !important;
+  accent-color: var(--accent) !important;
+}
+
+/* ============================================================================
+   Well / Panels
+   ============================================================================ */
+
+.cron_builder .well {
+  background: var(--panel-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  padding: 12px !important;
+  margin-bottom: 12px !important;
+}
+
+/* ============================================================================
+   Dropdown Menus
+   ============================================================================ */
+
+.cron_builder .dropdown-content {
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+  max-height: 200px !important;
+}
+
+.cron_builder .dropdown-content .dropdown-item {
+  color: var(--text) !important;
+  padding: 8px 12px !important;
+}
+
+.cron_builder .dropdown-content .dropdown-item:hover,
+.cron_builder .dropdown-content .dropdown-item-selected {
+  background: var(--accent) !important;
+  color: white !important;
+}
+
+/* ============================================================================
+   Labels and Text
+   ============================================================================ */
+
+.cron_builder label,
+.cron_builder span,
+.cron_builder .text_align_left {
+  color: var(--text) !important;
+}
+
+/* ============================================================================
+   Layout Fixes
+   ============================================================================ */
+
+.cron_builder .row {
+  gap: 8px !important;
+  align-items: center !important;
+}
+
+.cron_builder .df {
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+/* ============================================================================
+   Scrollbar Styling
+   ============================================================================ */
+
+.cron_builder .dropdown-content::-webkit-scrollbar {
+  width: 8px !important;
+}
+
+.cron_builder .dropdown-content::-webkit-scrollbar-track {
+  background: var(--panel-2) !important;
+}
+
+.cron_builder .dropdown-content::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb) !important;
+  border-radius: 4px !important;
+}
+
+.cron_builder .dropdown-content::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover) !important;
+}

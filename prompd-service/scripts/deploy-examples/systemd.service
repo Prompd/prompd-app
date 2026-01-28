@@ -1,0 +1,41 @@
+# Systemd service template for Prompd Service
+#
+# Installation:
+#   1. Edit paths and user below to match your system
+#   2. Copy to /etc/systemd/system/prompd-service.service
+#   3. Run: sudo systemctl daemon-reload
+#   4. Run: sudo systemctl enable prompd-service
+#   5. Run: sudo systemctl start prompd-service
+#
+# Usage:
+#   sudo systemctl status prompd-service   - Check status
+#   sudo systemctl restart prompd-service  - Restart service
+#   sudo systemctl stop prompd-service     - Stop service
+#   journalctl -u prompd-service -f        - View logs
+
+[Unit]
+Description=Prompd Workflow Scheduler Service
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USERNAME_HERE
+WorkingDirectory=/path/to/prompd.app/prompd-service
+ExecStart=/usr/bin/node src/server.js
+
+# Environment variables
+Environment=PROMPD_SERVICE_PORT=9876
+Environment=PROMPD_SERVICE_HOST=127.0.0.1
+Environment=NODE_ENV=production
+
+# Restart on failure
+Restart=on-failure
+RestartSec=10s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=prompd-service
+
+[Install]
+WantedBy=multi-user.target

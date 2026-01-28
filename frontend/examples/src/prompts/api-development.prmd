@@ -1,0 +1,90 @@
+---
+id: api-development-assistant
+name: "API Development Assistant"
+description: "Generate complete API endpoints with validation and documentation"
+version: 1.0.1
+parameters:
+  - name: endpoint_name
+    type: string
+    required: true
+    description: "Name of the API endpoint (e.g. User Management)"
+  - name: http_method
+    type: string
+    enum: [GET, POST, PUT, DELETE, PATCH]
+    default: POST
+    description: "HTTP method for the endpoint"
+  - name: framework
+    type: string
+    enum: [express, fastify, flask, django, gin]
+    default: express
+    description: "Web framework to use"
+  - name: auth_required
+    type: boolean
+    default: true
+    description: "Whether authentication is required"
+  - name: validation_level
+    type: string
+    enum: [basic, strict, enterprise]
+    default: strict
+    description: "Input validation level"
+---
+
+# {endpoint_name} API Endpoint
+
+## Endpoint Specification
+- **Method**: {http_method}
+- **Framework**: {framework}
+- **Authentication**: {% if auth_required %}Required{% else %}Optional{% endif %}
+- **Validation**: {validation_level}
+
+## Implementation Requirements
+
+### 1. Route Definition
+```{% if framework in ["express", "fastify"] %}javascript{% elif framework in ["flask", "django"] %}python{% elif framework == "gin" %}go{% endif %}
+// Route implementation for {framework}
+```
+
+### 2. Input Validation
+{%- if validation_level == "enterprise" %}
+- Schema validation with detailed error messages
+- Rate limiting and request throttling
+- Input sanitization and XSS protection
+- SQL injection prevention
+- CORS configuration
+{%- elif validation_level == "strict" %}
+- Schema validation with error messages
+- Input sanitization
+- Basic rate limiting
+{%- elif validation_level == "basic" %}
+- Required field validation
+- Type checking
+{%- endif %}
+
+### 3. Authentication & Authorization
+{%- if auth_required %}
+- JWT token validation
+- Role-based access control
+- Session management
+- Secure headers
+{%- else %}
+- Public endpoint (no auth required)
+- Optional user context
+{%- endif %}
+
+### 4. Error Handling
+- Structured error responses
+- Appropriate HTTP status codes
+- Request logging and monitoring
+- Graceful failure handling
+
+### 5. Documentation
+- OpenAPI/Swagger specification
+- Request/response examples
+- Error code documentation
+- Usage guidelines
+
+## Testing Strategy
+- Unit tests for business logic
+- Integration tests for API endpoints
+- Security testing for vulnerabilities
+- Load testing for performance

@@ -1,0 +1,48 @@
+# Google Cloud Build configuration for Prompd Editor Backend
+# Service: api.prompd.app
+steps:
+  # Build the backend container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '-f', 'backend/Dockerfile',
+      '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/docker-repo/api-prompd-app:$BUILD_ID',
+      '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/docker-repo/api-prompd-app:latest',
+      './backend'
+    ]
+
+  # Push the container image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/docker-repo/api-prompd-app:$BUILD_ID']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/docker-repo/api-prompd-app:latest']
+
+  # Deploy container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args: [
+      'run', 'deploy', 'api-prompd-app',
+      '--image', 'us-central1-docker.pkg.dev/$PROJECT_ID/docker-repo/api-prompd-app:$BUILD_ID',
+      '--region', 'us-central1',
+      '--platform', 'managed',
+      '--allow-unauthenticated',
+      '--memory', '256Mi',
+      '--cpu', '1',
+      '--min-instances', '0',
+      '--max-instances', '1',
+      '--concurrency', '80',
+      '--port', '3010',
+      '--timeout', '60',
+      '--cpu-throttling',
+      '--set-env-vars', 'NODE_ENV=production,FRONTEND_URL=https://prompd.app,CLERK_FRONTEND_API=clerk.prompdhub.ai',
+      '--set-secrets', 'MONGODB_URI=prompd-editor-mongodb-uri:latest,JWT_SECRET=prompd-editor-jwt-secret:latest,ENCRYPTION_SECRET=prompd-editor-encryption-secret:latest,CLERK_SECRET_KEY=prompd-editor-clerk-secret:latest,OPENAI_API_KEY=prompd-editor-openai-key:latest,ANTHROPIC_API_KEY=prompd-editor-anthropic-key:latest'
+    ]
+
+# Store images in Artifact Registry
+images:
+  - us-central1-docker.pkg.dev/$PROJECT_ID/docker-repo/api-prompd-app:$BUILD_ID
+  - us-central1-docker.pkg.dev/$PROJECT_ID/docker-repo/api-prompd-app:latest
+
+# Timeout for the entire build
+timeout: '600s'

@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  prompd-service:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: prompd-service
+    ports:
+      - "9876:9876"
+    volumes:
+      # Persist SQLite database
+      - prompd-data:/data
+      # Optional: Mount workflow files if needed
+      # - ~/Documents/prompd-workflows:/workflows:ro
+    environment:
+      - PROMPD_SERVICE_PORT=9876
+      - PROMPD_SERVICE_HOST=0.0.0.0
+      - PROMPD_DB_PATH=/data/schedules.db
+      - NODE_ENV=production
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  prompd-data:
+    driver: local

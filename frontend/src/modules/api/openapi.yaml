@@ -1,0 +1,81 @@
+openapi: 3.0.3
+info:
+  title: Prompd API
+  version: 0.1.0
+  description: Minimal endpoints for validating and dry-running pdflows
+paths:
+  /flows/validate:
+    post:
+      summary: Validate a pdflow document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlowDoc'
+          application/yaml:
+            schema:
+              type: string
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResult'
+  /flows/execute:
+    post:
+      summary: Dry-run a pdflow and return an ordered plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlowDoc'
+      responses:
+        '200':
+          description: Dry-run result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecuteResult'
+components:
+  schemas:
+    FlowDoc:
+      type: object
+      properties:
+        version: { type: string }
+        metadata: { type: object }
+        nodes:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              type: { type: string }
+              label: { type: string }
+              position: { type: object }
+        connections:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              sourceNodeId: { type: string }
+              targetNodeId: { type: string }
+              sourcePortId: { type: string }
+              targetPortId: { type: string }
+    ValidationResult:
+      type: object
+      properties:
+        valid: { type: boolean }
+        errors: { type: array, items: { type: string } }
+        warnings: { type: array, items: { type: string } }
+    ExecuteResult:
+      type: object
+      properties:
+        plan:
+          type: array
+          items: { type: string }
+        notes: { type: string }
+

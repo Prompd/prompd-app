@@ -1,0 +1,1721 @@
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+import { ChevronDown, Package, Check, AlertTriangle, Save, AlertCircle } from 'lucide-react'
+import { PackageService, type PackageManifest, type Namespace } from '../services/packageService'
+import { registryApi } from '../services/registryApi'
+import { parsePrompd, type Issue } from '../lib/prompdParser'
+import VersionInput from './VersionInput'
+import VersionSegmentInput from './VersionSegmentInput'
+
+interface PublishModalProps {
+  isOpen: boolean
+  onClose: () => void
+  workspaceHandle: FileSystemDirectoryHandle | null
+  workspaceFiles: Array<{ path: string; name: string; type?: 'file' | 'directory'; kind?: 'file' | 'folder' }>
+  getToken: () => Promise<string | null>
+  theme: 'light' | 'dark'
+  initialManifest?: PackageManifest & { files?: string[], main?: string }
+  onFilesSaved?: () => void | Promise<void>
+  localOnly?: boolean  // If true, skip namespace selection and hide publish button
+}
+
+interface ValidationError {
+  filePath: string
+  missingDependency: string
+}
+
+interface SyntaxError {
+  filePath: string
+  issues: Issue[]
+}
+
+// Patterns that are ALWAYS ignored when packaging (never included in packages)
+const ALWAYS_IGNORED_PATTERNS = [
+  '.prompd/**',   // Package cache directory
+  'dist/**',      // Build output directory
+  'node_modules/**',
+  '.git/**',
+  '.env',
+  '.env.*',
+]
+
+// File extensions that can be included in packages
+const PACKAGABLE_EXTENSIONS = [
+  '.prmd',        // Prompt files
+  '.md',          // Documentation
+  '.txt',         // Text files
+  '.json',        // Config/data (except prompd.json which is handled separately)
+  '.yaml',        // Config files
+  '.yml',         // Config files
+]
+
+// Helper function to parse dependencies from a .prmd file's content
+const getDependencies = (content: string): string[] => {
+  const fileReferences: string[] = []
+  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/)
+  if (!frontmatterMatch) return []
+
+  const frontmatter = frontmatterMatch[1]
+
+  // Regex to find file paths in inherits, system, user, context, etc.
+  const pathRegex = /^(?:inherits|system|user|context|task|output|response):\s*["']?((?:\.\.|\.)\/[^"']+?)["']?\s*$/gm
+  let match
+  while ((match = pathRegex.exec(frontmatter)) !== null) {
+    fileReferences.push(match[1])
+  }
+
+  // Regex for array syntax
+  const arrayRegex = /^(?:system|user|context|task|output|response):\s*\n((?:\s+-\s*["'][^"']+["']\s*\n?)+)/gm
+  while ((match = arrayRegex.exec(frontmatter)) !== null) {
+    const items = match[1].matchAll(/["']([^"']+)["']/g)
+    for (const item of items) {
+      // Only include local relative paths
+      if (item[1].startsWith('./') || item[1].startsWith('../')) {
+        fileReferences.push(item[1])
+      }
+    }
+  }
+
+  return fileReferences
+}
+
+export function PublishModal({
+  isOpen,
+  onClose,
+  workspaceHandle,
+  workspaceFiles,
+  getToken,
+  theme,
+  initialManifest,
+  onFilesSaved,
+  localOnly = false
+}: PublishModalProps) {
+  const [step, setStep] = useState(1)
+  const [namespace, setNamespace] = useState('')
+  const [namespaces, setNamespaces] = useState<Namespace[]>([])
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [manifest, setManifest] = useState<PackageManifest>({
+    name: '',
+    version: '0.1.0',
+    description: '',
+    author: '',
+    license: 'MIT',
+    keywords: [],
+    repository: '',
+    ignore: [],
+  })
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
+  const [originalManifestFiles, setOriginalManifestFiles] = useState<string[]>([]) // Track files from loaded manifest
+  const [mainFile, setMainFile] = useState<string>('')
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
+  const [syntaxErrors, setSyntaxErrors] = useState<SyntaxError[]>([])
+  const [fileContents, setFileContents] = useState<Map<string, string>>(new Map())
+  const [isLoadingManifest, setIsLoadingManifest] = useState(false)
+
+  const [progress, setProgress] = useState(0)
+  const [isWorking, setIsWorking] = useState(false)
+  const [error, setError] = useState('')
+  const [logs, setLogs] = useState<string[]>([])
+  const [publishStatus, setPublishStatus] = useState<'idle' | 'creating' | 'uploading' | 'success' | 'error'>('idle')
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 })
+  const [latestRegistryVersion, setLatestRegistryVersion] = useState<string | null>(null)
+
+  const dropdownButtonRef = useRef<HTMLButtonElement>(null)
+  const packageService = new PackageService()
+
+  // Theme colors
+  const colors = {
+    bg: theme === 'dark' ? '#1e293b' : '#ffffff',
+    bgSecondary: theme === 'dark' ? '#0f172a' : '#f8fafc',
+    bgTertiary: theme === 'dark' ? '#334155' : '#e2e8f0',
+    border: theme === 'dark' ? 'rgba(71, 85, 105, 0.3)' : '#e2e8f0',
+    text: theme === 'dark' ? '#ffffff' : '#0f172a',
+    textSecondary: theme === 'dark' ? '#94a3b8' : '#64748b',
+    textMuted: theme === 'dark' ? '#64748b' : '#94a3b8',
+    input: theme === 'dark' ? 'rgba(15, 23, 42, 0.6)' : '#f8fafc',
+    hover: theme === 'dark' ? 'rgba(71, 85, 105, 0.3)' : 'rgba(148, 163, 184, 0.15)',
+    primary: '#3b82f6',
+    primaryHover: '#2563eb',
+    success: '#10b981',
+    successHover: '#059669',
+    error: theme === 'dark' ? '#7f1d1d' : '#fee2e2',
+    errorBorder: theme === 'dark' ? '#dc2626' : '#ef4444',
+    errorText: theme === 'dark' ? '#fca5a5' : '#dc2626',
+    warning: theme === 'dark' ? '#a16207' : '#fefce8',
+    warningBorder: theme === 'dark' ? '#facc15' : '#eab308',
+    warningText: theme === 'dark' ? '#fde047' : '#a16207'
+  }
+
+  const log = (message: string) => {
+    console.log(message)
+    setLogs(prev => [...prev, `${new Date().toISOString().split('T')[1].substring(0, 8)} ${message}`])
+  }
+
+  // Helper function to populate state from manifest
+  const populateFromManifest = (parsedManifest: PackageManifest & { files?: string[], main?: string }) => {
+    log('Populating from manifest...')
+
+    // Extract namespace from package name (e.g., "@namespace/package-name")
+    if (parsedManifest.name && parsedManifest.name.includes('/')) {
+      const extractedNamespace = parsedManifest.name.split('/')[0].replace('@', '')
+      setNamespace(extractedNamespace)
+      log(`Pre-selected namespace: ${extractedNamespace}`)
+    }
+
+    // Pre-fill manifest details
+    setManifest(prev => ({
+      ...prev,
+      name: parsedManifest.name?.split('/')[1] || parsedManifest.name || '', // remove namespace
+      version: parsedManifest.version || '0.1.0',
+      description: parsedManifest.description || '',
+      author: parsedManifest.author || '',
+      license: parsedManifest.license || 'MIT',
+      keywords: parsedManifest.keywords || [],
+      readme: parsedManifest.readme || '',
+      repository: parsedManifest.repository || '',
+      ignore: parsedManifest.ignore || [],
+    }))
+
+    // Pre-select files (filter out prompd.json/manifest.json if it was incorrectly included)
+    if (Array.isArray(parsedManifest.files) && parsedManifest.files.length > 0) {
+      const filteredFiles = parsedManifest.files.filter(f =>
+        f !== 'prompd.json' && !f.endsWith('/prompd.json') &&
+        f !== 'manifest.json' && !f.endsWith('/manifest.json')
+      )
+      setSelectedFiles(filteredFiles)
+      setOriginalManifestFiles(filteredFiles) // Track original files from manifest
+      log(`Pre-selected ${filteredFiles.length} files from manifest.`)
+    } else {
+      // If files array is empty or not present, we'll auto-select packagable files later
+      // via the useEffect that watches selectableFiles
+      log('No files in manifest - will auto-select packagable files.')
+    }
+
+    // Pre-select main file
+    if (parsedManifest.main) {
+      setMainFile(parsedManifest.main)
+      log(`Pre-selected main file: ${parsedManifest.main}`)
+    }
+
+    // Auto-advance to step 3 if all required fields are present
+    // Note: We check for files.length > 0 OR we'll auto-select files later
+    const hasFiles = Array.isArray(parsedManifest.files) && parsedManifest.files.length > 0
+    const willAutoSelectFiles = !hasFiles // Files will be auto-selected if not specified
+
+    if (parsedManifest.name && parsedManifest.version && parsedManifest.description &&
+        parsedManifest.description.length >= 10 && (hasFiles || willAutoSelectFiles) && parsedManifest.main) {
+      log('✅ Manifest complete - advancing to step 3')
+      setStep(3)
+    }
+  }
+
+  // Load namespaces and check for prompd.json when modal opens
+  useEffect(() => {
+    if (!isOpen) {
+      // Reset state when closing - start at step 1 for publish, step 2 for localOnly
+      setStep(localOnly ? 2 : 1)
+      setNamespace('')
+      setError('')
+      setLogs([])
+      setProgress(0)
+      setPublishStatus('idle')
+      setDropdownOpen(false)
+      setSelectedFiles([])
+      setOriginalManifestFiles([])
+      setMainFile('')
+      setFileContents(new Map())
+      setValidationErrors([])
+      setSyntaxErrors([])
+      setLatestRegistryVersion(null)
+      return
+    }
+
+    // In localOnly mode, skip namespace loading and start at step 2
+    if (localOnly) {
+      log('Local-only mode: skipping namespace selection')
+      setStep(2)
+    } else {
+      log('Loading namespaces...')
+      packageService.getUserNamespaces(getToken)
+        .then(ns => {
+          const publishable = ns.filter(n => n.canPublish)
+          setNamespaces(publishable)
+          log(`Loaded ${publishable.length} namespaces`)
+          // Only set default namespace if none is already set (e.g., from manifest)
+          if (publishable.length > 0) {
+            setNamespace(prev => prev || publishable[0].name)
+          }
+        })
+        .catch(err => {
+          const message = err instanceof Error ? err.message : 'Unknown error'
+          log(`❌ Failed to load namespaces: ${message}`)
+          setError(message)
+        })
+    }
+
+    // Priority 1: Use initialManifest prop if provided
+    if (initialManifest) {
+      log('Using provided initialManifest prop')
+      populateFromManifest(initialManifest)
+      return
+    }
+
+    // Priority 2: Load prompd.json from workspace (or legacy manifest.json)
+    const loadManifest = async () => {
+      if (!workspaceHandle) {
+        return
+      }
+      try {
+        setIsLoadingManifest(true)
+        log('Checking for prompd.json...')
+
+        let content: string | null = null
+
+        // Check if this is an Electron pseudo-handle
+        const electronPath = (workspaceHandle as any)?._electronPath
+        if (electronPath && (window as any).electronAPI?.readFile) {
+          // Electron mode - use IPC to read the file (try prompd.json first, then manifest.json)
+          const prompdPath = `${electronPath}/prompd.json`.replace(/\\/g, '/')
+          log(`Reading manifest from Electron path: ${prompdPath}`)
+          let result = await (window as any).electronAPI.readFile(prompdPath)
+          if (!result.success) {
+            // Try legacy manifest.json
+            const manifestPath = `${electronPath}/manifest.json`.replace(/\\/g, '/')
+            result = await (window as any).electronAPI.readFile(manifestPath)
+          }
+          if (result.success && result.content) {
+            content = result.content
+          } else if (result.error?.includes('ENOENT') || result.error?.includes('no such file')) {
+            log('No prompd.json found in root, starting fresh.')
+            return
+          } else {
+            log(`Could not read prompd.json: ${result.error || 'Unknown error'}`)
+            return
+          }
+        } else if (typeof workspaceHandle.getFileHandle === 'function') {
+          // File System Access API mode (try prompd.json first, then manifest.json)
+          try {
+            const manifestHandle = await workspaceHandle.getFileHandle('prompd.json', { create: false })
+            const file = await manifestHandle.getFile()
+            content = await file.text()
+          } catch {
+            // Try legacy manifest.json
+            const manifestHandle = await workspaceHandle.getFileHandle('manifest.json', { create: false })
+            const file = await manifestHandle.getFile()
+            content = await file.text()
+          }
+        } else {
+          log('No supported file access method available')
+          return
+        }
+
+        if (content) {
+          const parsedManifest = JSON.parse(content) as PackageManifest & { files?: string[], main?: string }
+          log('Found and parsed prompd.json')
+          populateFromManifest(parsedManifest)
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'NotFoundError') {
+          log('No prompd.json found in root, starting fresh.')
+        } else {
+          log(`Could not load or parse prompd.json: ${err instanceof Error ? err.message : 'Unknown error'}`)
+        }
+      } finally {
+        setIsLoadingManifest(false)
+      }
+    }
+
+    loadManifest()
+  }, [isOpen, workspaceHandle, getToken, initialManifest])
+
+  // Fetch latest version from registry when namespace and package name are available
+  useEffect(() => {
+    if (!isOpen || localOnly || !namespace || !manifest.name) {
+      setLatestRegistryVersion(null)
+      return
+    }
+
+    const fetchLatestVersion = async () => {
+      try {
+        // Build full package name: @namespace/package-name
+        const fullPackageName = `@${namespace.replace(/^@/, '')}/${manifest.name}`
+        log(`Fetching latest version for ${fullPackageName}...`)
+
+        const versions = await registryApi.getPackageVersions(fullPackageName)
+        if (versions.length > 0) {
+          // Versions are already sorted latest-first by the API
+          setLatestRegistryVersion(versions[0])
+          log(`Latest registry version: ${versions[0]}`)
+        } else {
+          setLatestRegistryVersion(null)
+          log('No published versions found (new package)')
+        }
+      } catch (err) {
+        // Package may not exist yet - that's fine
+        setLatestRegistryVersion(null)
+        log('No published versions found (new package or error)')
+      }
+    }
+
+    fetchLatestVersion()
+  }, [isOpen, localOnly, namespace, manifest.name])
+
+  // Fetch content of selected files
+  useEffect(() => {
+    if (selectedFiles.length === 0 || !workspaceHandle) {
+      setFileContents(new Map())
+      return
+    }
+
+    const fetchContents = async () => {
+      const contents = new Map<string, string>()
+      const electronPath = (workspaceHandle as any)?._electronPath
+      const isElectronMode = electronPath && (window as any).electronAPI?.readFile
+
+      for (const filePath of selectedFiles) {
+        if (filePath.endsWith('.prmd')) {
+          try {
+            if (isElectronMode) {
+              // Electron mode - use IPC to read the file
+              const fullPath = `${electronPath}/${filePath}`.replace(/\\/g, '/')
+              const result = await (window as any).electronAPI.readFile(fullPath)
+              if (result.success && result.content) {
+                contents.set(filePath, result.content)
+              }
+            } else if (typeof workspaceHandle.getDirectoryHandle === 'function') {
+              // File System Access API mode
+              let currentHandle: FileSystemDirectoryHandle = workspaceHandle
+              const parts = filePath.split('/')
+              for (let i = 0; i < parts.length - 1; i++) {
+                currentHandle = await currentHandle.getDirectoryHandle(parts[i])
+              }
+              const fileHandle = await currentHandle.getFileHandle(parts[parts.length - 1])
+              const file = await fileHandle.getFile()
+              const content = await file.text()
+              contents.set(filePath, content)
+            } else {
+              console.warn(`Could not read ${filePath}: No supported file access method`)
+            }
+          } catch (e) {
+            console.warn(`Could not read ${filePath} for validation.`)
+            // Leave content empty for this file, validation will catch it
+          }
+        }
+      }
+      setFileContents(contents)
+    }
+
+    fetchContents()
+  }, [selectedFiles, workspaceHandle])
+
+  // Validate file selection whenever it changes
+  useEffect(() => {
+    if (selectedFiles.length === 0) {
+      setValidationErrors([])
+      setSyntaxErrors([])
+      return
+    }
+
+    const validate = () => {
+      const depErrors: ValidationError[] = []
+      const syntaxErrs: SyntaxError[] = []
+      const selectedSet = new Set(selectedFiles)
+
+      for (const filePath of selectedFiles) {
+        if (filePath.endsWith('.prmd')) {
+          const content = fileContents.get(filePath)
+          if (!content) continue // File content not yet loaded
+
+          // Parse and check for syntax errors
+          const parsed = parsePrompd(content)
+          const errors = parsed.issues.filter(i => i.severity === 'error')
+          if (errors.length > 0) {
+            syntaxErrs.push({ filePath, issues: errors })
+          }
+
+          // Check for missing dependencies
+          const dependencies = getDependencies(content)
+          const sourceDir = filePath.substring(0, filePath.lastIndexOf('/') + 1)
+
+          for (const dep of dependencies) {
+            // Resolve dependency path relative to the current file
+            const pathParts = (sourceDir + dep).replace(/\\/g, '/').split('/')
+            const resolvedParts: string[] = []
+            for (const part of pathParts) {
+              if (part === '..') {
+                resolvedParts.pop()
+              } else if (part !== '.' && part !== '') {
+                resolvedParts.push(part)
+              }
+            }
+            const resolvedDepPath = resolvedParts.join('/')
+
+            if (!selectedSet.has(resolvedDepPath)) {
+              depErrors.push({ filePath, missingDependency: resolvedDepPath })
+            }
+          }
+        }
+      }
+      setValidationErrors(depErrors)
+      setSyntaxErrors(syntaxErrs)
+    }
+
+    validate()
+  }, [selectedFiles, fileContents])
+
+
+  // Update dropdown position when opened or on scroll/resize
+  useEffect(() => {
+    const updatePosition = () => {
+      if (dropdownButtonRef.current) {
+        const rect = dropdownButtonRef.current.getBoundingClientRect()
+        setDropdownPosition({
+          top: rect.bottom + 4,
+          left: rect.left,
+          width: rect.width
+        })
+      }
+    }
+
+    if (dropdownOpen) {
+      updatePosition()
+      window.addEventListener('scroll', updatePosition, true)
+      window.addEventListener('resize', updatePosition)
+      return () => {
+        window.removeEventListener('scroll', updatePosition, true)
+        window.removeEventListener('resize', updatePosition)
+      }
+    }
+  }, [dropdownOpen])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (dropdownOpen && !target.closest('[data-dropdown]') && !target.closest('[data-dropdown-portal]')) {
+        setDropdownOpen(false)
+      }
+    }
+
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [dropdownOpen])
+
+  // Helper to construct full package name - ensure it starts with @ but don't double it
+  // In localOnly mode without namespace, just use the package name
+  const getFullPackageName = () => {
+    if (localOnly && !namespace) {
+      return manifest.name
+    }
+    return namespace.startsWith('@')
+      ? `${namespace}/${manifest.name}`
+      : `@${namespace}/${manifest.name}`
+  }
+
+  const handleCreatePackage = async () => {
+    try {
+      setIsWorking(true)
+      setError('')
+      log('Creating package...')
+
+      if (!workspaceHandle) {
+        throw new Error('No workspace open')
+      }
+
+      // Ensure README file is included in the files list
+      let filesToInclude = [...selectedFiles];
+      if (manifest.readme && !filesToInclude.includes(manifest.readme)) {
+        filesToInclude.push(manifest.readme);
+      }
+
+      const fullManifest: PackageManifest = {
+        ...manifest,
+        name: getFullPackageName(),
+        main: mainFile,
+        files: filesToInclude,
+      };
+
+      const packageBlob = await packageService.createPackage(
+        workspaceHandle,
+        fullManifest,
+        getToken
+      )
+
+      log(`✅ Package created: ${packageBlob.size} bytes`)
+
+      // Download for inspection
+      const url = URL.createObjectURL(packageBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${manifest.name}-${manifest.version}.pdpkg`
+      a.click()
+      URL.revokeObjectURL(url)
+
+      log('📥 Downloaded .pdpkg for inspection')
+
+      return packageBlob
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      log(`❌ Package creation failed: ${message}`)
+      setError(message)
+      throw err
+    } finally {
+      setIsWorking(false)
+    }
+  }
+
+  const handlePublish = async () => {
+    try {
+      setIsWorking(true)
+      setError('')
+      setProgress(0)
+      setPublishStatus('creating')
+
+      if (!workspaceHandle) {
+        throw new Error('No workspace open')
+      }
+
+      // Ensure README file is included in the files list
+      let filesToInclude = [...selectedFiles];
+      if (manifest.readme && !filesToInclude.includes(manifest.readme)) {
+        filesToInclude.push(manifest.readme);
+      }
+
+      // Create package
+      log('Creating package...')
+      const fullManifest: PackageManifest = {
+        ...manifest,
+        name: getFullPackageName(),
+        main: mainFile,
+        files: filesToInclude,
+      };
+
+      const packageBlob = await packageService.createPackage(
+        workspaceHandle,
+        fullManifest,
+        getToken
+      )
+
+      // Publish
+      setPublishStatus('uploading')
+      log('Publishing to registry...')
+      await packageService.publish(packageBlob, fullManifest, getToken, setProgress)
+
+      setPublishStatus('success')
+      log('Publish complete!')
+
+      // Update prompd.json with the published manifest
+      try {
+        log('Updating prompd.json with published data...')
+        await saveManifestFile(fullManifest)
+        log('✅ prompd.json updated')
+
+        // Trigger file change check if callback provided
+        if (onFilesSaved) {
+          await onFilesSaved()
+        }
+      } catch (saveErr) {
+        const saveMessage = saveErr instanceof Error ? saveErr.message : 'Unknown error'
+        log(`⚠️ Warning: Failed to update prompd.json: ${saveMessage}`)
+        // Don't fail the publish if manifest save fails
+      }
+
+      // Auto-close after showing success for 2 seconds
+      setTimeout(() => {
+        onClose()
+      }, 2000)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      log(`Publish failed: ${message}`)
+      setError(message)
+      setPublishStatus('error')
+    } finally {
+      setIsWorking(false)
+    }
+  }
+
+
+  // Helper function to save manifest file (used by both manual save and auto-save after publish)
+  const saveManifestFile = async (manifestToSave: PackageManifest) => {
+    if (!workspaceHandle) {
+      throw new Error('No workspace handle');
+    }
+
+    // Filter out prompd.json/manifest.json from files list (it's metadata, not content)
+    const filteredFiles = (manifestToSave.files || []).filter(f =>
+      f !== 'prompd.json' && !f.endsWith('/prompd.json') &&
+      f !== 'manifest.json' && !f.endsWith('/manifest.json')
+    );
+
+    const manifestData: Partial<PackageManifest> = {
+      name: manifestToSave.name,
+      version: manifestToSave.version,
+      description: manifestToSave.description,
+      author: manifestToSave.author,
+      license: manifestToSave.license,
+      keywords: manifestToSave.keywords,
+      readme: manifestToSave.readme || undefined,
+      repository: manifestToSave.repository,
+      main: manifestToSave.main,
+      files: filteredFiles,
+      ignore: manifestToSave.ignore?.length ? manifestToSave.ignore : undefined,
+    };
+
+    // remove undefined properties
+    Object.keys(manifestData).forEach(key => {
+      if (manifestData[key as keyof PackageManifest] === undefined) {
+        delete manifestData[key as keyof PackageManifest];
+      }
+    });
+
+    const manifestContent = JSON.stringify(manifestData, null, 2);
+
+    // Check if this is an Electron pseudo-handle
+    const electronPath = (workspaceHandle as any)?._electronPath
+    if (electronPath && (window as any).electronAPI?.writeFile) {
+      // Electron mode - use IPC to write the file
+      const manifestPath = `${electronPath}/prompd.json`.replace(/\\/g, '/')
+      const result = await (window as any).electronAPI.writeFile(manifestPath, manifestContent)
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to write prompd.json')
+      }
+    } else if (typeof workspaceHandle.getFileHandle === 'function') {
+      // File System Access API mode
+      const fileHandle = await workspaceHandle.getFileHandle('prompd.json', { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(manifestContent);
+      await writable.close();
+    } else {
+      throw new Error('No supported file access method available')
+    }
+  };
+
+  const handleSaveManifest = async () => {
+    if (!workspaceHandle) {
+      log('❌ Cannot save manifest: No workspace handle.');
+      setError('Cannot save manifest: No workspace handle.');
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setError('');
+      log('Saving prompd.json...');
+
+      // Preserve files that were in the original manifest but aren't visible in workspace
+      const workspaceFilePaths = new Set(workspaceFiles.map(f => f.path));
+      const preservedFiles = originalManifestFiles.filter(f =>
+        !workspaceFilePaths.has(f) &&
+        f !== 'prompd.json' && !f.endsWith('/prompd.json') &&
+        f !== 'manifest.json' && !f.endsWith('/manifest.json')
+      );
+
+      // Merge: selected files + preserved files (avoid duplicates)
+      const selectedSet = new Set(selectedFiles);
+      let mergedFiles = [...selectedFiles, ...preservedFiles.filter(f => !selectedSet.has(f))];
+
+      // Ensure README file is included if specified in manifest
+      if (manifest.readme && !mergedFiles.includes(manifest.readme)) {
+        mergedFiles.push(manifest.readme);
+      }
+
+      const fullManifest: PackageManifest = {
+        ...manifest,
+        name: getFullPackageName(),
+        main: mainFile,
+        files: mergedFiles,
+      };
+
+      await saveManifestFile(fullManifest);
+
+      log('prompd.json saved successfully.');
+      setSuccessMessage('prompd.json saved successfully.')
+      // Auto-dismiss after 3 seconds
+      setTimeout(() => setSuccessMessage(null), 3000)
+
+      // Trigger file change check if callback provided
+      if (onFilesSaved) {
+        await onFilesSaved()
+      }
+
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      log(`Failed to save prompd.json: ${message}`);
+      setError(`Failed to save prompd.json: ${message}`);
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  const toggleFile = (filePath: string) => {
+    setSelectedFiles(prev =>
+      prev.includes(filePath)
+        ? prev.filter(p => p !== filePath)
+        : [...prev, filePath]
+    )
+  }
+
+  const toggleAll = () => {
+    const allFiles = selectableFiles.map(f => f.path)
+    setSelectedFiles(prev => prev.length === allFiles.length ? [] : allFiles)
+  }
+
+  // Simple glob pattern matching (supports * and **)
+  const matchesPattern = useCallback((filePath: string, pattern: string): boolean => {
+    // Normalize paths
+    const normalizedPath = filePath.replace(/\\/g, '/')
+    const normalizedPattern = pattern.replace(/\\/g, '/')
+
+    // Convert glob pattern to regex
+    const regexPattern = normalizedPattern
+      .replace(/\./g, '\\.')           // Escape dots
+      .replace(/\*\*/g, '{{DOUBLESTAR}}')  // Temp placeholder for **
+      .replace(/\*/g, '[^/]*')         // * matches any chars except /
+      .replace(/{{DOUBLESTAR}}/g, '.*') // ** matches anything including /
+      .replace(/\?/g, '.')              // ? matches single char
+
+    const regex = new RegExp(`^${regexPattern}$|/${regexPattern}$|^${regexPattern}/`)
+    return regex.test(normalizedPath)
+  }, [])
+
+  // Filter out .pdpkg, .zip, prompd.json/manifest.json, always-ignored patterns, and user ignore patterns
+  const selectableFiles = useMemo(() => {
+    return workspaceFiles.filter(f => {
+      const isFile = f.type === 'file' || f.kind === 'file'
+      const isPackageFile = f.path.endsWith('.pdpkg') || f.path.endsWith('.zip')
+      const isManifest = f.path === 'prompd.json' || f.path.endsWith('/prompd.json') ||
+                         f.path === 'manifest.json' || f.path.endsWith('/manifest.json')
+      const fileName = f.name || f.path.split('/').pop() || ''
+
+      // Check against always-ignored patterns (system patterns that are never packaged)
+      const isAlwaysIgnored = ALWAYS_IGNORED_PATTERNS.some(pattern =>
+        matchesPattern(f.path, pattern) || matchesPattern(fileName, pattern)
+      )
+
+      // Check against user-defined ignore patterns from manifest.ignore
+      const isUserIgnored = (manifest.ignore || []).some(pattern =>
+        matchesPattern(f.path, pattern) || matchesPattern(fileName, pattern)
+      )
+
+      return isFile && !isPackageFile && !isManifest && !isAlwaysIgnored && !isUserIgnored
+    })
+  }, [workspaceFiles, manifest.ignore, matchesPattern])
+
+  // Auto-select packagable files when manifest.files is empty and we have selectable files
+  // This runs after selectableFiles is computed
+  useEffect(() => {
+    // Only auto-select if:
+    // 1. Modal is open
+    // 2. originalManifestFiles is empty (no files were specified in prompd.json)
+    // 3. selectedFiles is empty (nothing selected yet)
+    // 4. selectableFiles has items available
+    if (isOpen && originalManifestFiles.length === 0 && selectedFiles.length === 0 && selectableFiles.length > 0) {
+      // Filter to only packagable file types
+      const packagableFiles = selectableFiles
+        .filter(f => PACKAGABLE_EXTENSIONS.some(ext => f.path.toLowerCase().endsWith(ext)))
+        .map(f => f.path)
+
+      if (packagableFiles.length > 0) {
+        setSelectedFiles(packagableFiles)
+        log(`Auto-selected ${packagableFiles.length} packagable files.`)
+
+        // Auto-select main file if there's exactly one .prmd file
+        const prmdFiles = packagableFiles.filter(f => f.endsWith('.prmd'))
+        if (prmdFiles.length === 1 && !mainFile) {
+          setMainFile(prmdFiles[0])
+          log(`Auto-selected main file: ${prmdFiles[0]}`)
+        }
+      }
+    }
+  }, [isOpen, originalManifestFiles.length, selectedFiles.length, selectableFiles, mainFile])
+
+  const selectedNamespace = namespaces.find(ns => ns.name === namespace)
+  // Step 3 is now Package Details - validate both file selection AND manifest
+  const isStep3Valid = validationErrors.length === 0
+    && mainFile !== ''
+    && selectedFiles.length > 0
+    && manifest.name
+    && manifest.version
+    && manifest.description
+    && manifest.description.length >= 10;
+
+  if (!isOpen) return null
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0, 0, 0, 0.6)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        backdropFilter: 'blur(4px)'
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: colors.bg,
+          border: `1px solid ${colors.border}`,
+          borderRadius: 12,
+          padding: 24,
+          maxWidth: 800,
+          width: '90%',
+          maxHeight: '90vh',
+          overflow: 'auto',
+          color: colors.text,
+          boxShadow: theme === 'dark' ? '0 20px 60px rgba(0, 0, 0, 0.5)' : '0 20px 60px rgba(0, 0, 0, 0.15)'
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 style={{ margin: '0 0 20px 0', color: colors.primary, fontSize: '20px', fontWeight: 600 }}>
+          <Package size={24} style={{ verticalAlign: 'middle', marginRight: 8 }} />
+          {localOnly ? 'Create Package' : 'Publish Package'} {localOnly ? (step > 2 && `(Step ${step - 1}/2)`) : (step > 1 && `(Step ${step}/3)`)}
+        </h2>
+
+        {error && (
+          <div style={{
+            background: colors.error,
+            border: `1px solid ${colors.errorBorder}`,
+            borderRadius: 8,
+            padding: 12,
+            marginBottom: 16,
+            whiteSpace: 'pre-wrap',
+            color: colors.errorText,
+            fontSize: '14px'
+          }}>
+            {error}
+          </div>
+        )}
+
+        {successMessage && (
+          <div style={{
+            background: 'rgba(16, 185, 129, 0.1)',
+            border: '1px solid rgba(16, 185, 129, 0.3)',
+            borderRadius: 8,
+            padding: 12,
+            marginBottom: 16,
+            color: '#10b981',
+            fontSize: '14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <Check size={16} />
+            {successMessage}
+          </div>
+        )}
+
+        {/* Step 1: Namespace Selection */}
+        {step === 1 && (
+          <div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{
+                display: 'block',
+                marginBottom: 8,
+                fontWeight: 600,
+                fontSize: '14px',
+                color: colors.text
+              }}>
+                Select Namespace
+              </label>
+
+              {/* Custom Dropdown */}
+              <div style={{ position: 'relative' }} data-dropdown>
+                <button
+                  ref={dropdownButtonRef}
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: colors.input,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 8,
+                    color: colors.text,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '14px',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = colors.primary
+                    e.currentTarget.style.background = colors.hover
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = colors.border
+                    e.currentTarget.style.background = colors.input
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Package size={16} style={{ color: colors.primary }} />
+                    <span style={{ color: selectedNamespace ? colors.text : colors.textMuted }}>
+                      {selectedNamespace ? selectedNamespace.displayName || selectedNamespace.name : 'Select namespace...'}
+                    </span>
+                    {selectedNamespace && (
+                      <span style={{
+                        fontSize: '12px',
+                        color: colors.textSecondary,
+                        background: colors.bgSecondary,
+                        padding: '2px 8px',
+                        borderRadius: 4
+                      }}>
+                        {selectedNamespace.type}
+                      </span>
+                    )}
+                  </div>
+                  <ChevronDown
+                    size={18}
+                    style={{
+                      color: colors.textSecondary,
+                      transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.2s'
+                    }}
+                  />
+                </button>
+              </div>
+
+              <small style={{ color: colors.textSecondary, display: 'block', marginTop: 8, fontSize: '13px' }}>
+                Choose the namespace where your package will be published
+              </small>
+            </div>
+
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
+              <button
+                onClick={onClose}
+                style={{
+                  padding: '10px 20px',
+                  background: 'transparent',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 8,
+                  color: colors.textSecondary,
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = colors.hover
+                  e.currentTarget.style.color = colors.text
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.color = colors.textSecondary
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => setStep(2)}
+                disabled={!namespace}
+                style={{
+                  padding: '10px 24px',
+                  background: namespace ? colors.primary : colors.bgTertiary,
+                  border: 'none',
+                  borderRadius: 8,
+                  color: namespace ? '#ffffff' : colors.textMuted,
+                  cursor: namespace ? 'pointer' : 'not-allowed',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  transition: 'all 0.2s',
+                  opacity: namespace ? 1 : 0.5
+                }}
+                onMouseEnter={(e) => {
+                  if (namespace) {
+                    e.currentTarget.style.background = colors.primaryHover
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (namespace) {
+                    e.currentTarget.style.background = colors.primary
+                  }
+                }}
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: File Selection */}
+        {step === 2 && (
+          <div>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <label style={{
+                  fontWeight: 600,
+                  fontSize: '14px',
+                  color: colors.text
+                }}>
+                  Select Files to Include
+                </label>
+                <button
+                  onClick={toggleAll}
+                  style={{
+                    padding: '6px 12px',
+                    background: colors.bgTertiary,
+                    border: 'none',
+                    borderRadius: 6,
+                    color: colors.text,
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = colors.hover}
+                  onMouseLeave={(e) => e.currentTarget.style.background = colors.bgTertiary}
+                >
+                  {selectedFiles.length === selectableFiles.length
+                    ? 'Deselect All'
+                    : 'Select All'
+                  }
+                </button>
+              </div>
+              <div style={{
+                maxHeight: 200,
+                overflow: 'auto',
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                padding: 12,
+                background: colors.input
+              }}>
+                {isLoadingManifest ? (
+                  <div style={{ padding: 24, textAlign: 'center', color: colors.textMuted, fontSize: '14px' }}>
+                    Loading...
+                  </div>
+                ) : selectableFiles.length === 0 ? (
+                  <div style={{ padding: 24, textAlign: 'center', color: colors.textMuted, fontSize: '14px' }}>
+                    No files found in workspace.
+                  </div>
+                ) : (
+                  selectableFiles.map(file => (
+                    <label
+                      key={file.path}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '8px',
+                        cursor: 'pointer',
+                        borderRadius: 6,
+                        transition: 'background 0.15s',
+                        color: colors.text,
+                        fontSize: '14px'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = colors.hover}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedFiles.includes(file.path)}
+                        onChange={() => toggleFile(file.path)}
+                        style={{
+                          marginRight: 12,
+                          width: 16,
+                          height: 16,
+                          cursor: 'pointer'
+                        }}
+                      />
+                      <span>{file.path}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+              <small style={{ color: colors.textSecondary, display: 'block', marginTop: 8, fontSize: '13px' }}>
+                {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} selected
+              </small>
+            </div>
+
+            {/* Syntax Errors - Block packaging if .prmd files have syntax errors */}
+            {syntaxErrors.length > 0 && (
+              <div style={{
+                background: colors.error,
+                border: `1px solid ${colors.errorBorder}`,
+                borderRadius: 8,
+                padding: '12px 16px',
+                marginBottom: 20,
+                color: colors.errorText,
+                fontSize: '13px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, marginBottom: 8 }}>
+                  <AlertCircle size={16} />
+                  Syntax Errors (must fix before packaging)
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                  {syntaxErrors.map((err, i) => (
+                    <li key={i} style={{ marginBottom: 8 }}>
+                      <strong style={{ color: colors.text }}>{err.filePath}</strong>
+                      <ul style={{ margin: '4px 0 0 0', paddingLeft: 16 }}>
+                        {err.issues.map((issue, j) => (
+                          <li key={j} style={{ marginBottom: 2 }}>
+                            {issue.line && <span style={{ opacity: 0.7 }}>Line {issue.line}: </span>}
+                            {issue.message}
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Dependency Validation Errors */}
+            {validationErrors.length > 0 && (
+              <div style={{
+                background: colors.warning,
+                border: `1px solid ${colors.warningBorder}`,
+                borderRadius: 8,
+                padding: '12px 16px',
+                marginBottom: 20,
+                color: colors.warningText,
+                fontSize: '13px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, marginBottom: 8 }}>
+                  <AlertTriangle size={16} />
+                  Missing Dependencies
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                  {validationErrors.map((err, i) => (
+                    <li key={i} style={{ marginBottom: 4 }}>
+                      <strong style={{ color: colors.text }}>{err.filePath}</strong> depends on <strong style={{ color: colors.text }}>{err.missingDependency}</strong>, which is not selected.
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Main File Selection */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{
+                display: 'block',
+                marginBottom: 12,
+                fontWeight: 600,
+                fontSize: '14px',
+                color: colors.text
+              }}>
+                Select Main Entry Point
+              </label>
+              <div style={{
+                maxHeight: 150,
+                overflow: 'auto',
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                padding: 12,
+                background: colors.input
+              }}>
+                {selectedFiles.filter(f => f.endsWith('.prmd')).length === 0 ? (
+                  <div style={{ padding: 12, textAlign: 'center', color: colors.textMuted, fontSize: '13px' }}>
+                    Select at least one <code style={{ background: colors.bgTertiary, padding: '2px 4px', borderRadius: 4 }}>.prmd</code> file to choose an entry point.
+                  </div>
+                ) : (
+                  selectedFiles.filter(f => f.endsWith('.prmd')).map(file => (
+                    <label
+                      key={file}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '8px',
+                        cursor: 'pointer',
+                        borderRadius: 6,
+                        transition: 'background 0.15s',
+                        color: colors.text,
+                        fontSize: '14px'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = colors.hover}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <input
+                        type="radio"
+                        name="mainFile"
+                        checked={mainFile === file}
+                        onChange={() => setMainFile(file)}
+                        style={{
+                          marginRight: 12,
+                          width: 16,
+                          height: 16,
+                          cursor: 'pointer'
+                        }}
+                      />
+                      <span>{file}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between', marginTop: 24 }}>
+              {/* In localOnly mode, show Cancel instead of Back since there's no step 1 */}
+              {localOnly ? (
+                <button
+                  onClick={onClose}
+                  style={{
+                    padding: '10px 20px',
+                    background: 'transparent',
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 8,
+                    color: colors.textSecondary,
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = colors.hover
+                    e.currentTarget.style.color = colors.text
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent'
+                    e.currentTarget.style.color = colors.textSecondary
+                  }}
+                >
+                  Cancel
+                </button>
+              ) : (
+                <button
+                  onClick={() => setStep(1)}
+                  style={{
+                    padding: '10px 20px',
+                    background: 'transparent',
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 8,
+                    color: colors.textSecondary,
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = colors.hover
+                    e.currentTarget.style.color = colors.text
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent'
+                    e.currentTarget.style.color = colors.textSecondary
+                  }}
+                >
+                  ← Back
+                </button>
+              )}
+              {(() => {
+                const isStep2Valid = selectedFiles.length > 0 && mainFile && validationErrors.length === 0 && syntaxErrors.length === 0
+                return (
+                  <button
+                    onClick={() => setStep(3)}
+                    disabled={!isStep2Valid}
+                    style={{
+                      padding: '10px 24px',
+                      background: isStep2Valid ? colors.primary : colors.bgTertiary,
+                      border: 'none',
+                      borderRadius: 8,
+                      color: isStep2Valid ? '#ffffff' : colors.textMuted,
+                      cursor: isStep2Valid ? 'pointer' : 'not-allowed',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      transition: 'all 0.2s',
+                      opacity: isStep2Valid ? 1 : 0.5
+                    }}
+                    onMouseEnter={(e) => {
+                      if (isStep2Valid) {
+                        e.currentTarget.style.background = colors.primaryHover
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (isStep2Valid) {
+                        e.currentTarget.style.background = colors.primary
+                      }
+                    }}
+                  >
+                    Next →
+                  </button>
+                )
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Package Details */}
+        {step === 3 && (
+          <div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{
+                display: 'block',
+                marginBottom: 8,
+                fontWeight: 600,
+                fontSize: '14px',
+                color: colors.text
+              }}>
+                Package Name
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* Only show namespace prefix when not in localOnly mode */}
+                {!localOnly && namespace && (
+                  <span style={{ color: colors.textSecondary, fontSize: '14px', fontWeight: 500 }}>{namespace.startsWith('@') ? namespace : `@${namespace}`}/</span>
+                )}
+                <input
+                  value={manifest.name}
+                  onChange={e => setManifest({ ...manifest, name: e.target.value })}
+                  placeholder="my-package"
+                  style={{
+                    flex: 1,
+                    padding: '10px 12px',
+                    background: colors.input,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 8,
+                    color: colors.text,
+                    fontSize: '14px',
+                    transition: 'border-color 0.2s'
+                  }}
+                  onFocus={(e) => e.currentTarget.style.borderColor = colors.primary}
+                  onBlur={(e) => e.currentTarget.style.borderColor = colors.border}
+                />
+              </div>
+            </div>
+
+            {/* Version Input */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{
+                display: 'block',
+                marginBottom: 8,
+                fontWeight: 600,
+                fontSize: '14px',
+                color: colors.text
+              }}>
+                Version
+                {latestRegistryVersion ? (
+                  <span style={{
+                    marginLeft: 10,
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(139, 92, 246, 0.15))',
+                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                    padding: '3px 10px',
+                    borderRadius: 6
+                  }}>
+                    <span style={{ color: colors.textSecondary }}>latest:</span>
+                    <span style={{ color: colors.primary, marginLeft: 4 }}>{latestRegistryVersion}</span>
+                  </span>
+                ) : !localOnly && namespace && manifest.name ? (
+                  <span style={{
+                    marginLeft: 10,
+                    fontSize: '11px',
+                    fontWeight: 500,
+                    color: colors.textMuted,
+                    fontStyle: 'italic'
+                  }}>
+                    (new package)
+                  </span>
+                ) : null}
+              </label>
+              <VersionInput
+                value={manifest.version}
+                onChange={(version) => setManifest({ ...manifest, version })}
+                colors={colors}
+              />
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{
+                display: 'block',
+                marginBottom: 8,
+                fontWeight: 600,
+                fontSize: '14px',
+                color: colors.text
+              }}>
+                Description
+              </label>
+              <textarea
+                value={manifest.description}
+                onChange={e => setManifest({ ...manifest, description: e.target.value })}
+                placeholder="Describe your package..."
+                rows={4}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  background: colors.input,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 8,
+                  color: colors.text,
+                  fontSize: '14px',
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                  transition: 'border-color 0.2s'
+                }}
+                onFocus={(e) => e.currentTarget.style.borderColor = colors.primary}
+                onBlur={(e) => e.currentTarget.style.borderColor = colors.border}
+              />
+              <small style={{ color: colors.textSecondary, display: 'block', marginTop: 8, fontSize: '13px' }}>
+                At least 10 characters
+              </small>
+            </div>
+
+            {/* Publishing Status Overlay */}
+            {(publishStatus === 'creating' || publishStatus === 'uploading' || publishStatus === 'success') && (
+              <div style={{
+                background: publishStatus === 'success' ? 'rgba(16, 185, 129, 0.1)' : colors.bgSecondary,
+                border: `1px solid ${publishStatus === 'success' ? colors.success : colors.border}`,
+                borderRadius: 12,
+                padding: 24,
+                marginBottom: 20,
+                textAlign: 'center'
+              }}>
+                {publishStatus === 'creating' && (
+                  <>
+                    <div style={{
+                      width: 48,
+                      height: 48,
+                      margin: '0 auto 16px',
+                      border: `3px solid ${colors.border}`,
+                      borderTopColor: colors.primary,
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite'
+                    }} />
+                    <div style={{ fontSize: '16px', fontWeight: 600, color: colors.text, marginBottom: 8 }}>
+                      Creating Package...
+                    </div>
+                    <div style={{ fontSize: '14px', color: colors.textSecondary }}>
+                      Bundling {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''}
+                    </div>
+                  </>
+                )}
+                {publishStatus === 'uploading' && (
+                  <>
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{
+                        width: '100%',
+                        height: 8,
+                        background: colors.bgTertiary,
+                        borderRadius: 4,
+                        overflow: 'hidden'
+                      }}>
+                        <div style={{
+                          width: `${progress}%`,
+                          height: '100%',
+                          background: `linear-gradient(90deg, ${colors.primary}, ${colors.primaryHover})`,
+                          borderRadius: 4,
+                          transition: 'width 0.3s ease'
+                        }} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 600, color: colors.text, marginBottom: 8 }}>
+                      Publishing to Registry...
+                    </div>
+                    <div style={{ fontSize: '14px', color: colors.textSecondary }}>
+                      {progress < 100 ? `Uploading... ${Math.round(progress)}%` : 'Finalizing...'}
+                    </div>
+                  </>
+                )}
+                {publishStatus === 'success' && (
+                  <>
+                    <div style={{
+                      width: 48,
+                      height: 48,
+                      margin: '0 auto 16px',
+                      background: colors.success,
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <Check size={28} color="#ffffff" />
+                    </div>
+                    <div style={{ fontSize: '18px', fontWeight: 600, color: colors.success, marginBottom: 8 }}>
+                      Published Successfully!
+                    </div>
+                    <div style={{ fontSize: '14px', color: colors.text, marginBottom: 4 }}>
+                      {getFullPackageName()}@{manifest.version}
+                    </div>
+                    <div style={{ fontSize: '13px', color: colors.textSecondary }}>
+                      Closing in 2 seconds...
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* CSS for spinner animation */}
+            <style>{`
+              @keyframes spin {
+                to { transform: rotate(360deg); }
+              }
+            `}</style>
+
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between', marginTop: 24 }}>
+              <button
+                onClick={() => setStep(2)}
+                disabled={isWorking}
+                style={{
+                  padding: '10px 20px',
+                  background: 'transparent',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 8,
+                  color: colors.textSecondary,
+                  cursor: isWorking ? 'not-allowed' : 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                  transition: 'all 0.2s',
+                  opacity: isWorking ? 0.5 : 1
+                }}
+                onMouseEnter={(e) => {
+                  if (!isWorking) e.currentTarget.style.background = colors.hover
+                }}
+                onMouseLeave={(e) => {
+                  if (!isWorking) e.currentTarget.style.background = 'transparent'
+                }}
+              >
+                ← Back
+              </button>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button
+                  onClick={handleSaveManifest}
+                  disabled={!isStep3Valid || isWorking}
+                  style={{
+                    padding: '10px 20px',
+                    background: 'transparent',
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 8,
+                    color: isStep3Valid ? colors.textSecondary : colors.textMuted,
+                    cursor: isStep3Valid && !isWorking ? 'pointer' : 'not-allowed',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    transition: 'all 0.2s',
+                    opacity: isStep3Valid && !isWorking ? 1 : 0.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                  onMouseEnter={(e) => { if (isStep3Valid && !isWorking) { e.currentTarget.style.background = colors.hover; e.currentTarget.style.color = colors.text; } }}
+                  onMouseLeave={(e) => { if (isStep3Valid && !isWorking) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = colors.textSecondary; } }}
+                >
+                  <Save size={16} style={{ marginRight: 8 }} />
+                  Save Manifest
+                </button>
+                <button
+                  onClick={handleCreatePackage}
+                  disabled={!isStep3Valid || isWorking}
+                  style={{
+                    padding: '10px 20px',
+                    background: isStep3Valid ? colors.success : colors.bgTertiary,
+                    border: 'none',
+                    borderRadius: 8,
+                    color: isStep3Valid ? '#ffffff' : colors.textMuted,
+                    cursor: isStep3Valid ? 'pointer' : 'not-allowed',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    transition: 'all 0.2s',
+                    opacity: isStep3Valid ? 1 : 0.5
+                  }}
+                  onMouseEnter={(e) => { if (isStep3Valid) e.currentTarget.style.background = colors.successHover }}
+                  onMouseLeave={(e) => { if (isStep3Valid) e.currentTarget.style.background = colors.success }}
+                >
+                  📥 Download .pdpkg
+                </button>
+                {/* Hide publish button in localOnly mode */}
+                {!localOnly && (
+                  <button
+                    onClick={handlePublish}
+                    disabled={!isStep3Valid || isWorking}
+                    style={{
+                      padding: '10px 24px',
+                      background: isStep3Valid ? colors.primary : colors.bgTertiary,
+                      border: 'none',
+                      borderRadius: 8,
+                      color: isStep3Valid ? '#ffffff' : colors.textMuted,
+                      cursor: isStep3Valid ? 'pointer' : 'not-allowed',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      transition: 'all 0.2s',
+                      opacity: isStep3Valid ? 1 : 0.5
+                    }}
+                    onMouseEnter={(e) => { if (isStep3Valid) e.currentTarget.style.background = colors.primaryHover }}
+                    onMouseLeave={(e) => { if (isStep3Valid) e.currentTarget.style.background = colors.primary }}
+                  >
+                    🚀 Publish to Registry
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Dropdown Portal */}
+      {dropdownOpen && createPortal(
+        <div
+          data-dropdown-portal
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            top: dropdownPosition.top,
+            left: dropdownPosition.left,
+            width: dropdownPosition.width,
+            background: colors.bg,
+            border: `1px solid ${colors.border}`,
+            borderRadius: 8,
+            boxShadow: theme === 'dark' ? '0 10px 30px rgba(0, 0, 0, 0.5)' : '0 10px 30px rgba(0, 0, 0, 0.15)',
+            maxHeight: 300,
+            overflow: 'auto',
+            zIndex: 10001
+          }}
+        >
+          {namespaces.map(ns => (
+            <button
+              key={ns.name}
+              onClick={() => {
+                setNamespace(ns.name)
+                setDropdownOpen(false)
+              }}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                background: namespace === ns.name ? colors.hover : 'transparent',
+                border: 'none',
+                textAlign: 'left',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                color: colors.text,
+                fontSize: '14px',
+                transition: 'all 0.15s'
+              }}
+              onMouseEnter={(e) => { if (namespace !== ns.name) e.currentTarget.style.background = colors.hover }}
+              onMouseLeave={(e) => { if (namespace !== ns.name) e.currentTarget.style.background = 'transparent' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Package size={16} style={{ color: colors.primary }} />
+                <div>
+                  <div style={{ fontWeight: namespace === ns.name ? 600 : 400 }}>
+                    {ns.displayName || ns.name}
+                  </div>
+                  {ns.description && (
+                    <div style={{ fontSize: '12px', color: colors.textSecondary, marginTop: 2 }}>
+                      {ns.description}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{
+                  fontSize: '11px',
+                  color: colors.textSecondary,
+                  background: colors.bgSecondary,
+                  padding: '2px 6px',
+                  borderRadius: 4,
+                  textTransform: 'uppercase'
+                }}>
+                  {ns.type}
+                </span>
+                {namespace === ns.name && <Check size={16} style={{ color: colors.primary }} />}
+              </div>
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  )
+}

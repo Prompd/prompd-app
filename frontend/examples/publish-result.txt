@@ -1,0 +1,8 @@
+Publishing @prompd/public-examples@1.1.0...
+Package: dist\public-examples-1.1.0.pdpkg
+Registry: prompdhub (https://registry.prompdhub.ai)
+Namespace: @prompd (current)
+Size: 21,972 bytes
+Uploading...
+SUCCESS Published @prompd/public-examples@1.1.0
+  Registry: prompdhub

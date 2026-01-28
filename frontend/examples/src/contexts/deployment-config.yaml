@@ -1,0 +1,57 @@
+# Example deployment configuration for system admin context
+deployment:
+  strategy: blue-green
+  healthcheck:
+    endpoint: /health
+    timeout: 30s
+    interval: 10s
+
+environments:
+  production:
+    replicas: 3
+    resources:
+      cpu: "2000m"
+      memory: "4Gi"
+    autoscaling:
+      enabled: true
+      min: 3
+      max: 10
+      cpu_threshold: 70
+
+  staging:
+    replicas: 2
+    resources:
+      cpu: "1000m"
+      memory: "2Gi"
+    autoscaling:
+      enabled: false
+
+  development:
+    replicas: 1
+    resources:
+      cpu: "500m"
+      memory: "1Gi"
+    autoscaling:
+      enabled: false
+
+monitoring:
+  alerts:
+    - name: high_error_rate
+      condition: error_rate > 5%
+      severity: critical
+    - name: high_latency
+      condition: p95_latency > 1000ms
+      severity: warning
+    - name: low_availability
+      condition: uptime < 99.9%
+      severity: critical
+
+backup:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention:
+    daily: 7
+    weekly: 4
+    monthly: 12
+  storage:
+    type: s3
+    encryption: AES256

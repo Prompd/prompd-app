@@ -1,0 +1,17 @@
+/* ============================================== */
+/* Clerk Component Styling */
+/* ============================================== */
+
+/*
+  NOTE: All Clerk component styling is now handled via the appearance API
+  in the respective components (e.g., UserButton in EditorHeader.tsx).
+
+  This approach provides:
+  - Better type safety
+  - Theme-aware styling
+  - No CSS specificity conflicts
+  - Direct control over Clerk's styling system
+
+  If you need to add additional Clerk components (SignIn, SignUp, etc.),
+  use the appearance prop with the same theme-based configuration pattern.
+*/

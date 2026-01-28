@@ -1,0 +1,484 @@
+const { contextBridge, ipcRenderer } = require('electron')
+
+// Expose protected methods that allow the renderer process to use
+// ipcRenderer without exposing the entire object
+contextBridge.exposeInMainWorld('electronAPI', {
+  // System info (via IPC - os module not available in sandbox)
+  getHomePath: () => ipcRenderer.invoke('system:getHomePath'),
+
+  // Environment variables (filtered by prefix for security)
+  // Only PROMPD_* vars are exposed - returns { VAR_NAME: value } with prefix stripped
+  getSystemEnvVars: (prefix) => ipcRenderer.invoke('env:getFiltered', prefix),
+  // File dialogs
+  openFile: () => ipcRenderer.invoke('dialog:openFile'),
+  openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
+  saveFile: (defaultPath) => ipcRenderer.invoke('dialog:saveFile', defaultPath),
+  selectFileFromWorkspace: (workspacePath, title) => ipcRenderer.invoke('dialog:selectFileFromWorkspace', workspacePath, title),
+
+  // File system operations
+  readFile: (filePath) => ipcRenderer.invoke('fs:readFile', filePath),
+  readBinaryFile: (filePath) => ipcRenderer.invoke('fs:readBinaryFile', filePath),
+  writeFile: (filePath, content) => ipcRenderer.invoke('fs:writeFile', filePath, content),
+  readDir: (dirPath) => ipcRenderer.invoke('fs:readDir', dirPath),
+  createDir: (dirPath) => ipcRenderer.invoke('fs:createDir', dirPath),
+  rename: (oldPath, newPath) => ipcRenderer.invoke('fs:rename', oldPath, newPath),
+  delete: (targetPath, options) => ipcRenderer.invoke('fs:delete', targetPath, options),
+
+  // Shell operations (reveal in explorer, open folder, open URL)
+  showItemInFolder: (itemPath) => ipcRenderer.invoke('shell:showItemInFolder', itemPath),
+  openPath: (folderPath) => ipcRenderer.invoke('shell:openPath', folderPath),
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+
+  // Git operations
+  runGitCommand: (args, cwd) => ipcRenderer.invoke('git:runCommand', args, cwd),
+  findGitRoot: (startPath) => ipcRenderer.invoke('git:findRoot', startPath),
+
+  // API requests (bypasses CORS by using main process)
+  apiRequest: (url, options) => ipcRenderer.invoke('api:request', url, options),
+
+  // Connection testing
+  testSSHConnection: (config) => ipcRenderer.invoke('connection:testSSH', config),
+  testDatabaseConnection: (config) => ipcRenderer.invoke('connection:testDatabase', config),
+  testMCPConnection: (config) => ipcRenderer.invoke('connection:testMCP', config),
+
+  // Agent command execution (for AI agent tool calls)
+  runCommand: (command, cwd) => ipcRenderer.invoke('agent:runCommand', command, cwd),
+
+  // Get current working directory (for git operations)
+  getWorkspacePath: () => ipcRenderer.invoke('workspace:getPath'),
+  setWorkspacePath: (path) => ipcRenderer.invoke('workspace:setPath', path),
+
+  // Window focus (fix for input fields becoming readonly after native dialogs)
+  focusWindow: () => ipcRenderer.invoke('window:focus'),
+
+  // Deep linking and file associations
+  getPendingFile: () => ipcRenderer.invoke('app:getPendingFile'),
+  getPendingProtocolUrl: () => ipcRenderer.invoke('app:getPendingProtocolUrl'),
+  onFileOpen: (callback) => {
+    const handler = (event, filePath) => callback(filePath)
+    ipcRenderer.on('file-open', handler)
+    return () => ipcRenderer.removeListener('file-open', handler)
+  },
+  onProtocolUrl: (callback) => {
+    const handler = (event, url) => callback(url)
+    ipcRenderer.on('protocol-url', handler)
+    return () => ipcRenderer.removeListener('protocol-url', handler)
+  },
+
+  // Menu events (from Electron menu bar)
+  // Each returns an unsubscribe function for cleanup
+  // Prompd menu
+  onMenuApiKeys: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-api-keys', handler)
+    return () => ipcRenderer.removeListener('menu-api-keys', handler)
+  },
+  onMenuSettings: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-settings', handler)
+    return () => ipcRenderer.removeListener('menu-settings', handler)
+  },
+  onMenuSchedulerSettings: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-scheduler-settings', handler)
+    return () => ipcRenderer.removeListener('menu-scheduler-settings', handler)
+  },
+  onMenuSchedulerService: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-scheduler-service', handler)
+    return () => ipcRenderer.removeListener('menu-scheduler-service', handler)
+  },
+  onMenuAbout: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-about', handler)
+    return () => ipcRenderer.removeListener('menu-about', handler)
+  },
+  // Project menu
+  onMenuNewFile: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-new-file', handler)
+    return () => ipcRenderer.removeListener('menu-new-file', handler)
+  },
+  onMenuOpenFile: (callback) => {
+    const handler = (event, filePath) => callback(filePath)
+    ipcRenderer.on('menu-open-file', handler)
+    return () => ipcRenderer.removeListener('menu-open-file', handler)
+  },
+  onMenuOpenFolder: (callback) => {
+    const handler = (event, folderPath) => callback(folderPath)
+    ipcRenderer.on('menu-open-folder', handler)
+    return () => ipcRenderer.removeListener('menu-open-folder', handler)
+  },
+  onMenuCloseFolder: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-close-folder', handler)
+    return () => ipcRenderer.removeListener('menu-close-folder', handler)
+  },
+  onMenuCloseTab: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-close-tab', handler)
+    return () => ipcRenderer.removeListener('menu-close-tab', handler)
+  },
+  onMenuCloseAllTabs: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-close-all-tabs', handler)
+    return () => ipcRenderer.removeListener('menu-close-all-tabs', handler)
+  },
+  onMenuOpenProject: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-open-project', handler)
+    return () => ipcRenderer.removeListener('menu-open-project', handler)
+  },
+  onMenuSave: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-save', handler)
+    return () => ipcRenderer.removeListener('menu-save', handler)
+  },
+  onMenuSaveAs: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-save-as', handler)
+    return () => ipcRenderer.removeListener('menu-save-as', handler)
+  },
+  onMenuSaveProject: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-save-project', handler)
+    return () => ipcRenderer.removeListener('menu-save-project', handler)
+  },
+  onMenuManageProjects: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-manage-projects', handler)
+    return () => ipcRenderer.removeListener('menu-manage-projects', handler)
+  },
+  // Package menu
+  onMenuPackageCreate: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-package-create', handler)
+    return () => ipcRenderer.removeListener('menu-package-create', handler)
+  },
+  onMenuPackagePublish: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-package-publish', handler)
+    return () => ipcRenderer.removeListener('menu-package-publish', handler)
+  },
+  onMenuPackageInstall: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-package-install', handler)
+    return () => ipcRenderer.removeListener('menu-package-install', handler)
+  },
+  // Run menu
+  onMenuRunExecute: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-run-execute', handler)
+    return () => ipcRenderer.removeListener('menu-run-execute', handler)
+  },
+  onMenuRunInstall: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-run-install', handler)
+    return () => ipcRenderer.removeListener('menu-run-install', handler)
+  },
+  onMenuRunStop: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-run-stop', handler)
+    return () => ipcRenderer.removeListener('menu-run-stop', handler)
+  },
+  // View menu
+  onMenuToggleSidebar: (callback) => {
+    const handler = (event, panel) => callback(panel)
+    ipcRenderer.on('menu-toggle-sidebar', handler)
+    return () => ipcRenderer.removeListener('menu-toggle-sidebar', handler)
+  },
+  onMenuSetViewMode: (callback) => {
+    const handler = (event, mode) => callback(mode)
+    ipcRenderer.on('menu-set-view-mode', handler)
+    return () => ipcRenderer.removeListener('menu-set-view-mode', handler)
+  },
+  onMenuToggleTheme: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-toggle-theme', handler)
+    return () => ipcRenderer.removeListener('menu-toggle-theme', handler)
+  },
+  onMenuToggleOutputPanel: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-toggle-output-panel', handler)
+    return () => ipcRenderer.removeListener('menu-toggle-output-panel', handler)
+  },
+  onMenuCommandPalette: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-command-palette', handler)
+    return () => ipcRenderer.removeListener('menu-command-palette', handler)
+  },
+  // Clerk OAuth authentication
+  auth: {
+    startOAuth: () => ipcRenderer.invoke('auth:startOAuth'),
+    exchangeCode: (code) => ipcRenderer.invoke('auth:exchangeCode', code),
+    getConfig: () => ipcRenderer.invoke('auth:getConfig'),
+    signOut: (idToken) => ipcRenderer.invoke('auth:signOut', idToken)
+  },
+
+  // App control
+  showMenu: () => ipcRenderer.invoke('app:showMenu'),
+  updateMenuState: (state) => ipcRenderer.invoke('app:updateMenuState', state),
+
+  // Hotkey management - sync user-customized hotkeys to Electron menu accelerators
+  updateHotkeys: (accelerators) => ipcRenderer.invoke('app:updateHotkeys', accelerators),
+
+  // Power/sleep events (to prevent unwanted reloads on wake)
+  onPowerSuspend: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('power-suspend', handler)
+    return () => ipcRenderer.removeListener('power-suspend', handler)
+  },
+  onPowerResume: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('power-resume', handler)
+    return () => ipcRenderer.removeListener('power-resume', handler)
+  },
+  onPowerLock: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('power-lock', handler)
+    return () => ipcRenderer.removeListener('power-lock', handler)
+  },
+  onPowerUnlock: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('power-unlock', handler)
+    return () => ipcRenderer.removeListener('power-unlock', handler)
+  },
+
+  // Platform info
+  platform: process.platform,
+  isElectron: true,
+
+  // Slash command execution (uses @prompd/cli in main process)
+  executeSlashCommand: (commandId, args, context) =>
+    ipcRenderer.invoke('slashCommand:execute', commandId, args, context),
+  listPrmdFiles: (workspacePath) =>
+    ipcRenderer.invoke('slashCommand:listPrmdFiles', workspacePath),
+
+  // Config management (reads/writes ~/.prompd/config.yaml)
+  // Shared config with @prompd/cli - same format, same locations
+  config: {
+    // Load merged config following hierarchy: env > local > global > defaults
+    load: (workspacePath) => ipcRenderer.invoke('config:load', workspacePath),
+
+    // Save config to file (location: 'global' | 'local')
+    save: (config, location, workspacePath) =>
+      ipcRenderer.invoke('config:save', config, location, workspacePath),
+
+    // Get API key for a provider (checks env vars first, then config)
+    getApiKey: (provider, workspacePath) =>
+      ipcRenderer.invoke('config:getApiKey', provider, workspacePath),
+
+    // Set API key for a provider (always saves to global config)
+    setApiKey: (provider, apiKey) =>
+      ipcRenderer.invoke('config:setApiKey', provider, apiKey),
+
+    // Get registry URL from config
+    getRegistryUrl: (registryName, workspacePath) =>
+      ipcRenderer.invoke('config:getRegistryUrl', registryName, workspacePath),
+
+    // Get list of configured providers with their status
+    getProviders: (workspacePath) =>
+      ipcRenderer.invoke('config:getProviders', workspacePath),
+
+    // Clear config cache (force reload on next access)
+    clearCache: () => ipcRenderer.invoke('config:clearCache')
+  },
+
+  // Local compilation using @prompd/cli library
+  // Compiles prompts without needing the backend
+  compiler: {
+    // Compile a prompt to specified format
+    // options: { format, parameters, files, registryUrl, verbose }
+    compile: (content, options) =>
+      ipcRenderer.invoke('compiler:compile', content, options),
+
+    // Compile with detailed context (errors, warnings, stages, dependencies)
+    compileWithContext: (content, options) =>
+      ipcRenderer.invoke('compiler:compileWithContext', content, options),
+
+    // Validate a prompt without full compilation
+    validate: (content) =>
+      ipcRenderer.invoke('compiler:validate', content),
+
+    // Get structured diagnostics from full compilation
+    // Returns: { success, diagnostics[], hasErrors, errorCount, warningCount }
+    // Each diagnostic: { message, severity, source?, line?, column?, endLine?, endColumn?, code? }
+    getDiagnostics: (content, options) =>
+      ipcRenderer.invoke('compiler:getDiagnostics', content, options),
+
+    // Get compiler version and capabilities
+    info: () =>
+      ipcRenderer.invoke('compiler:info')
+  },
+
+  // Local package creation using @prompd/cli library
+  // Creates .pdpkg packages without needing the backend
+  package: {
+    // Create package from prompd.json in workspace
+    // Returns: { success, outputPath?, fileName?, size?, fileCount?, message?, error? }
+    createLocal: (workspacePath, outputDir) =>
+      ipcRenderer.invoke('package:createLocal', workspacePath, outputDir),
+
+    // Install all dependencies from prompd.json
+    // Returns: { success, message, installed: [{name, version, status}], failed?: [{name, version, error}] }
+    installAll: (workspacePath) =>
+      ipcRenderer.invoke('package:installAll', workspacePath)
+  },
+
+  // Trigger service - background workflow execution management
+  // Handles scheduled (cron), webhook, and file-watch triggers
+  trigger: {
+    // Register a workflow trigger configuration
+    // config: { workflowId, workflowPath, triggerType, enabled, schedule?, webhook?, fileWatch? }
+    register: (config) => ipcRenderer.invoke('trigger:register', config),
+
+    // Unregister a workflow trigger
+    unregister: (workflowId) => ipcRenderer.invoke('trigger:unregister', workflowId),
+
+    // Enable or disable a trigger without removing it
+    setEnabled: (workflowId, enabled) => ipcRenderer.invoke('trigger:setEnabled', workflowId, enabled),
+
+    // List all registered triggers
+    // Returns: Array of trigger configs with status
+    list: () => ipcRenderer.invoke('trigger:list'),
+
+    // Get status of a specific trigger
+    // Returns: { enabled, lastTriggered, lastStatus, nextRun?, activeExecution? }
+    status: (workflowId) => ipcRenderer.invoke('trigger:status', workflowId),
+
+    // Get execution history for a workflow
+    // Returns: Array of { executionId, startTime, endTime, status, error? }
+    history: (workflowId, limit) => ipcRenderer.invoke('trigger:history', workflowId, limit),
+
+    // Get webhook server info
+    // Returns: { running, port, endpoints: [{ path, workflowId }] }
+    webhookServerInfo: () => ipcRenderer.invoke('trigger:webhookServerInfo'),
+
+    // Get tray state summary
+    // Returns: { activeWorkflows, scheduledTriggers, fileWatchers, webhookServerRunning, webhookPort, nextScheduledRun }
+    trayState: () => ipcRenderer.invoke('trigger:trayState'),
+
+    // Update trigger service settings
+    // settings: { webhookPort?, maxConcurrentExecutions?, notificationsEnabled?, minimizeToTray? }
+    updateSettings: (settings) => ipcRenderer.invoke('trigger:updateSettings', settings),
+
+    // Open file dialog to add a workflow, reads trigger config from file
+    // Returns: { success, workflowId?, triggerConfig?, error? }
+    addWorkflow: () => ipcRenderer.invoke('trigger:addWorkflow'),
+
+    // Manually run a workflow (for testing)
+    runManually: (workflowId) => ipcRenderer.invoke('trigger:runManually', workflowId)
+  },
+
+  // Scheduler service - persistent cron-based workflow scheduling
+  // Handles scheduled workflows with SQLite persistence across app restarts
+  scheduler: {
+    // Get all schedules with optional filters
+    // filters: { enabled?, workflowId? }
+    // Returns: { success, schedules?, error? }
+    getSchedules: (filters) => ipcRenderer.invoke('scheduler:getSchedules', filters),
+
+    // Add a new schedule
+    // config: { workflowId, workflowPath, name, cronExpression, timezone?, enabled?, parameters? }
+    // Returns: { success, scheduleId?, error? }
+    addSchedule: (config) => ipcRenderer.invoke('scheduler:addSchedule', config),
+
+    // Update a schedule
+    // Returns: { success, error? }
+    updateSchedule: (scheduleId, updates) => ipcRenderer.invoke('scheduler:updateSchedule', scheduleId, updates),
+
+    // Delete a schedule
+    // Returns: { success, error? }
+    deleteSchedule: (scheduleId) => ipcRenderer.invoke('scheduler:deleteSchedule', scheduleId),
+
+    // Execute a schedule immediately (manual trigger)
+    // Returns: { success, result?, error? }
+    executeNow: (scheduleId) => ipcRenderer.invoke('scheduler:executeNow', scheduleId),
+
+    // Get execution history
+    // workflowId: Optional workflow ID filter
+    // options: { limit?, offset? }
+    // Returns: { success, history?, error? }
+    getHistory: (workflowId, options) => ipcRenderer.invoke('scheduler:getHistory', workflowId, options),
+
+    // Get next N run times for a schedule
+    // Returns: { success, times?, error? } where times is array of Date timestamps
+    getNextRunTimes: (scheduleId, count) => ipcRenderer.invoke('scheduler:getNextRunTimes', scheduleId, count)
+  },
+
+  // Trigger service events (from main process to renderer)
+  onTriggerExecutionStart: (callback) => {
+    const handler = (event, data) => callback(data)
+    ipcRenderer.on('trigger:execution-start', handler)
+    return () => ipcRenderer.removeListener('trigger:execution-start', handler)
+  },
+  onTriggerExecutionComplete: (callback) => {
+    const handler = (event, data) => callback(data)
+    ipcRenderer.on('trigger:execution-complete', handler)
+    return () => ipcRenderer.removeListener('trigger:execution-complete', handler)
+  },
+  onTriggerStatusChange: (callback) => {
+    const handler = (event, data) => callback(data)
+    ipcRenderer.on('trigger:status-change', handler)
+    return () => ipcRenderer.removeListener('trigger:status-change', handler)
+  },
+
+  // Tray events (user interactions from tray menu)
+  onTrayShowWorkflows: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('tray:show-workflows', handler)
+    return () => ipcRenderer.removeListener('tray:show-workflows', handler)
+  },
+  onTrayShowExecution: (callback) => {
+    const handler = (event, executionId) => callback(executionId)
+    ipcRenderer.on('tray:show-execution', handler)
+    return () => ipcRenderer.removeListener('tray:show-execution', handler)
+  },
+
+  // Service management (for standalone scheduler service)
+  startService: () => ipcRenderer.invoke('service:start'),
+  stopService: () => ipcRenderer.invoke('service:stop'),
+  restartService: () => ipcRenderer.invoke('service:restart'),
+  getServiceStatus: () => ipcRenderer.invoke('service:getStatus'),
+  saveServiceConfig: (config) => ipcRenderer.invoke('service:saveConfig', config),
+  loadServiceConfig: () => ipcRenderer.invoke('service:loadConfig'),
+
+  // Workflow execution (proxies to @prompd/cli in main process)
+  workflow: {
+    // Execute a workflow (non-blocking, uses events for live updates)
+    // workflow: ParsedWorkflow object
+    // params: Execution parameters
+    // options: Serializable options only (executionMode, breakpoints array)
+    // Returns: Promise<{ executionId: string }> - resolves when execution starts
+    execute: (workflow, params, options) => ipcRenderer.invoke('workflow:execute', workflow, params, options),
+
+    // Listen to workflow execution events (single event loop with type-based routing)
+    // Event types: 'node-start', 'node-complete', 'node-error', 'progress', 'checkpoint', 'complete', 'error'
+    // callback: (event) => void where event = { type, executionId, nodeId?, data?, timestamp }
+    // Returns: cleanup function to remove listener
+    onEvent: (callback) => {
+      const handler = (_event, data) => callback(data)
+      ipcRenderer.on('workflow:event', handler)
+      return () => ipcRenderer.removeListener('workflow:event', handler)
+    },
+
+    // Cancel running execution
+    // executionId: ID returned from execute()
+    cancel: (executionId) => ipcRenderer.invoke('workflow:cancel', executionId),
+
+    // Download execution trace to file
+    // trace: ExecutionTrace object
+    // filename: Optional custom filename
+    downloadTrace: (trace, filename) => ipcRenderer.invoke('workflow:downloadTrace', trace, filename),
+
+    // Respond to user input request (bidirectional IPC)
+    // requestId: ID from user-input-request event
+    // response: UserInputResponse object
+    respondToUserInput: (requestId, response) => ipcRenderer.invoke('workflow:user-input-response', requestId, response),
+
+    // Respond to checkpoint request (bidirectional IPC)
+    // requestId: ID from checkpoint-request event
+    // shouldContinue: boolean - whether to continue execution
+    respondToCheckpoint: (requestId, shouldContinue) => ipcRenderer.invoke('workflow:checkpoint-response', requestId, shouldContinue)
+  }
+})
