@@ -4099,7 +4099,7 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
 
             // Get API key
             const config = await configManager.load()
-            const apiKey = config.api_keys?.[provider] || process.env[`${provider.toUpperCase()}_API_KEY`]
+            const apiKey = config.apiKeys?.[provider] || process.env[`${provider.toUpperCase()}_API_KEY`]
 
             if (!apiKey) {
               throw new Error(`No API key found for provider: ${provider}`)
@@ -4136,7 +4136,7 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
 
             // Get API key from config
             const config = await configManager.load()
-            const apiKey = config.api_keys?.[request.provider] || process.env[`${request.provider.toUpperCase()}_API_KEY`]
+            const apiKey = config.apiKeys?.[request.provider] || process.env[`${request.provider.toUpperCase()}_API_KEY`]
 
             if (!apiKey) {
               return {
@@ -4195,6 +4195,175 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
             console.error('[Workflow Executor] onPromptExecute failed:', err)
             return {
               success: false,
+              error: err.message || 'Unknown error'
+            }
+          }
+        },
+        // Command execution for workflow Command nodes
+        onToolCall: async (request) => {
+          try {
+            console.log(`[Workflow Executor] Tool call request: ${request.toolType}`)
+
+            // Only handle 'command' tool type
+            if (request.toolType !== 'command') {
+              return {
+                success: false,
+                error: `Unsupported tool type: ${request.toolType}. Only 'command' is supported.`
+              }
+            }
+
+            // Extract command from commandConfig
+            if (!request.commandConfig) {
+              return {
+                success: false,
+                error: 'Missing command configuration'
+              }
+            }
+
+            let { executable, args, cwd } = request.commandConfig
+            const command = `${executable} ${args || ''}`.trim()
+
+            // Validate command
+            if (!command || !executable) {
+              return { success: false, result: 'Missing command executable', error: 'Missing command executable' }
+            }
+
+            // Parse command into executable and args
+            const parts = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []
+            if (parts.length === 0) {
+              return { success: false, result: 'Empty command', error: 'Empty command' }
+            }
+
+            executable = parts[0].toLowerCase()
+            args = parts.slice(1).map(arg => {
+              // Remove surrounding quotes if present
+              if ((arg.startsWith('"') && arg.endsWith('"')) || (arg.startsWith("'") && arg.endsWith("'"))) {
+                return arg.slice(1, -1)
+              }
+              return arg
+            })
+
+            // Whitelist of allowed executables for security
+            const allowedExecutables = [
+              'npm', 'npx', 'node',
+              'yarn', 'pnpm',
+              'git',
+              'tsc', 'typescript',
+              'eslint', 'prettier',
+              'python', 'python3', 'pip',
+              'prompd',
+              'mkdir', 'rmdir',
+              'dotnet',
+              'echo', 'type', 'dir', 'ls',
+              'cat', 'head', 'tail',
+              'where', 'which',
+              'whoami', 'hostname',
+            ]
+
+            if (!allowedExecutables.includes(executable)) {
+              return {
+                success: false,
+                result: `Command '${executable}' not allowed. Allowed: ${allowedExecutables.join(', ')}`,
+                error: `Command '${executable}' not allowed`
+              }
+            }
+
+            // Validate all arguments for security
+            for (const arg of args) {
+              if (arg.includes('..')) {
+                return { success: false, result: 'Path traversal (..) not allowed in arguments', error: 'Path traversal not allowed' }
+              }
+              if (arg.startsWith('~')) {
+                return { success: false, result: 'Home directory (~) expansion not allowed', error: 'Home directory expansion not allowed' }
+              }
+              const dangerousChars = [';', '&', '|', '`', '$', '(', ')', '<', '>']
+              for (const char of dangerousChars) {
+                if (arg.includes(char)) {
+                  return { success: false, result: `Shell metacharacter '${char}' not allowed in arguments`, error: `Shell metacharacter '${char}' not allowed` }
+                }
+              }
+            }
+
+            // Determine working directory
+            const workingDir = cwd || currentWorkspacePath || process.cwd()
+
+            // Validate working directory exists
+            try {
+              const stats = await fs.promises.stat(workingDir)
+              if (!stats.isDirectory()) {
+                return { success: false, result: 'Working directory is not a directory', error: 'Working directory is not a directory' }
+              }
+            } catch (error) {
+              return { success: false, result: `Working directory does not exist: ${workingDir}`, error: `Working directory does not exist: ${workingDir}` }
+            }
+
+            // Execute command
+            return await new Promise((resolve) => {
+              let executablePath = executable
+              let spawnArgs = args
+              let useShell = false
+
+              // Windows-specific handling
+              if (process.platform === 'win32') {
+                if (['npm', 'npx', 'yarn', 'pnpm', 'tsc', 'eslint', 'prettier'].includes(executable)) {
+                  executablePath = `${executable}.cmd`
+                }
+                else if (['echo', 'type', 'dir', 'mkdir', 'rmdir', 'where'].includes(executable)) {
+                  executablePath = 'cmd.exe'
+                  spawnArgs = ['/c', executable, ...args]
+                }
+              }
+
+              const childProcess = spawn(executablePath, spawnArgs, {
+                cwd: workingDir,
+                shell: useShell,
+                env: { ...process.env }
+              })
+
+              let stdout = ''
+              let stderr = ''
+
+              childProcess.stdout.on('data', (data) => {
+                stdout += data.toString()
+              })
+
+              childProcess.stderr.on('data', (data) => {
+                stderr += data.toString()
+              })
+
+              childProcess.on('close', (code) => {
+                console.log('[Workflow Executor] Command completed with code:', code)
+                resolve({
+                  success: code === 0,
+                  result: stdout || stderr,
+                  error: code !== 0 ? stderr : undefined
+                })
+              })
+
+              childProcess.on('error', (err) => {
+                console.error('[Workflow Executor] Command error:', err)
+                resolve({
+                  success: false,
+                  result: err.message,
+                  error: err.message
+                })
+              })
+
+              // Timeout after 60 seconds
+              setTimeout(() => {
+                childProcess.kill()
+                resolve({
+                  success: false,
+                  result: stdout || 'Command timed out after 60 seconds',
+                  error: 'Command timed out after 60 seconds'
+                })
+              }, 60000)
+            })
+          } catch (err) {
+            console.error('[Workflow Executor] onToolCall failed:', err)
+            return {
+              success: false,
+              result: err.message || 'Unknown error',
               error: err.message || 'Unknown error'
             }
           }

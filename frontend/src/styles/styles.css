@@ -661,7 +661,7 @@ body { background: var(--bg); color: var(--text); font: 14px/1.4 Inter, system-u
 }
 
 .palette-node {
-  user-select: none;
+  -webkit-user-drag: element;
   position: relative;
 }
 

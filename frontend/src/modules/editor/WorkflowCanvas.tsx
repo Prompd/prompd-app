@@ -136,13 +136,24 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false 
 
   // Compute selected node's screen position for quick actions toolbar
   useEffect(() => {
+    console.log('[QuickActions] Effect triggered, selectedNodeId:', selectedNodeId, 'nodesCount:', nodes.length)
+
     if (!selectedNodeId) {
+      console.log('[QuickActions] No selected node, clearing position')
       setQuickActionsPosition(null)
       return
     }
 
+    if (!reactFlowInstance) {
+      console.log('[QuickActions] ReactFlow instance not ready yet')
+      return
+    }
+
     const selectedNode = nodes.find(n => n.id === selectedNodeId)
+    console.log('[QuickActions] Found node:', selectedNode ? `${selectedNode.type} at (${selectedNode.position.x}, ${selectedNode.position.y})` : 'null')
+
     if (!selectedNode) {
+      console.log('[QuickActions] Node not found in nodes array')
       setQuickActionsPosition(null)
       return
     }
@@ -163,6 +174,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false 
       if (parentNode) {
         absoluteFlowX += parentNode.position.x
         absoluteFlowY += parentNode.position.y
+        console.log('[QuickActions] Node has parent, adjusted position:', { absoluteFlowX, absoluteFlowY })
       }
     }
 
@@ -171,12 +183,14 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false 
     const screenX = absoluteFlowX * viewport.zoom + viewport.x
     const screenY = absoluteFlowY * viewport.zoom + viewport.y
 
+    console.log('[QuickActions] Position calculated:', { screenX, screenY, viewport })
     setQuickActionsPosition({ x: screenX, y: screenY })
   }, [selectedNodeId, nodes, reactFlowInstance])
 
   // Update quick actions position when viewport changes (pan/zoom)
   useEffect(() => {
     if (!selectedNodeId) return
+    if (!reactFlowInstance) return
 
     const handleViewportChange = () => {
       const selectedNode = nodes.find(n => n.id === selectedNodeId)
@@ -891,6 +905,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false 
   // Handle drop from palette
   const handleDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault()
+    event.stopPropagation()
 
     if (readOnly) return
 
@@ -909,12 +924,21 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false 
   }, [readOnly, reactFlowInstance, addNode])
 
   const handleDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
+    // Check if we're dragging a workflow node from the palette
+    const types = event.dataTransfer.types
+    if (types.includes('application/workflow-node')) {
+      event.preventDefault()
+      event.stopPropagation()
+      event.dataTransfer.dropEffect = 'move'
+    }
   }, [])
 
   const handleDragEnter = useCallback((event: React.DragEvent) => {
-    event.preventDefault()
+    const types = event.dataTransfer.types
+    if (types.includes('application/workflow-node')) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
   }, [])
 
   // Handle run button click - show parameter dialog

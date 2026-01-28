@@ -9,6 +9,8 @@
 import { registryApi } from './registryApi'
 import { packageCache } from './packageCache'
 import { useEditorStore } from '../../stores/editorStore'
+import { useWorkflowStore } from '../../stores/workflowStore'
+import { BUILTIN_COMMAND_EXECUTABLES } from './workflowTypes'
 
 /**
  * Sync file content with any open tabs that match the file path.
@@ -953,22 +955,17 @@ NEVER put markdown headers (# Title) BETWEEN the opening --- and closing ---. Th
   }
 
   async runCommand(command: string, cwd?: string): Promise<ToolResult> {
-    // Validate command against whitelist (must match main.js agent:runCommand handler)
-    const allowedCommands = [
-      'npm', 'npx', 'node',           // Node.js ecosystem
-      'yarn', 'pnpm',                 // Package managers
-      'git',                          // Version control
-      'tsc', 'typescript',            // TypeScript compiler
-      'eslint', 'prettier',           // Linting/formatting
-      'python', 'python3', 'pip',     // Python (for prompd CLI)
-      'prompd'                        // Prompd CLI
-    ]
+    // Build dynamic whitelist from built-in commands + user custom commands
+    const builtInCommands = BUILTIN_COMMAND_EXECUTABLES.map(cmd => cmd.executable.toLowerCase())
+    const customCommands = useWorkflowStore.getState().customCommands.map(cmd => cmd.executable.toLowerCase())
+    const allowedCommands = [...new Set([...builtInCommands, ...customCommands])]
+
     const firstWord = command.split(' ')[0].toLowerCase()
 
     if (!allowedCommands.includes(firstWord)) {
       return {
         success: false,
-        error: `Command '${firstWord}' not allowed. Allowed: ${allowedCommands.join(', ')}`
+        error: `Command '${firstWord}' not allowed. Allowed built-in: ${builtInCommands.join(', ')}${customCommands.length > 0 ? `. Custom: ${customCommands.join(', ')}` : ''}`
       }
     }
 

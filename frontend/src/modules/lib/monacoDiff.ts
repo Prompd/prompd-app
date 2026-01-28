@@ -504,32 +504,90 @@ export function enableChangeTracking(
     // Use diff library for reliable line-based diffing
     const changes = diffLines(baseline, currentText)
 
+    // Track deletions by position so we can detect modifications
+    interface DeletionInfo {
+      position: number
+      count: number
+    }
+    const deletions: DeletionInfo[] = []
+    const additions: Array<{ start: number; count: number }> = []
+
     let lineNumber = 1 // Current line number in the modified file
 
+    // First pass: collect all changes with their positions
     for (const change of changes) {
       const lineCount = change.count || 0
 
       if (change.added) {
-        // Lines were added
-        for (let i = 0; i < lineCount; i++) {
-          added.push(lineNumber + i)
-        }
+        // Track addition position
+        additions.push({ start: lineNumber, count: lineCount })
         lineNumber += lineCount
       } else if (change.removed) {
-        // Lines were deleted - show marker on the current line position
-        if (lineNumber > 1) {
-          // Show deletion marker on the line before the deletion
-          deleted.push(lineNumber - 1)
-        } else {
-          // Deletion at start of file - show on line 1
-          deleted.push(1)
-        }
-        // Don't increment lineNumber for deletions (they don't exist in current file)
+        // Track deletion position (where it appears in modified file)
+        deletions.push({ position: lineNumber, count: lineCount })
+        // Don't increment lineNumber for deletions
       } else {
         // Lines are unchanged - just advance lineNumber
         lineNumber += lineCount
       }
     }
+
+    console.log('[monacoDiff] Raw deletions:', deletions)
+    console.log('[monacoDiff] Raw additions:', additions)
+
+    // Second pass: detect modifications (delete + add at same position)
+    const processedAdditions = new Set<number>()
+    const processedDeletions = new Set<number>()
+
+    // Look for deletions followed by additions at the same position
+    for (let i = 0; i < deletions.length; i++) {
+      const deletion = deletions[i]
+
+      // Find matching addition at same position
+      const matchingAddition = additions.find((add, idx) =>
+        !processedAdditions.has(idx) && add.start === deletion.position
+      )
+
+      if (matchingAddition) {
+        // This is a modification, not separate delete + add
+        const modificationCount = Math.max(deletion.count, matchingAddition.count)
+
+        // Mark all affected lines as modified
+        for (let j = 0; j < modificationCount; j++) {
+          const modifiedLine = matchingAddition.start + j
+          if (modifiedLine <= model.getLineCount()) {
+            modified.push(modifiedLine)
+          }
+        }
+
+        // Mark these as processed
+        processedDeletions.add(i)
+        const addIdx = additions.indexOf(matchingAddition)
+        if (addIdx >= 0) processedAdditions.add(addIdx)
+
+        console.log('[monacoDiff] Detected modification at line', matchingAddition.start, 'count:', modificationCount)
+      }
+    }
+
+    // Add remaining additions (not part of modifications)
+    additions.forEach((addition, idx) => {
+      if (!processedAdditions.has(idx)) {
+        for (let i = 0; i < addition.count; i++) {
+          added.push(addition.start + i)
+        }
+      }
+    })
+
+    // Add remaining deletions (not part of modifications)
+    deletions.forEach((deletion, idx) => {
+      if (!processedDeletions.has(idx)) {
+        // Show deletion marker at the position where the deletion occurred
+        const markerLine = deletion.position > 1 ? deletion.position - 1 : 1
+        if (!deleted.includes(markerLine)) {
+          deleted.push(markerLine)
+        }
+      }
+    })
 
     console.log('[monacoDiff] Computed changes:', { modified, added, deleted })
     return { modified, added, deleted }
