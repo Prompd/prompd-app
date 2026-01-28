@@ -1,4 +1,4 @@
-# editor.prompdhub.ai – Web Editor
+# prompd/app– Web Editor
 
 A comprehensive Monaco-based web editor for `.prompd` files with advanced IntelliSense, visual canvas editing, and registry integration.
 
