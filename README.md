@@ -1,4 +1,4 @@
-# prompd/app– Web Editor
+# prompd/app
 
 A comprehensive Monaco-based web editor for prompd (`.prmd`) and prompdflow (`.pdflow`) files with advanced IntelliSense, visual canvas editing, and registry integration.
 
