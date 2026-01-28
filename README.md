@@ -1,6 +1,6 @@
 # prompd/app– Web Editor
 
-A comprehensive Monaco-based web editor for `.prompd` files with advanced IntelliSense, visual canvas editing, and registry integration.
+A comprehensive Monaco-based web editor for prompd (`.prmd`) and prompdflow (`.pdflow`) files with advanced IntelliSense, visual canvas editing, and registry integration.
 
 ## Features
 - **Advanced IntelliSense**: Context-aware completions with live registry search
@@ -13,7 +13,7 @@ A comprehensive Monaco-based web editor for `.prompd` files with advanced Intell
 
 ## IntelliSense Capabilities
 - **Package Search**: Live suggestions from registry as you type `@` or in `using:` sections
-- **Parameter References**: Smart completion for `{parameter}` references with validation
+- **Parameter References**: Smart completion for `{{parameter}}` references with validation
 - **Context Awareness**: Field suggestions for YAML frontmatter (provider, model, etc.)
 - **Hover Information**: Package metadata, versions, and descriptions on hover
 - **Code Snippets**: Template expansion with `!snippet-name` syntax
@@ -28,17 +28,11 @@ For comprehensive documentation including IntelliSense features, canvas editor u
 - ✅ Visual canvas editor with node palette
 - ✅ Code snippets and template expansion
 - ✅ Package search and metadata display
-- 🔄 Run/Compile by calling the CLI on a server (or WebAssembly, if feasible)
-- 🔄 Auth + registry integration
-- 📋 Parameter sidebar with type-aware editing
-- 📋 Export workflows to various formats
+- ✅ Run/Compile prompds locally. Running prompds agains almost all major providers and any openai compatable api.
+- ✅ Auth + registry integration
+- ✅ Parameter sidebar with type-aware editing (now apart of the designer)
+- 📋 Package workflow execution in a Docker image and execute them anywhere with a cli
 
-### Planned API integration
-- Configure base URL in the header (stored in localStorage)
-- Endpoints (proposed):
-  - `POST /v1/validate` { content: string } -> { ok, issues[] }
-  - `POST /v1/compile` { content: string, to?: 'markdown' } -> { ok, markdown }
-  - `POST /v1/run` { content: string, params?: object } -> { ok, response }
 
 The current UI ships with a stub client in `src/modules/services/api.ts` so wiring to an existing API won’t require UI changes.
 
