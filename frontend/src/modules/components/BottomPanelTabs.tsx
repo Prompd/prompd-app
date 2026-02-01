@@ -131,6 +131,9 @@ export function BottomPanelTabs({
   // Calculate left position based on sidebar state
   const leftPosition = showSidebar ? 48 + sidebarWidth : 48
 
+  // Calculate bottom position based on sidebar state
+  const bottomPosition = 29
+
   // Tab row is always visible (VS Code style)
   // Only hide completely if user explicitly closed the panel
   if (!showBottomPanel) return null
@@ -138,7 +141,7 @@ export function BottomPanelTabs({
   return (
     <div
       className={`bottom-panel-tabs ${isResizing ? 'resizing' : ''} ${bottomPanelMinimized ? 'minimized' : ''}`}
-      style={{ left: leftPosition, height: bottomPanelMinimized ? 'auto' : bottomPanelHeight, paddingTop: 0 }}
+      style={{ bottom: bottomPosition, left: leftPosition, height: bottomPanelMinimized ? 'auto' : bottomPanelHeight, paddingTop: 0 }}
     >
       {/* Resize handle on top edge (only when expanded) */}
       {!bottomPanelMinimized && (

@@ -262,8 +262,7 @@ function PaletteItem({ item, isFavorite, onToggleFavorite }: PaletteItemProps) {
         background: 'var(--panel)',
         cursor: 'grab',
         transition: 'box-shadow 0.2s, transform 0.1s',
-        position: 'relative',
-        WebkitUserDrag: 'element',
+        position: 'relative'
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'

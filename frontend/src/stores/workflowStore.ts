@@ -2114,10 +2114,10 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
           // Add to execution history (max 20 entries)
           const historyEntry = {
             id: `exec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-            workflowId: state.workflowFile.metadata.id,
-            workflowName: state.workflowFile.metadata.name,
+            workflowId: state.workflowFile?.metadata.id || (result.startTime ?? Date.now()).toString(),
+            workflowName: state.workflowFile?.metadata.name || 'Untitled Workflow',
             timestamp: Date.now(),
-            duration: result.endTime - result.startTime,
+            duration: (result.endTime ?? Date.now()) - (result.startTime ?? Date.now()),
             status: (result.success ? 'success' : 'error') as 'success' | 'error' | 'cancelled',
             result,
             checkpoints: state.checkpoints,

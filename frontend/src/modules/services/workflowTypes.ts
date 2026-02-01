@@ -280,6 +280,23 @@ export interface PromptNodeData extends BaseNodeData {
   outputMapping?: Record<string, string>
   inputSchema?: JsonSchema
   outputSchema?: JsonSchema
+  /** Guardrail configuration (for content filtering/validation) */
+  guardrail?: {
+    /** Output mode when guardrail passes */
+    outputMode?: 'passthrough' | 'original' | 'reject-message'
+    /** Expected response format from LLM */
+    expectedFormat?: 'json' | 'text'
+    /** JSON field to check for rejection status */
+    rejectionField?: string
+    /** Pass when field is true or false */
+    passWhen?: 'true' | 'false'
+    /** Action to take when guardrail fails */
+    failAction?: 'error' | 'stop' | 'continue'
+    /** Custom message when rejected */
+    customRejectMessage?: string
+    /** Custom rejection expression (advanced) - overrides simple field check */
+    rejectionExpression?: string
+  }
 }
 
 /**
@@ -1465,6 +1482,27 @@ export interface GuardrailNodeData extends BaseNodeData {
 
   /** Description of what this guardrail validates */
   description?: string
+
+  /** Output mode when guardrail passes */
+  outputMode?: 'passthrough' | 'original' | 'reject-message'
+
+  /** Expected response format from LLM */
+  expectedFormat?: 'json' | 'text'
+
+  /** JSON field to check for rejection status */
+  rejectionField?: string
+
+  /** Pass when field is true or false */
+  passWhen?: 'true' | 'false'
+
+  /** Action to take when guardrail fails */
+  failAction?: 'error' | 'stop' | 'continue'
+
+  /** Custom message when rejected */
+  customRejectMessage?: string
+
+  /** Custom rejection expression (advanced) - overrides simple field check */
+  rejectionExpression?: string
 }
 
 /**
@@ -1616,6 +1654,27 @@ export interface ChatAgentNodeData extends BaseNodeData {
 
   /** Score threshold alternative */
   guardrailScoreThreshold?: number
+
+  /** Output mode when guardrail passes */
+  guardrailOutputMode?: 'passthrough' | 'original' | 'reject-message'
+
+  /** Expected response format from guardrail LLM */
+  guardrailExpectedFormat?: 'json' | 'text'
+
+  /** JSON field to check for rejection status */
+  guardrailRejectionField?: string
+
+  /** Pass when field is true or false */
+  guardrailPassWhen?: 'true' | 'false'
+
+  /** Action to take when guardrail fails */
+  guardrailFailAction?: 'error' | 'stop' | 'continue'
+
+  /** Custom message when rejected */
+  guardrailCustomRejectMessage?: string
+
+  /** Custom rejection expression (advanced) - overrides simple field check */
+  guardrailRejectionExpression?: string
 
   // ============================================================================
   // User Input Configuration (propagates to internal UserInput node)
@@ -1916,6 +1975,8 @@ export interface WorkflowExecutionError {
 export interface WorkflowResult {
   success: boolean
   output?: unknown
+  startTime?: number
+  endTime?: number
   nodeOutputs: Record<string, unknown>
   errors: WorkflowExecutionError[]
   metrics: {

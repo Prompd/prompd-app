@@ -3,6 +3,10 @@
  */
 import type * as monacoEditor from 'monaco-editor'
 import { fixObjectParamsToArray } from './utils'
+import { logger } from '../logger'
+
+// Scoped logger for code actions (can be disabled in production)
+const log = logger.scope('CodeActions')
 
 /**
  * Code action command IDs for Prompd quick fixes
@@ -293,10 +297,20 @@ export function registerCodeActionProvider(
   monaco: typeof monacoEditor,
   languageId: string
 ): monacoEditor.IDisposable {
+  log.log('Registering code action provider for language:', languageId)
+
   return monaco.languages.registerCodeActionProvider(
     languageId,
     {
       provideCodeActions(model, range, context) {
+      log.log('provideCodeActions called:', {
+        range,
+        markersCount: context.markers.length,
+        markers: context.markers.map(m => ({ message: m.message, code: m.code })),
+        only: context.only,
+        trigger: context.trigger
+      })
+
       const actions: monacoEditor.languages.CodeAction[] = []
       const content = model.getValue()
 
@@ -313,10 +327,6 @@ export function registerCodeActionProvider(
           title: `Convert to single brace: {${varAtCursor.varName}}`,
           kind: 'quickfix',
           isPreferred: false,
-          command: {
-            id: CODE_ACTION_IDS.CONVERT_DOUBLE_TO_SINGLE_BRACE,
-            title: `Convert to {${varAtCursor.varName}}`
-          },
           edit: {
             edits: [{
               resource: model.uri,
@@ -431,10 +441,6 @@ export function registerCodeActionProvider(
         actions.push({
           title: `Convert all ${singleBraceVars.length} to {{ }}`,
           kind: 'quickfix',
-          command: {
-            id: CODE_ACTION_IDS.CONVERT_ALL_SINGLE_TO_DOUBLE,
-            title: `Convert all ${singleBraceVars.length} to {{ }}`
-          },
           edit: { edits }
         })
       }
@@ -458,10 +464,6 @@ export function registerCodeActionProvider(
         actions.push({
           title: `Convert all ${doubleBraceVars.length} to { }`,
           kind: 'quickfix',
-          command: {
-            id: CODE_ACTION_IDS.CONVERT_ALL_DOUBLE_TO_SINGLE,
-            title: `Convert all ${doubleBraceVars.length} to { }`
-          },
           edit: { edits }
         })
       }
@@ -707,10 +709,6 @@ export function registerCodeActionProvider(
               kind: 'quickfix',
               diagnostics: [marker],
               isPreferred: true,
-              command: {
-                id: CODE_ACTION_IDS.CONVERT_SINGLE_TO_DOUBLE_BRACE,
-                title: `Convert to {{ ${varName} }}`
-              },
               edit: {
                 edits: [{
                   resource: model.uri,
@@ -778,16 +776,18 @@ export function registerCodeActionProvider(
         return true
       })
 
+      log.log('Returning', uniqueActions.length, 'actions:', uniqueActions.map(a => a.title))
+
+      // CRITICAL FIX: Return the actions object with EXACT typing Monaco expects
       return {
-        actions: uniqueActions,
-        dispose: () => {}
+        actions: uniqueActions as ReadonlyArray<monacoEditor.languages.CodeAction>,
+        dispose() {}
       }
     }
-    },
-    // Metadata: list the kinds of code actions we provide
-    // This enables the lightbulb and context menu entries
-    {
-      providedCodeActionKinds: ['quickfix', 'source', 'refactor']
     }
+    // REMOVED providedCodeActionKinds - testing if this is causing filtering
+    // {
+    //   providedCodeActionKinds: ['quickfix', 'refactor', 'source']
+    // }
   )
 }

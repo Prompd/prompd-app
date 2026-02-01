@@ -4,7 +4,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { FileText, AlignLeft, Package, Search } from 'lucide-react'
+import { FileText, AlignLeft, Package, Search, Shield, ChevronDown, ChevronRight } from 'lucide-react'
 import type { PromptNodeData } from '../../../services/workflowTypes'
 import { useEditorStore } from '../../../../stores/editorStore'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
@@ -26,6 +26,7 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
   const [showDropdown, setShowDropdown] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null)
+  const [guardrailExpanded, setGuardrailExpanded] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const workspaceHandle = useEditorStore(state => state.explorerDirHandle)
   const workspacePath = useEditorStore(state => state.explorerDirPath)
@@ -624,6 +625,212 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
           <option value="none">None</option>
           <option value="auto">Auto (as previous_output)</option>
         </select>
+      </div>
+
+      {/* Guardrail Settings - Collapsible Section */}
+      <div style={{
+        marginTop: '16px',
+        borderTop: '1px solid var(--border)',
+        paddingTop: '12px'
+      }}>
+        <button
+          onClick={() => setGuardrailExpanded(!guardrailExpanded)}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '8px 10px',
+            background: 'var(--panel-2)',
+            border: '1px solid var(--border)',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontWeight: 600,
+            color: 'var(--text)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Shield size={14} style={{ color: 'var(--accent)' }} />
+            Guardrail Settings
+          </div>
+          {guardrailExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+
+        {guardrailExpanded && (
+          <div style={{
+            marginTop: '12px',
+            padding: '12px',
+            background: 'var(--panel-2)',
+            border: '1px solid var(--border)',
+            borderRadius: '6px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            {/* Output Mode */}
+            <div>
+              <label style={labelStyle}>Output Mode</label>
+              <select
+                value={data.guardrail?.outputMode || 'passthrough'}
+                onChange={(e) => onChange('guardrail', {
+                  ...data.guardrail,
+                  outputMode: e.target.value as 'passthrough' | 'original' | 'reject-message'
+                })}
+                style={selectStyle}
+              >
+                <option value="passthrough">Pass Through (return LLM response)</option>
+                <option value="original">Pass Original Input (when clean)</option>
+                <option value="reject-message">Custom Reject Message</option>
+              </select>
+              <p style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+                What to output when guardrail passes
+              </p>
+            </div>
+
+            {/* Expected Response Format */}
+            <div>
+              <label style={labelStyle}>Expected Response Format</label>
+              <select
+                value={data.guardrail?.expectedFormat || 'json'}
+                onChange={(e) => onChange('guardrail', {
+                  ...data.guardrail,
+                  expectedFormat: e.target.value as 'json' | 'text'
+                })}
+                style={selectStyle}
+              >
+                <option value="json">JSON Object</option>
+                <option value="text">Plain Text</option>
+              </select>
+            </div>
+
+            {data.guardrail?.expectedFormat === 'json' && (
+              <>
+                {/* Field to Check */}
+                <div>
+                  <label style={labelStyle}>Rejection Field</label>
+                  <input
+                    type="text"
+                    value={data.guardrail?.rejectionField || 'rejected'}
+                    onChange={(e) => onChange('guardrail', {
+                      ...data.guardrail,
+                      rejectionField: e.target.value
+                    })}
+                    placeholder="rejected"
+                    style={inputStyle}
+                  />
+                  <p style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+                    JSON field that indicates rejection (e.g., "rejected", "blocked", "unsafe")
+                  </p>
+                </div>
+
+                {/* Pass Condition */}
+                <div>
+                  <label style={labelStyle}>Pass When</label>
+                  <select
+                    value={data.guardrail?.passWhen || 'false'}
+                    onChange={(e) => onChange('guardrail', {
+                      ...data.guardrail,
+                      passWhen: e.target.value as 'false' | 'true'
+                    })}
+                    style={selectStyle}
+                  >
+                    <option value="false">Field is false</option>
+                    <option value="true">Field is true</option>
+                  </select>
+                  <p style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+                    Workflow continues if this condition is met
+                  </p>
+                </div>
+
+                {/* Advanced: Custom Rejection Expression */}
+                <div>
+                  <label style={labelStyle}>
+                    Custom Rejection Expression (Advanced)
+                  </label>
+                  <input
+                    type="text"
+                    value={data.guardrail?.rejectionExpression || ''}
+                    onChange={(e) => onChange('guardrail', {
+                      ...data.guardrail,
+                      rejectionExpression: e.target.value
+                    })}
+                    placeholder="e.g., {{ response.rejected === true || response.score > 0.8 }}"
+                    style={inputStyle}
+                  />
+                  <p style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+                    Optional: Override field check with custom expression. Supports {'{{ }}'} syntax.
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* Action on Fail */}
+            <div>
+              <label style={labelStyle}>Action on Fail</label>
+              <select
+                value={data.guardrail?.failAction || 'error'}
+                onChange={(e) => onChange('guardrail', {
+                  ...data.guardrail,
+                  failAction: e.target.value as 'error' | 'stop' | 'continue'
+                })}
+                style={selectStyle}
+              >
+                <option value="error">Throw Error</option>
+                <option value="stop">Stop Workflow Silently</option>
+                <option value="continue">Continue Anyway (log warning)</option>
+              </select>
+            </div>
+
+            {/* Custom Reject Message */}
+            {data.guardrail?.outputMode === 'reject-message' && (
+              <div>
+                <label style={labelStyle}>Custom Reject Message</label>
+                <textarea
+                  value={data.guardrail?.customRejectMessage || ''}
+                  onChange={(e) => onChange('guardrail', {
+                    ...data.guardrail,
+                    customRejectMessage: e.target.value
+                  })}
+                  placeholder="Input rejected by guardrail"
+                  rows={3}
+                  style={{
+                    ...inputStyle,
+                    resize: 'vertical',
+                    fontSize: '11px'
+                  }}
+                />
+                <p style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+                  Message to show when guardrail fails
+                </p>
+              </div>
+            )}
+
+            {/* Example Configuration */}
+            <div style={{
+              padding: '8px 10px',
+              background: 'var(--panel)',
+              borderRadius: '4px',
+              border: '1px solid var(--border)'
+            }}>
+              <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                Example Setup:
+              </div>
+              <code style={{
+                fontSize: '10px',
+                color: 'var(--muted)',
+                fontFamily: 'monospace',
+                display: 'block',
+                lineHeight: '1.4'
+              }}>
+                1. LLM returns: {`{"rejected": false, "score": 0}`}<br />
+                2. Check field "rejected" === false<br />
+                3. If true → output original input<br />
+                4. If false → throw error
+              </code>
+            </div>
+          </div>
+        )}
       </div>
     </>
   )

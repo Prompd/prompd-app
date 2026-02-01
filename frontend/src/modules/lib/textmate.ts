@@ -258,7 +258,7 @@ const monarch: monacoEditor.languages.IMonarchLanguage = {
     // Jinja2 inside XML tag attributes
     xmlTagJinja: [
       [/[-~]?\}\}/, { token: 'punctuation.definition.expression.jinja', next: '@pop' }],
-      [/\b(env|loop|self|super|caller|varargs|kwargs)\b/, 'support.variable.jinja'],
+      [/\b(env|loop|self|super|caller|varargs|kwargs|renderBase)\b/, 'support.variable.jinja'],
       [/\b(in|not|and|or|is|defined|undefined|none|true|false|True|False|None)\b/, 'keyword.operator.jinja'],
       [/"[^"]*"/, 'string.quoted.double.jinja'],
       [/'[^']*'/, 'string.quoted.single.jinja'],
@@ -273,7 +273,7 @@ const monarch: monacoEditor.languages.IMonarchLanguage = {
     // Jinja2 inside XML attribute values - return to the correct string state
     xmlAttrJinja: [
       [/[-~]?\}\}/, { token: 'punctuation.definition.expression.jinja', next: '@pop' }],
-      [/\b(env|loop|self|super|caller|varargs|kwargs)\b/, 'support.variable.jinja'],
+      [/\b(env|loop|self|super|caller|varargs|kwargs|renderBase)\b/, 'support.variable.jinja'],
       [/\b(in|not|and|or|is|defined|undefined|none|true|false|True|False|None)\b/, 'keyword.operator.jinja'],
       [/"[^"]*"/, 'string.quoted.double.jinja'],
       [/'[^']*'/, 'string.quoted.single.jinja'],
@@ -311,7 +311,7 @@ const monarch: monacoEditor.languages.IMonarchLanguage = {
     // Jinja expressions inside ``` code blocks
     'codeblockJinjaExpr.```': [
       [/[-~]?\}\}/, { token: 'punctuation.definition.expression.jinja', next: '@codeblock.```' }],
-      [/\b(env|loop|self|super|caller|varargs|kwargs)\b/, 'support.variable.jinja'],
+      [/\b(env|loop|self|super|caller|varargs|kwargs|renderBase)\b/, 'support.variable.jinja'],
       [/\b(in|not|and|or|is|defined|undefined|none|true|false|True|False|None)\b/, 'keyword.operator.jinja'],
       [/"[^"]*"/, 'string.quoted.double.jinja'],
       [/'[^']*'/, 'string.quoted.single.jinja'],
@@ -324,7 +324,7 @@ const monarch: monacoEditor.languages.IMonarchLanguage = {
     ],
     'codeblockJinjaExpr.~~~': [
       [/[-~]?\}\}/, { token: 'punctuation.definition.expression.jinja', next: '@codeblock.~~~' }],
-      [/\b(env|loop|self|super|caller|varargs|kwargs)\b/, 'support.variable.jinja'],
+      [/\b(env|loop|self|super|caller|varargs|kwargs|renderBase)\b/, 'support.variable.jinja'],
       [/\b(in|not|and|or|is|defined|undefined|none|true|false|True|False|None)\b/, 'keyword.operator.jinja'],
       [/"[^"]*"/, 'string.quoted.double.jinja'],
       [/'[^']*'/, 'string.quoted.single.jinja'],
@@ -417,8 +417,8 @@ const monarch: monacoEditor.languages.IMonarchLanguage = {
       // Closing tag
       [/[-~]?\}\}/, { token: 'punctuation.definition.expression.jinja', next: '@pop' }],
 
-      // Built-in objects like 'env', 'loop', 'self', 'super'
-      [/\b(env|loop|self|super|caller|varargs|kwargs)\b/, 'support.variable.jinja'],
+      // Built-in objects and functions like 'env', 'loop', 'renderBase'
+      [/\b(env|loop|self|super|caller|varargs|kwargs|renderBase)\b/, 'support.variable.jinja'],
 
       // Built-in tests and filters
       [/\b(in|not|and|or|is|defined|undefined|none|true|false|True|False|None)\b/, 'keyword.operator.jinja'],

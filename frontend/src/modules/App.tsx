@@ -32,7 +32,8 @@ import { CommandPalette } from './components/CommandPalette'
 import { FirstTimeSetupWizard, isOnboardingComplete, isWizardDismissed } from './components/FirstTimeSetupWizard'
 import { InlineHints } from './components/InlineHints'
 import { markHintSeen } from './services/onboardingService'
-import { DiffDemo } from './components/DiffDemo'
+// DISABLED: DiffDemo imports monacoDiff which breaks Monaco Code Actions
+// import { DiffDemo } from './components/DiffDemo'
 import type { FileNode } from './services/packageCache'
 import type { RegistryPackage } from './services/registryApi'
 import { parsePrompd } from './lib/prompdParser'
@@ -78,63 +79,51 @@ function MonacoMarkerListener({
     const updateMarkers = () => {
       const rawMarkers = monaco.editor.getModelMarkers({})
 
-      // Build a map of tab IDs to tab names for resolving temp models
-      const tabMap = new Map<string, string>()
-      for (const tab of tabs) {
-        tabMap.set(tab.id, tab.name)
-        const fileName = tab.name.split(/[/\\]/).pop() || tab.name
-        tabMap.set(fileName, tab.name)
+      // Build a map of URIs to tab names for filtering
+      const uriToTabName = new Map<string, string>()
+      const currentModels = monaco.editor.getModels()
+
+      // Map each currently open model to its tab
+      for (const model of currentModels) {
+        const modelUri = model.uri.toString()
+
+        // Find matching tab by comparing model URI or content
+        for (const tab of tabs) {
+          // Check if URI matches tab's file path
+          if (tab.filePath && modelUri.includes(tab.filePath.replace(/\\/g, '/'))) {
+            uriToTabName.set(modelUri, tab.name)
+            break
+          }
+
+          // Check if model ID matches tab ID (for temp models)
+          const modelId = modelUri.split('/').pop() || ''
+          if (tab.id === modelId || tab.id.includes(modelId)) {
+            uriToTabName.set(modelUri, tab.name)
+            break
+          }
+
+          // Check if model content matches tab content (fallback)
+          if (model.getValue() === tab.text) {
+            uriToTabName.set(modelUri, tab.name)
+            break
+          }
+        }
       }
 
-      // Convert to BuildError format and deduplicate
+      // Convert to BuildError format - only include markers from currently open tabs
       const seen = new Set<string>()
       const buildErrors: BuildError[] = []
 
       for (const m of rawMarkers) {
         const uri = m.resource.toString()
-        let filePath = uri
 
-        if (uri.startsWith('file:///')) {
-          filePath = decodeURIComponent(uri.replace('file:///', ''))
-          if (filePath.match(/^[a-zA-Z]:\//)) {
-            filePath = filePath.replace(/\//g, '\\')
-          }
+        // Skip markers from models that aren't in currently open tabs
+        const displayFile = uriToTabName.get(uri)
+        if (!displayFile) {
+          continue // Model not associated with any open tab, skip it
         }
 
-        const fileName = filePath.split(/[/\\]/).pop() || filePath
-        const isTempModel = /^t-\d+-[a-z0-9]+$/i.test(fileName)
-
-        let displayFile = filePath
-
-        if (isTempModel) {
-          let matchedTab: string | undefined
-
-          for (const tab of tabs) {
-            if (tab.id.includes(fileName) || tab.id === fileName) {
-              matchedTab = tab.name
-              break
-            }
-          }
-
-          if (!matchedTab) {
-            const models = monaco.editor.getModels()
-            for (const model of models) {
-              if (model.uri.toString() === uri || model.uri.toString().endsWith(fileName)) {
-                const modelValue = model.getValue()
-                for (const tab of tabs) {
-                  if (tab.text === modelValue) {
-                    matchedTab = tab.name
-                    break
-                  }
-                }
-                break
-              }
-            }
-          }
-
-          displayFile = matchedTab || fileName
-        }
-
+        // Deduplicate by file:line:column:message
         const key = `${displayFile}:${m.startLineNumber}:${m.startColumn}:${m.message}`
         if (seen.has(key)) continue
         seen.add(key)
@@ -300,12 +289,6 @@ export default function App() {
   const executionResult = useWorkflowStore(state => state.executionResult)
   const checkpoints = useWorkflowStore(state => state.checkpoints)
   const promptsSent = useWorkflowStore(state => state.promptsSent)
-
-  // Demo mode (show diff examples via ?demo=diff query param)
-  const [showDiffDemo, setShowDiffDemo] = useState(() => {
-    const params = new URLSearchParams(window.location.search)
-    return params.get('demo') === 'diff'
-  })
 
   // Workspace state management
   const saveWorkspaceState = useEditorStore(state => state.saveWorkspaceState)
@@ -3316,17 +3299,6 @@ Write your prompt here...
     }
   }, [onOpenFile])
 
-  // Show diff demo if requested via query param
-  if (showDiffDemo) {
-    return <DiffDemo onClose={() => {
-      setShowDiffDemo(false)
-      // Remove query param from URL
-      const url = new URL(window.location.href)
-      url.searchParams.delete('demo')
-      window.history.replaceState({}, '', url.toString())
-    }} />
-  }
-
   return (
     <div
       className={`layout${showSidebar ? '' : ' no-sidebar'}`}
@@ -4361,7 +4333,48 @@ Write your prompt here...
                           return null
                         }
 
-                        return resolvedPath.startsWith('./') ? resolvedPath : `./${resolvedPath}`
+                        // Convert workspace path to source-relative path for the compiler
+                        // The @prompd/cli compiler resolves ALL paths relative to the source file
+                        // So "contexts/data.csv" from "prompts/file.prmd" needs to be "../contexts/data.csv"
+                        const sourceFilePath = activeTab?.name?.replace(/\\/g, '/') || ''
+                        const sourceDir = sourceFilePath.includes('/')
+                          ? sourceFilePath.substring(0, sourceFilePath.lastIndexOf('/') + 1)
+                          : ''
+
+                        let relativeFilePath = resolvedPath
+                        if (sourceDir) {
+                          // Calculate relative path from source directory to target file
+                          const sourceParts = sourceDir.split('/').filter(p => p)
+                          const targetParts = resolvedPath.replace(/\\/g, '/').split('/').filter(p => p)
+
+                          // Find common prefix
+                          let commonLength = 0
+                          while (commonLength < sourceParts.length &&
+                                 commonLength < targetParts.length &&
+                                 sourceParts[commonLength] === targetParts[commonLength]) {
+                            commonLength++
+                          }
+
+                          // Build relative path: ../ for each remaining source dir, then target path
+                          const upCount = sourceParts.length - commonLength
+                          const remainingTarget = targetParts.slice(commonLength)
+
+                          if (upCount > 0 || remainingTarget.length > 0) {
+                            relativeFilePath = '../'.repeat(upCount) + remainingTarget.join('/')
+                          }
+
+                          // Ensure it starts with ./ or ../ for explicit relative path
+                          if (!relativeFilePath.startsWith('../')) {
+                            relativeFilePath = './' + relativeFilePath
+                          }
+
+                          console.log(`[App.tsx] DesignView: Converted path: ${resolvedPath} → ${relativeFilePath} (relative to ${sourceDir})`)
+                        } else {
+                          // No source directory, ensure workspace-relative path starts with ./
+                          relativeFilePath = resolvedPath.startsWith('./') ? resolvedPath : `./${resolvedPath}`
+                        }
+
+                        return relativeFilePath
                       } catch (error) {
                         if (error instanceof Error && error.name === 'AbortError') {
                           return null

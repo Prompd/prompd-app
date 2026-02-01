@@ -13,7 +13,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.65.0",
     "@google/generative-ai": "^0.24.1",
-    "@prompd/cli": "^0.4.5",
+    "@prompd/cli": "file:../../Logikbug/prompd-cli/cli/npm",
     "adm-zip": "^0.5.10",
     "archiver": "^6.0.1",
     "axios": "^1.6.2",

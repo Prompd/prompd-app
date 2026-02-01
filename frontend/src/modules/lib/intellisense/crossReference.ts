@@ -50,6 +50,7 @@ export function extractParameterDefinitions(
 
   let inParametersSection = false
   let parametersIndent = -1
+  let parameterLevelIndent = -1 // Track the indentation level for parameter names
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
@@ -58,6 +59,7 @@ export function extractParameterDefinitions(
     if (line.match(/^\s*parameters:\s*$/)) {
       inParametersSection = true
       parametersIndent = line.search(/\S/)
+      parameterLevelIndent = -1 // Reset parameter level
       continue
     }
 
@@ -70,6 +72,13 @@ export function extractParameterDefinitions(
     }
 
     if (inParametersSection) {
+      const currentIndent = line.search(/\S/)
+
+      // Set parameter level indent on first parameter encountered
+      if (parameterLevelIndent === -1 && currentIndent > parametersIndent && line.trim() !== '') {
+        parameterLevelIndent = currentIndent
+      }
+
       // Array format: "  - name: paramName"
       const arrayMatch = line.match(/^\s*-\s*name:\s*["']?(\w+)["']?/)
       if (arrayMatch) {
@@ -88,40 +97,66 @@ export function extractParameterDefinitions(
         continue
       }
 
-      // Object format (multiline): "  paramName:" on its own line
-      const objectMultilineMatch = line.match(/^\s+([a-zA-Z_][a-zA-Z0-9_]*):\s*$/)
-      if (objectMultilineMatch) {
-        const name = objectMultilineMatch[1]
-        const lineNumber = fullContent.split('\n').findIndex(l => l.includes(line)) + 1
-        const column = line.indexOf(name) + 1
+      // Known parameter property names that should never be detected as parameters
+      // Currently supported in .prmd format:
+      const parameterProperties = new Set([
+        'name', 'type', 'required', 'description',
+        'items', 'enum', 'default', 'properties'
+        // Future/common JSON Schema properties (not yet supported):
+        // 'min', 'max', 'minLength', 'maxLength', 'pattern', 'format',
+        // 'additionalProperties', 'examples'
+      ])
 
-        definitions.push({
-          name,
-          lineNumber,
-          column,
-          type: undefined,
-          description: undefined,
-          required: false
-        })
-        continue
-      }
+      // Object format - only match at parameter level indent, not nested properties
+      // This prevents matching "default:", "type:", "description:" etc. as parameter names
+      if (parameterLevelIndent !== -1 && currentIndent === parameterLevelIndent) {
+        // Object format (multiline): "  paramName:" on its own line
+        const objectMultilineMatch = line.match(/^\s+([a-zA-Z_][a-zA-Z0-9_]*):\s*$/)
+        if (objectMultilineMatch) {
+          const name = objectMultilineMatch[1]
 
-      // Inline object format: "  paramName: { type: string }"
-      const inlineObjectMatch = line.match(/^\s+([a-zA-Z_][a-zA-Z0-9_]*):\s*\{/)
-      if (inlineObjectMatch) {
-        const name = inlineObjectMatch[1]
-        const lineNumber = fullContent.split('\n').findIndex(l => l.includes(line)) + 1
-        const column = line.indexOf(name) + 1
+          // Skip if this is a known parameter property name
+          if (parameterProperties.has(name)) {
+            continue
+          }
 
-        definitions.push({
-          name,
-          lineNumber,
-          column,
-          type: undefined,
-          description: undefined,
-          required: false
-        })
-        continue
+          const lineNumber = fullContent.split('\n').findIndex(l => l.includes(line)) + 1
+          const column = line.indexOf(name) + 1
+
+          definitions.push({
+            name,
+            lineNumber,
+            column,
+            type: undefined,
+            description: undefined,
+            required: false
+          })
+          continue
+        }
+
+        // Inline object format: "  paramName: { type: string }"
+        const inlineObjectMatch = line.match(/^\s+([a-zA-Z_][a-zA-Z0-9_]*):\s*\{/)
+        if (inlineObjectMatch) {
+          const name = inlineObjectMatch[1]
+
+          // Skip if this is a known parameter property name
+          if (parameterProperties.has(name)) {
+            continue
+          }
+
+          const lineNumber = fullContent.split('\n').findIndex(l => l.includes(line)) + 1
+          const column = line.indexOf(name) + 1
+
+          definitions.push({
+            name,
+            lineNumber,
+            column,
+            type: undefined,
+            description: undefined,
+            required: false
+          })
+          continue
+        }
       }
     }
   }
@@ -159,34 +194,88 @@ export function extractParameterReferences(
     }
   }
 
-  // Also find {% set var = ... %} and {% for var in ... %} declarations
-  // These create implicit parameter-like variables
-  const setVarRegex = /\{%-?\s*set\s+(\w+)\s*=/g
-  const forLoopRegex = /\{%-?\s*for\s+(\w+)\s+in\s+/g
+  // Find variables used in control structures
+  // {% for item in collection %} - collection is used (item is defined by loop)
+  // {% set var = expression %} - variables in expression are used (var is defined)
+  // {% if condition %} - variables in condition are used
+  const forLoopRegex = /\{%-?\s*for\s+(\w+)\s+in\s+(\w+(?:\.\w+)*)/g
+  const setVarRegex = /\{%-?\s*set\s+\w+\s*=\s*(.+?)\s*%\}/g
+  const ifRegex = /\{%-?\s*(?:if|elif)\s+(.+?)\s*%\}/g
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
 
-    // Check for set variables
-    let setMatch: RegExpExecArray | null
-    while ((setMatch = setVarRegex.exec(line)) !== null) {
+    // Find for loops - extract the COLLECTION being iterated over (not the loop variable)
+    let forMatch: RegExpExecArray | null
+    while ((forMatch = forLoopRegex.exec(line)) !== null) {
+      const collection = forMatch[2] // e.g., "items" or "stakeholders"
+      const rootVar = collection.split('.')[0] // Handle nested like "config.items"
+
       references.push({
-        name: setMatch[1],
+        name: rootVar,
         lineNumber: bodyStartLine + i,
-        column: setMatch.index + 1,
+        column: line.indexOf(collection) + 1,
         context: line.trim()
       })
     }
 
-    // Check for loop variables
-    let forMatch: RegExpExecArray | null
-    while ((forMatch = forLoopRegex.exec(line)) !== null) {
-      references.push({
-        name: forMatch[1],
-        lineNumber: bodyStartLine + i,
-        column: forMatch.index + 1,
-        context: line.trim()
-      })
+    // Find set statements - extract variables from the right-hand side expression
+    let setMatch: RegExpExecArray | null
+    while ((setMatch = setVarRegex.exec(line)) !== null) {
+      const expression = setMatch[1]
+      // Find all {{ var }} references in the expression
+      const varMatches = expression.matchAll(/\{\{\s*(\w+(?:\.\w+)*)\s*(?:\|[^}]*)?\}\}/g)
+      for (const varMatch of varMatches) {
+        const fullRef = varMatch[1]
+        const rootVar = fullRef.split('.')[0]
+        references.push({
+          name: rootVar,
+          lineNumber: bodyStartLine + i,
+          column: line.indexOf(varMatch[0]) + 1,
+          context: line.trim()
+        })
+      }
+      // Also check for plain variable references (without {{ }})
+      // Use negative lookbehind to avoid matching property names after dots
+      const plainVarMatches = expression.matchAll(/(?<!\.)\b([a-zA-Z_]\w*)(?:\.\w+)*/g)
+      for (const plainMatch of plainVarMatches) {
+        const varName = plainMatch[1]
+        // Skip keywords and built-ins
+        if (!['true', 'false', 'null', 'none', 'True', 'False', 'None'].includes(varName)) {
+          references.push({
+            name: varName,
+            lineNumber: bodyStartLine + i,
+            column: line.indexOf(plainMatch[0]) + 1,
+            context: line.trim()
+          })
+        }
+      }
+    }
+
+    // Find if/elif statements - extract variables from the condition
+    let ifMatch: RegExpExecArray | null
+    while ((ifMatch = ifRegex.exec(line)) !== null) {
+      const condition = ifMatch[1]
+
+      // Remove quoted strings from condition to avoid matching string literals
+      const conditionWithoutStrings = condition.replace(/"[^"]*"|'[^']*'/g, '""')
+
+      // Find all variable references in the condition
+      // Use negative lookbehind (?<!\.) to avoid matching property names after dots
+      // This ensures "team_roles.developer" only matches "team_roles", not "developer"
+      const varMatches = conditionWithoutStrings.matchAll(/(?<!\.)\b([a-zA-Z_]\w*)(?:\.\w+)*/g)
+      for (const varMatch of varMatches) {
+        const varName = varMatch[1]
+        // Skip keywords and operators
+        if (!['and', 'or', 'not', 'in', 'is', 'true', 'false', 'null', 'none', 'True', 'False', 'None'].includes(varName)) {
+          references.push({
+            name: varName,
+            lineNumber: bodyStartLine + i,
+            column: line.indexOf(varMatch[0]) + 1,
+            context: line.trim()
+          })
+        }
+      }
     }
   }
 

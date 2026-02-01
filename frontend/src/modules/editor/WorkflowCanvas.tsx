@@ -716,11 +716,15 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false 
   // Handle node click
   const handleNodeClick: NodeMouseHandler = useCallback((event, node) => {
     selectNode(node.id)
+    // Dispatch editor-focused event to auto-minimize bottom panel when not pinned
+    window.dispatchEvent(new CustomEvent('editor-focused'))
   }, [selectNode])
 
   // Handle edge click
   const handleEdgeClick: EdgeMouseHandler = useCallback((event, edge) => {
     selectEdge(edge.id)
+    // Dispatch editor-focused event to auto-minimize bottom panel when not pinned
+    window.dispatchEvent(new CustomEvent('editor-focused'))
   }, [selectEdge])
 
   // Handle pane click (deselect and hide context menu)
@@ -728,6 +732,8 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false 
     selectNode(null)
     selectEdge(null)
     hideContextMenu()
+    // Dispatch editor-focused event to auto-minimize bottom panel when not pinned
+    window.dispatchEvent(new CustomEvent('editor-focused'))
   }, [selectNode, selectEdge, hideContextMenu])
 
   // Handle node right-click (context menu)

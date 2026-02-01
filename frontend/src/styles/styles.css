@@ -235,10 +235,14 @@ body { background: var(--bg); color: var(--text); font: 14px/1.4 Inter, system-u
 }
 */
 
-/* Monaco find widget tooltip fix handled via MutationObserver in PrompdEditor.tsx */
-.left.monaco-component {
+/* Monaco find widget tooltip fix - only hide the hover tooltip border, not code actions */
+.context-view.monaco-component.left {
   border-right: none !important;
-  display: none !important;
+}
+
+/* Hide the problematic vertical line in find/replace hover tooltips */
+.context-view.monaco-component.left .workbench-hover-container {
+  border-right: none !important;
 }
 
 /* Monaco diff decorations (inline change preview) */

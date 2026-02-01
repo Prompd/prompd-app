@@ -142,6 +142,125 @@ export function GuardrailNodeProperties({ data, onChange }: GuardrailNodePropert
           )}
         </div>
       </div>
+
+      {/* Output Mode */}
+      <div>
+        <label style={labelStyle}>Output Mode</label>
+        <select
+          value={data.outputMode || 'passthrough'}
+          onChange={(e) => onChange('outputMode', e.target.value)}
+          style={selectStyle}
+        >
+          <option value="passthrough">Pass Through (return LLM response)</option>
+          <option value="original">Pass Original Input (when clean)</option>
+          <option value="reject-message">Custom Reject Message</option>
+        </select>
+        <p style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+          What to output when guardrail passes
+        </p>
+      </div>
+
+      {/* Expected Response Format */}
+      <div>
+        <label style={labelStyle}>Expected Response Format</label>
+        <select
+          value={data.expectedFormat || 'json'}
+          onChange={(e) => onChange('expectedFormat', e.target.value)}
+          style={selectStyle}
+        >
+          <option value="json">JSON Object</option>
+          <option value="text">Plain Text</option>
+        </select>
+      </div>
+
+      {data.expectedFormat === 'json' && (
+        <>
+          {/* Rejection Field */}
+          <div>
+            <label style={labelStyle}>Rejection Field</label>
+            <input
+              type="text"
+              value={data.rejectionField || 'rejected'}
+              onChange={(e) => onChange('rejectionField', e.target.value)}
+              placeholder="rejected"
+              style={inputStyle}
+            />
+            <p style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+              JSON field that indicates rejection (e.g., "rejected", "blocked", "unsafe")
+            </p>
+          </div>
+
+          {/* Pass When */}
+          <div>
+            <label style={labelStyle}>Pass When</label>
+            <select
+              value={data.passWhen || 'false'}
+              onChange={(e) => onChange('passWhen', e.target.value)}
+              style={selectStyle}
+            >
+              <option value="false">Field is false</option>
+              <option value="true">Field is true</option>
+            </select>
+            <p style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+              Workflow continues if this condition is met
+            </p>
+          </div>
+
+          {/* Custom Rejection Expression */}
+          <div>
+            <label style={labelStyle}>Custom Rejection Expression (Advanced)</label>
+            <input
+              type="text"
+              value={data.rejectionExpression || ''}
+              onChange={(e) => onChange('rejectionExpression', e.target.value)}
+              placeholder="e.g., {{ response.rejected === true || response.score > 0.8 }}"
+              style={{
+                ...inputStyle,
+                fontFamily: 'monospace',
+                fontSize: '11px',
+              }}
+            />
+            <p style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+              Optional: Override field check with custom expression. Supports {'{{ }}'} syntax.
+            </p>
+          </div>
+        </>
+      )}
+
+      {/* Action on Fail */}
+      <div>
+        <label style={labelStyle}>Action on Fail</label>
+        <select
+          value={data.failAction || 'error'}
+          onChange={(e) => onChange('failAction', e.target.value)}
+          style={selectStyle}
+        >
+          <option value="error">Throw Error</option>
+          <option value="stop">Stop Workflow Silently</option>
+          <option value="continue">Continue Anyway (log warning)</option>
+        </select>
+      </div>
+
+      {/* Custom Reject Message */}
+      {data.outputMode === 'reject-message' && (
+        <div>
+          <label style={labelStyle}>Custom Reject Message</label>
+          <textarea
+            value={data.customRejectMessage || ''}
+            onChange={(e) => onChange('customRejectMessage', e.target.value)}
+            placeholder="Input rejected by guardrail"
+            rows={3}
+            style={{
+              ...inputStyle,
+              resize: 'vertical',
+              fontSize: '11px',
+            }}
+          />
+          <p style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+            Message to show when guardrail fails
+          </p>
+        </div>
+      )}
     </>
   )
 }

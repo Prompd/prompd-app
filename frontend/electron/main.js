@@ -186,7 +186,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: false  // TEMP: Disabled to test Monaco List component issue
     },
     title: 'Prompd',
     backgroundColor: '#1e293b',
@@ -4199,16 +4199,99 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
             }
           }
         },
-        // Command execution for workflow Command nodes
+        // Tool execution for workflow Tool nodes
         onToolCall: async (request) => {
           try {
             console.log(`[Workflow Executor] Tool call request: ${request.toolType}`)
 
-            // Only handle 'command' tool type
+            // Handle HTTP requests
+            if (request.toolType === 'http') {
+              const { method, url, headers, body } = request.httpConfig || {}
+
+              if (!url) {
+                return {
+                  success: false,
+                  error: 'Missing HTTP URL'
+                }
+              }
+
+              try {
+                const https = require('https')
+                const http = require('http')
+                const urlModule = require('url')
+
+                const parsedUrl = urlModule.parse(url)
+                const isHttps = parsedUrl.protocol === 'https:'
+                const httpModule = isHttps ? https : http
+
+                return await new Promise((resolve) => {
+                  const options = {
+                    method: method || 'GET',
+                    headers: {
+                      'User-Agent': 'Prompd/1.0',
+                      ...headers
+                    }
+                  }
+
+                  const req = httpModule.request(url, options, (res) => {
+                    let responseData = ''
+
+                    res.on('data', (chunk) => {
+                      responseData += chunk
+                    })
+
+                    res.on('end', () => {
+                      const success = res.statusCode >= 200 && res.statusCode < 300
+
+                      // Try to parse JSON response
+                      let parsedData = responseData
+                      try {
+                        parsedData = JSON.parse(responseData)
+                      } catch (e) {
+                        // Not JSON, use raw string
+                      }
+
+                      resolve({
+                        success,
+                        result: parsedData,
+                        statusCode: res.statusCode,
+                        headers: res.headers,
+                        error: success ? undefined : `HTTP ${res.statusCode}: ${res.statusMessage}`
+                      })
+                    })
+                  })
+
+                  req.on('error', (err) => {
+                    console.error('[Workflow Executor] HTTP request error:', err)
+                    resolve({
+                      success: false,
+                      error: err.message,
+                      result: null
+                    })
+                  })
+
+                  // Send request body if present
+                  if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+                    const bodyData = typeof body === 'string' ? body : JSON.stringify(body)
+                    req.write(bodyData)
+                  }
+
+                  req.end()
+                })
+              } catch (error) {
+                return {
+                  success: false,
+                  error: error.message,
+                  result: null
+                }
+              }
+            }
+
+            // Handle command execution
             if (request.toolType !== 'command') {
               return {
                 success: false,
-                error: `Unsupported tool type: ${request.toolType}. Only 'command' is supported.`
+                error: `Unsupported tool type: ${request.toolType}. Supported: 'command', 'http'.`
               }
             }
 

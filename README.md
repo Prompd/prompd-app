@@ -1,62 +1,81 @@
-# editor.prompdhub.ai – Web Editor
+# Prompd Desktop
 
-A comprehensive Monaco-based web editor for `.prompd` files with advanced IntelliSense, visual canvas editing, and registry integration.
+A local-first Electron application for creating and executing AI workflows with visual canvas editing, Monaco code editor, and composable prompt architecture.
+
+## Architecture
+
+**Local-First Execution** - All core operations run locally in Electron:
+- Direct LLM API calls (OpenAI, Anthropic, Google, etc.)
+- Prompt compilation via `@prompd/cli`
+- Workflow execution with 20+ node types
+- File operations and Git integration
+- Configuration and API key management
+
+**Optional Backend Services** - Used only for:
+- Provider/model list updates (cached locally for offline mode)
+- Registry package search (prompdhub.ai)
+- Cloud project sync and analytics
 
 ## Features
-- **Advanced IntelliSense**: Context-aware completions with live registry search
-- **Monaco Editor**: Professional code editor with Prompd syntax highlighting (TextMate grammar)
-- **Visual Canvas Editor**: Drag-and-drop workflow designer with 15+ node types
-- **Registry Integration**: Real-time package search and metadata from prompdhub.ai
-- **Code Snippets**: Template expansion system for rapid development
-- **File Management**: Project-based organization with drag-and-drop support
-- **Offline Support**: Graceful fallback when registry is unavailable
 
-## IntelliSense Capabilities
-- **Package Search**: Live suggestions from registry as you type `@` or in `using:` sections
-- **Parameter References**: Smart completion for `{parameter}` references with validation
-- **Context Awareness**: Field suggestions for YAML frontmatter (provider, model, etc.)
-- **Hover Information**: Package metadata, versions, and descriptions on hover
-- **Code Snippets**: Template expansion with `!snippet-name` syntax
+- **Visual Workflow Canvas**: Drag-and-drop workflow designer with 20+ node types (React Flow/XYFlow)
+- **Monaco Code Editor**: Professional editing with IntelliSense, syntax highlighting, and package completions
+- **Local Execution**: Direct HTTPS calls to LLM providers - no proxy, no latency
+- **Registry Integration**: Search and install packages from prompdhub.ai
+- **Offline Support**: Full functionality without internet (after initial provider list cache)
+- **Project System**: `.pdproj` files with workspace organization
+- **File Formats**: `.prmd` (prompts), `.pdflow` (workflows), `.pdpkg` (packages)
+
+## Tech Stack
+
+- **Frontend**: React 18 + TypeScript + Vite + Monaco Editor + Zustand
+- **Desktop**: Electron with File System Access API and IPC bridge
+- **Compilation**: `@prompd/cli@^0.3.3` (npm package)
+- **Backend** (optional): Node.js ESM + Express + MongoDB
+
+## Quick Start
+
+```bash
+# Frontend development
+cd frontend && npm install && npm run dev
+
+# Electron desktop app
+cd frontend && npm run electron:dev
+
+# Backend (optional - for provider list updates, analytics)
+cd backend && npm install && npm run dev
+```
 
 ## Documentation
 
-For comprehensive documentation including IntelliSense features, canvas editor usage, and API integration, see:
-- **[Editor Documentation](./docs/editor.md)** - Complete feature guide and usage instructions
+- [CLAUDE.md](CLAUDE.md) - Developer guide and architecture
+- [AGENTS.md](AGENTS.md) - Coding guidelines and patterns
+- [docs/editor.md](docs/editor.md) - Editor features and usage
+- [frontend/ELECTRON.md](frontend/ELECTRON.md) - Build and distribution
 
-## Roadmap
-- ✅ Advanced IntelliSense with registry integration
-- ✅ Visual canvas editor with node palette
-- ✅ Code snippets and template expansion
-- ✅ Package search and metadata display
-- 🔄 Run/Compile by calling the CLI on a server (or WebAssembly, if feasible)
-- 🔄 Auth + registry integration
-- 📋 Parameter sidebar with type-aware editing
-- 📋 Export workflows to various formats
+## File Formats
 
-### Planned API integration
-- Configure base URL in the header (stored in localStorage)
-- Endpoints (proposed):
-  - `POST /v1/validate` { content: string } -> { ok, issues[] }
-  - `POST /v1/compile` { content: string, to?: 'markdown' } -> { ok, markdown }
-  - `POST /v1/run` { content: string, params?: object } -> { ok, response }
+- `.prmd` - Prompt files (YAML frontmatter + Markdown)
+- `.pdflow` - Workflow definitions (YAML-compatible with React Flow nodes/edges)
+- `.pdproj` - Project files (workspace configuration)
+- `.pdpkg` - Package bundles (ZIP archives with manifest.json)
 
-The current UI ships with a stub client in `src/modules/services/api.ts` so wiring to an existing API won’t require UI changes.
-
-## Dev
+## Development
 
 ```bash
-cd editor.prompdhub.ai/web
+# Build @prompd/react package (required first)
+cd packages/react && npm install && npm run build
+
+# Frontend
+cd frontend
 npm install
-npm run dev
+npm run dev              # Vite dev server on :5173
+npm run electron:dev     # Electron with hot reload
+npm run build            # Production build
+
+# Backend (optional)
+cd backend
+npm install
+npm run dev              # Development with nodemon on :3010
+npm test                 # Run tests (requires MongoDB)
 ```
-
-Build:
-```bash
-npm run build && npm run preview
-```
-
-No servers are launched automatically by this repo; use your local Node for dev server only.
-
-### Static assets
-- Public assets are served from `editor.prompdhub.ai/public` (configured via Vite `publicDir`).
-- Example: place `logo.svg` there and reference it in the UI as `/logo.svg`.

@@ -33,7 +33,8 @@ export default defineConfig({
     include: [
       'monaco-editor/esm/vs/editor/editor.api',
       'monaco-editor/esm/vs/basic-languages/yaml/yaml',
-      'monaco-editor/esm/vs/basic-languages/markdown/markdown'
+      'monaco-editor/esm/vs/basic-languages/markdown/markdown',
+      'monaco-editor/esm/vs/base/browser/ui/list/listWidget'
     ],
     exclude: [
       '@prompd/cli'  // Exclude main export (executor requires Node.js, goes via IPC in Electron)

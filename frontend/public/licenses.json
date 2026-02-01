@@ -105,7 +105,7 @@
     "publisher": "Prompd LLC",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend"
   },
-  "@prompd/cli@0.4.0": {
+  "@prompd/cli@0.4.5": {
     "licenses": "MIT",
     "publisher": "Logikbug",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli",
@@ -1116,6 +1116,12 @@
     "url": "https://wooorm.com",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\devlop",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\devlop\\license"
+  },
+  "diff@8.0.3": {
+    "licenses": "BSD-3-Clause",
+    "repository": "https://github.com/kpdecker/jsdiff",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\diff",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\diff\\LICENSE"
   },
   "dingbat-to-unicode@1.0.1": {
     "licenses": "BSD-2-Clause",
