@@ -346,6 +346,19 @@ export function CompiledPreview({
     ? Math.round((1 - currentTokens / markdownTokens) * 100)
     : 0
 
+  // Calculate Monaco editor height when parent uses height="auto"
+  const monacoHeight = useMemo(() => {
+    if (height === 'auto' || height === '100%') {
+      // When auto height, calculate based on content lines (min 600px)
+      if (!displayContent) return '600px'
+      const lines = displayContent.split('\n').length
+      // Approximately 19px per line + 24px padding
+      const calculatedHeight = Math.max(600, lines * 19 + 24)
+      return `${calculatedHeight}px`
+    }
+    return '100%' // Use 100% when parent has fixed height
+  }, [height, displayContent])
+
   // Build minimap sections from parameters and content
   const minimapSections = useMemo((): MinimapSection[] => {
     const sections: MinimapSection[] = []
@@ -1066,7 +1079,7 @@ export function CompiledPreview({
               </div>
             ) : (
               <Editor
-                height="100%"
+                height={monacoHeight}
                 value={displayContent}
                 language="xml"
                 theme={getMonacoTheme(theme === 'dark')}
@@ -1094,7 +1107,7 @@ export function CompiledPreview({
             />
           ) : (
             <Editor
-              height="100%"
+              height={monacoHeight}
               value={displayContent}
               language={outputFormat === 'markdown' ? 'markdown' : 'plaintext'}
               theme={getMonacoTheme(theme === 'dark')}

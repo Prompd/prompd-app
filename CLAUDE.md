@@ -105,8 +105,10 @@ prompd.app/
 ```
 
 **Critical Dependencies:**
-- `@prompd/cli@^0.4.5` - Prompt compiler (symlinked from `../../Logikbug/prompd-cli/cli/npm`)
+- `@prompd/cli` - Prompt compiler (symlinked from `../../Logikbug/prompd-cli/cli/npm`)
 - `@prompd/react@^0.2.0` - Chat UI (local package via `file:../packages/react`)
+
+**Note:** `@prompd/cli` is a symlink to the local Logikbug monorepo, not a versioned npm package.
 
 ### Execution Model - Local-First
 
@@ -140,12 +142,14 @@ User Action → executionRouter → localExecutor → Direct HTTPS to LLM APIs
 
 Four stores with Immer middleware in [frontend/src/stores/](frontend/src/stores/):
 
-| Store | Purpose | Persisted |
-|-------|---------|-----------|
-| [editorStore](frontend/src/stores/editorStore.ts) | Editor state, tabs, file explorer, build output | Yes |
-| [uiStore](frontend/src/stores/uiStore.ts) | UI state, theme, LLM provider/model selection | Yes |
-| [wizardStore](frontend/src/stores/wizardStore.ts) | Transient wizard flow state | No |
-| [workflowStore](frontend/src/stores/workflowStore.ts) | Workflow canvas, nodes, history (undo/redo) | Yes |
+| Store | Purpose | Persisted | Size |
+|-------|---------|-----------|------|
+| [editorStore](frontend/src/stores/editorStore.ts) | Editor state, tabs, file explorer, build output | Yes | ~18KB |
+| [uiStore](frontend/src/stores/uiStore.ts) | UI state, theme, LLM provider/model selection | Yes | ~35KB |
+| [wizardStore](frontend/src/stores/wizardStore.ts) | Transient wizard flow state | No | ~3KB |
+| [workflowStore](frontend/src/stores/workflowStore.ts) | Workflow canvas, nodes, history, execution state | Yes | ~85KB |
+
+**Note:** workflowStore is complex due to workflow execution tracking (executionResult, checkpoints, promptsSent, executionHistory), undo/redo system, and 25+ node type support.
 
 **CRITICAL PATTERN - Selective Subscriptions:**
 ```typescript
@@ -161,7 +165,13 @@ const store = useEditorStore()
 Visual workflow editing with `.pdflow` files using XYFlow (React Flow).
 
 **Key Features:**
-- 20+ node types (trigger, prompt, agent, tool, api, transformer, conditional, loop, parallel)
+- **25+ Node Types:**
+  - **Core:** trigger, prompt, agent, chatAgent, tool, mcpTool
+  - **Execution:** command, code, claudeCode, workflow
+  - **Flow Control:** condition, loop, parallel (parallelBroadcast, parallelFork), merge, errorHandler, guardrail
+  - **Data:** transform, memory, callback, provider
+  - **UI:** userInput, output
+  - **Routing:** toolCallParser, toolCallRouter, container
 - Undo/redo history (50 snapshots, 300ms debounce)
 - Real-time validation with visual feedback
 - Compound nodes (loop, parallel) with parent/child relationships
@@ -311,9 +321,24 @@ registryUrl: https://registry.prompdhub.ai
 
 **Configuration ([frontend/tsconfig.json](frontend/tsconfig.json)):**
 - Strict mode enabled
-- Path alias: `@/*` maps to `src/*`
+- Path alias: `@/*` maps to `src/modules/*` (not `src/*` - note the `/modules` subdirectory)
 - Target: ES2020
 - Module: ESNext (Vite handles bundling)
+
+**Frontend Source Structure:**
+```
+frontend/src/
+├── modules/          # Main application code (components, services, editor, etc.)
+│   ├── App.tsx       # Main application component
+│   ├── components/   # React components
+│   ├── editor/       # Editor-specific components
+│   ├── services/     # Business logic
+│   └── ...
+├── stores/           # Zustand state management
+├── constants/        # App constants
+├── styles/           # Global CSS
+└── main.tsx          # Application entry point
+```
 
 **Best Practices:**
 - NEVER use `any` - always use proper types

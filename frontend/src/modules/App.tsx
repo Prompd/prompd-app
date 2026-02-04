@@ -844,13 +844,16 @@ export default function App() {
 
         // Update the execution tab with new content and parameters
         updateTab(execTab.id, {
+          filePath: sourceTab.filePath,
           executionConfig: {
             ...execTab.executionConfig,
             prompdSource: {
               ...execTab.executionConfig.prompdSource,
               content: sourceTab.text,
-              originalParams: newOriginalParams
-            }
+              originalParams: newOriginalParams,
+              filePath: sourceTab.filePath
+            },
+            workspacePath: explorerDirPath || execTab.executionConfig.workspacePath
           }
         })
       }
@@ -2222,19 +2225,22 @@ version: 1.0.0
       text: '',
       type: 'execution',
       handle: activeTab.handle,
+      filePath: activeTab.filePath,
       executionConfig: {
         sourceTabId: activeTab.id,
         prompdSource: {
           type: 'file',
           content: activeTab.text,
-          originalParams
+          originalParams,
+          filePath: activeTab.filePath
         },
         parameters: activeTab.previewParams || {},
         customParameters: [],
         sections: extractedSections,
         provider: llmProvider.provider,
         model: llmProvider.model,
-        executionHistory: []
+        executionHistory: [],
+        workspacePath: explorerDirPath || undefined
       }
     }
 
@@ -2247,7 +2253,7 @@ version: 1.0.0
     } else {
       aiShowNotification(`Created execution workspace for ${activeTab.name}`, 'info')
     }
-  }, [getActiveTab, explorerDirHandle, llmProvider.provider, llmProvider.model, addTab, aiShowNotification, autoSaveEnabled])
+  }, [getActiveTab, explorerDirHandle, explorerDirPath, llmProvider.provider, llmProvider.model, addTab, aiShowNotification, autoSaveEnabled])
 
   // Update ref when active tab changes or handleExecutePrompd changes
   // Must include activeTabId to re-run when switching tabs or opening files

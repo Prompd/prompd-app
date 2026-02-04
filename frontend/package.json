@@ -1,6 +1,7 @@
 {
   "name": "@prompd/app",
   "version": "0.1.0",
+  "productName": "Prompd",
   "description": "AI prompt editor with package-based inheritance",
   "author": "Prompd LLC",
   "private": true,

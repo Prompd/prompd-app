@@ -186,7 +186,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false  // TEMP: Disabled to test Monaco List component issue
+      sandbox: false,  // TEMP: Disabled to test Monaco List component issue
+      userAgent: `Prompd/${app.getVersion()} (${os.type()} ${os.arch()}) Electron/${process.versions.electron}`
     },
     title: 'Prompd',
     backgroundColor: '#1e293b',

@@ -23,7 +23,7 @@ import {
   History,
   Trash2
 } from 'lucide-react'
-import { useWorkflowStore } from '../../../stores/workflowStore'
+import { useWorkflowStore, type ExecutionHistoryEntry } from '../../../stores/workflowStore'
 import { useEditorStore } from '../../../stores/editorStore'
 import type { WorkflowResult } from '../../services/workflowTypes'
 import type { CheckpointEvent, ExecutionTrace, TraceEntry } from '../../services/workflowExecutor'
@@ -595,7 +595,7 @@ export function WorkflowExecutionPanel({
 
                   {/* History list */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {executionHistory.map((entry) => (
+                    {executionHistory.map((entry: ExecutionHistoryEntry) => (
                       <div
                         key={entry.id}
                         className="workflow-history-entry"

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Package, Download, ExternalLink, RefreshCw } from 'lucide-react'
+import { Search, Package, Download, ExternalLink, RefreshCw, Calendar, User, Tag, Star } from 'lucide-react'
 import { registryApi, type RegistryPackage } from '../services/registryApi'
 import PackageDetailsModal from './PackageDetailsModal'
 import { useAuthenticatedUser } from '../auth/ClerkWrapper'
@@ -46,6 +46,7 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
   const [myPackagesLoading, setMyPackagesLoading] = useState(false)
   const [myPackagesError, setMyPackagesError] = useState<string | null>(null)
   const [myPackagesLoaded, setMyPackagesLoaded] = useState(false)
+  const [myPackagesFilter, setMyPackagesFilter] = useState('')
 
   // Modal state
   const [selectedPackage, setSelectedPackage] = useState<RegistryPackage | null>(null)
@@ -276,7 +277,8 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
                 gap: '12px',
-                overflow: 'auto'
+                overflow: 'auto',
+                paddingTop: '8px'
               }}>
                 {packages.map((pkg) => (
                   <PackageCard
@@ -356,6 +358,39 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
               )}
             </div>
 
+            {/* Filter input */}
+            {isSignedIn && myPackages.length > 0 && (
+              <div style={{ position: 'relative' }}>
+                <Search size={16} style={{
+                  position: 'absolute',
+                  left: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-secondary)',
+                  pointerEvents: 'none'
+                }} />
+                <input
+                  type="text"
+                  value={myPackagesFilter}
+                  onChange={(e) => setMyPackagesFilter(e.target.value)}
+                  placeholder="Filter packages..."
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px 10px 38px',
+                    fontSize: '13px',
+                    background: 'var(--panel-2)',
+                    border: '2px solid var(--border)',
+                    borderRadius: '6px',
+                    color: 'var(--text)',
+                    outline: 'none',
+                    transition: 'border-color 0.2s'
+                  }}
+                  onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                  onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+                />
+              </div>
+            )}
+
             {/* Not signed in state */}
             {!isSignedIn && (
               <div style={{
@@ -403,22 +438,46 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
             )}
 
             {/* Package grid */}
-            {isSignedIn && !myPackagesLoading && !myPackagesError && myPackages.length > 0 && (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                gap: '12px',
-                overflow: 'auto'
-              }}>
-                {myPackages.map((pkg) => (
-                  <PackageCard
-                    key={`${pkg.name}@${pkg.version}`}
-                    package={pkg}
-                    onClick={() => handlePackageClick(pkg)}
-                  />
-                ))}
-              </div>
-            )}
+            {isSignedIn && !myPackagesLoading && !myPackagesError && myPackages.length > 0 && (() => {
+              const filteredPackages = myPackagesFilter
+                ? myPackages.filter(pkg =>
+                    pkg.name.toLowerCase().includes(myPackagesFilter.toLowerCase()) ||
+                    pkg.description?.toLowerCase().includes(myPackagesFilter.toLowerCase()) ||
+                    pkg.keywords?.some(k => k.toLowerCase().includes(myPackagesFilter.toLowerCase()))
+                  )
+                : myPackages
+
+              return filteredPackages.length > 0 ? (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                  gap: '12px',
+                  overflow: 'auto',
+                  paddingTop: '8px'
+                }}>
+                  {filteredPackages.map((pkg) => (
+                    <PackageCard
+                      key={`${pkg.name}@${pkg.version}`}
+                      package={pkg}
+                      onClick={() => handlePackageClick(pkg)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div style={{
+                  padding: '40px 20px',
+                  textAlign: 'center',
+                  color: 'var(--text-secondary)',
+                  fontSize: '13px'
+                }}>
+                  <Package size={32} style={{ opacity: 0.5, marginBottom: '12px' }} />
+                  <div>No packages match "{myPackagesFilter}"</div>
+                  <div style={{ fontSize: '11px', marginTop: '8px' }}>
+                    Try a different search term
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Empty state */}
             {isSignedIn && !myPackagesLoading && !myPackagesError && myPackages.length === 0 && myPackagesLoaded && (
@@ -461,140 +520,257 @@ interface PackageCardProps {
 function PackageCard({ package: pkg, onClick }: PackageCardProps) {
   const [isHovered, setIsHovered] = useState(false)
 
+  // Format publish date
+  const publishedDate = pkg.publishedAt ? new Date(pkg.publishedAt).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  }) : null
+
+  // Format updated date
+  const updatedDate = pkg.updatedAt ? new Date(pkg.updatedAt).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  }) : null
+
   return (
     <div
       onClick={onClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={{
-        padding: '16px',
-        background: isHovered ? 'var(--panel-2)' : 'var(--panel)',
-        border: `1px solid ${isHovered ? 'var(--accent)' : 'var(--border)'}`,
-        borderRadius: '8px',
+        position: 'relative',
+        padding: '20px',
+        background: 'var(--panel)',
+        borderWidth: '2px',
+        borderStyle: 'solid',
+        borderColor: isHovered ? 'var(--accent)' : 'var(--border)',
+        borderRadius: '12px',
         cursor: 'pointer',
-        transition: 'all 0.2s',
+        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
         display: 'flex',
         flexDirection: 'column',
-        gap: '12px',
-        minHeight: '160px'
+        gap: '16px',
+        minHeight: '240px',
+        boxShadow: isHovered
+          ? '0 8px 24px rgba(0, 0, 0, 0.12)'
+          : '0 2px 8px rgba(0, 0, 0, 0.04)',
+        transform: isHovered ? 'translateY(-2px)' : 'translateY(0)'
       }}
     >
-      {/* Package header */}
-      <div style={{ display: 'flex', alignItems: 'start', gap: '10px' }}>
+      {/* Package header with icon */}
+      <div style={{ display: 'flex', alignItems: 'start', gap: '14px' }}>
         <div style={{
           flexShrink: 0,
-          width: '36px',
-          height: '36px',
-          background: 'var(--accent)',
-          borderRadius: '6px',
+          width: '52px',
+          height: '52px',
+          background: `linear-gradient(135deg, var(--accent), #8b5cf6)`,
+          borderRadius: '10px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          opacity: 0.9
+          boxShadow: '0 4px 16px rgba(99, 102, 241, 0.3)',
+          transform: isHovered ? 'scale(1.05)' : 'scale(1)',
+          transition: 'transform 0.2s'
         }}>
-          <Package size={20} color="white" />
+          <Package size={28} color="white" strokeWidth={2.5} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
-            fontSize: '14px',
-            fontWeight: 600,
+            fontSize: '16px',
+            fontWeight: 700,
             color: 'var(--text)',
             fontFamily: 'monospace',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            marginBottom: '2px'
+            marginBottom: '6px',
+            letterSpacing: '-0.02em'
           }}>
             {pkg.name}
           </div>
           <div style={{
-            fontSize: '11px',
-            color: 'var(--text-secondary)',
-            fontFamily: 'monospace'
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '4px 10px',
+            fontSize: '12px',
+            fontWeight: 600,
+            color: 'var(--accent)',
+            background: 'rgba(99, 102, 241, 0.1)',
+            borderRadius: '6px',
+            fontFamily: 'monospace',
+            borderWidth: '1px',
+            borderStyle: 'solid',
+            borderColor: 'rgba(99, 102, 241, 0.25)'
           }}>
+            <Tag size={11} />
             v{pkg.version}
           </div>
+        </div>
+        {/* Hover indicator */}
+        <div style={{
+          opacity: isHovered ? 1 : 0,
+          transform: isHovered ? 'translateX(0)' : 'translateX(4px)',
+          transition: 'all 0.2s'
+        }}>
+          <ExternalLink size={18} color="var(--accent)" />
         </div>
       </div>
 
       {/* Description */}
       <div style={{
-        fontSize: '12px',
+        fontSize: '13px',
         color: 'var(--text-secondary)',
-        lineHeight: '1.5',
-        flex: 1,
+        lineHeight: '1.6',
         overflow: 'hidden',
         display: '-webkit-box',
         WebkitLineClamp: 3,
-        WebkitBoxOrient: 'vertical'
+        WebkitBoxOrient: 'vertical',
+        minHeight: '4em',
+        flex: 1
       }}>
         {pkg.description || 'No description available'}
       </div>
 
-      {/* Metadata footer */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingTop: '8px',
-        borderTop: '1px solid var(--border)',
-        fontSize: '11px',
-        color: 'var(--text-secondary)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {pkg.author && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span>By: {pkg.author}</span>
-            </div>
-          )}
-          {pkg.downloads !== undefined && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Download size={12} />
-              <span>{formatDownloads(pkg.downloads)}</span>
-            </div>
-          )}
-        </div>
-        <ExternalLink size={12} opacity={isHovered ? 1 : 0.5} style={{ transition: 'opacity 0.2s' }} />
-      </div>
-
-      {/* Keywords/Tags */}
-      {pkg.keywords && pkg.keywords.length > 0 && (
+      {/* Metadata sections */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {/* Primary metadata - 2 column grid */}
         <div style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '4px',
-          marginTop: '4px'
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: '10px',
+          paddingTop: '12px',
+          borderTop: '1px solid var(--border)'
         }}>
-          {pkg.keywords.slice(0, 3).map((keyword, idx) => (
-            <span
-              key={idx}
-              style={{
-                padding: '2px 8px',
-                fontSize: '10px',
-                background: 'var(--panel-2)',
-                border: '1px solid var(--border)',
-                borderRadius: '4px',
-                color: 'var(--text-secondary)',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              {keyword}
-            </span>
-          ))}
-          {pkg.keywords.length > 3 && (
-            <span
-              style={{
-                padding: '2px 8px',
-                fontSize: '10px',
-                color: 'var(--text-secondary)',
-                fontStyle: 'italic'
-              }}
-            >
-              +{pkg.keywords.length - 3} more
-            </span>
+          {/* Author */}
+          {pkg.author && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              fontSize: '12px',
+              color: 'var(--text-secondary)'
+            }}>
+              <User size={14} style={{ flexShrink: 0, opacity: 0.7 }} />
+              <span style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                fontWeight: 500
+              }}>
+                {pkg.author}
+              </span>
+            </div>
+          )}
+
+          {/* Downloads */}
+          {pkg.downloads !== undefined && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              fontSize: '12px',
+              color: 'var(--text-secondary)',
+              fontWeight: 500
+            }}>
+              <Download size={14} style={{ flexShrink: 0, opacity: 0.7 }} />
+              <span>{formatDownloads(pkg.downloads)} downloads</span>
+            </div>
+          )}
+
+          {/* Published date */}
+          {publishedDate && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              fontSize: '12px',
+              color: 'var(--text-secondary)'
+            }}>
+              <Calendar size={14} style={{ flexShrink: 0, opacity: 0.7 }} />
+              <span>Published {publishedDate}</span>
+            </div>
+          )}
+
+          {/* Updated date */}
+          {updatedDate && publishedDate !== updatedDate && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              fontSize: '12px',
+              color: 'var(--text-secondary)'
+            }}>
+              <RefreshCw size={14} style={{ flexShrink: 0, opacity: 0.7 }} />
+              <span>Updated {updatedDate}</span>
+            </div>
+          )}
+
+          {/* License */}
+          {pkg.license && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              fontSize: '12px',
+              color: 'var(--text-secondary)',
+              gridColumn: (!updatedDate || publishedDate === updatedDate) ? 'span 2' : 'auto'
+            }}>
+              <Star size={14} style={{ flexShrink: 0, opacity: 0.7 }} />
+              <span>{pkg.license}</span>
+            </div>
           )}
         </div>
-      )}
+
+        {/* Keywords/Tags */}
+        {pkg.keywords && pkg.keywords.length > 0 && (
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '7px',
+            paddingTop: '10px',
+            borderTop: '1px solid var(--border)'
+          }}>
+            {pkg.keywords.slice(0, 5).map((keyword, idx) => (
+              <span
+                key={idx}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  background: isHovered ? 'rgba(99, 102, 241, 0.1)' : 'var(--panel-2)',
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  borderColor: isHovered ? 'rgba(99, 102, 241, 0.3)' : 'var(--border)',
+                  borderRadius: '14px',
+                  color: isHovered ? 'var(--accent)' : 'var(--text-secondary)',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {keyword}
+              </span>
+            ))}
+            {pkg.keywords.length > 5 && (
+              <span
+                style={{
+                  padding: '4px 12px',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  color: 'var(--text-secondary)',
+                  fontStyle: 'italic',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                +{pkg.keywords.length - 5} more
+              </span>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
