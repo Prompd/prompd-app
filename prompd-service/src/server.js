@@ -2,6 +2,7 @@
  * Prompd Service - Standalone workflow scheduler
  *
  * A lightweight HTTP server that runs 24/7 for scheduled workflow execution
+ * Uses DeploymentService for package-based workflow deployment and trigger management
  * Configuration via environment variables, no complex setup required
  */
 
@@ -9,9 +10,9 @@ import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import rateLimit from 'express-rate-limit'
-import { Scheduler } from '@prompd/scheduler-shared'
-import { getDefaultDbPath } from '@prompd/scheduler-shared/models/scheduleDB.js'
-import { executeWorkflow } from './workflowExecutor.js'
+import { DeploymentService } from '@prompd/scheduler'
+import { getDefaultDbPath } from '@prompd/scheduler'
+import { executeDeployedWorkflow } from './workflowExecutor.js'
 import { WebhookClient } from './webhookClient.js'
 
 // Configuration from environment variables
@@ -45,19 +46,16 @@ const limiter = rateLimit({
 })
 app.use(limiter)
 
-// Workflow executor is imported from workflowExecutor.js
-
-// Initialize scheduler
-let scheduler = null
+// Initialize deployment service
+let deploymentService = null
 try {
-  scheduler = new Scheduler({
+  deploymentService = new DeploymentService({
     dbPath: DB_PATH,
-    executeWorkflow
+    executeWorkflow: executeDeployedWorkflow
   })
-  scheduler.start()
-  log('info', 'Scheduler initialized', { dbPath: DB_PATH })
+  log('info', 'DeploymentService initialized', { dbPath: DB_PATH })
 } catch (error) {
-  log('error', 'Failed to initialize scheduler', { error: error.message })
+  log('error', 'Failed to initialize DeploymentService', { error: error.message })
   process.exit(1)
 }
 
@@ -72,35 +70,40 @@ if (ENABLE_WEBHOOKS) {
           workflowId: webhook.workflowId
         })
 
-        // Find workflow by ID from scheduler
-        const schedules = scheduler.getSchedules({ workflowId: webhook.workflowId })
-        const schedule = schedules[0]
+        // Find deployment with matching workflowId
+        const deployments = deploymentService.listDeployments({ status: 'enabled' })
+        const deployment = deployments.find(d => d.workflowId === webhook.workflowId)
 
-        if (!schedule) {
+        if (!deployment) {
           log('warn', 'Webhook received for unknown workflow', { workflowId: webhook.workflowId })
+          return
+        }
+
+        // Find webhook trigger for this deployment
+        const triggers = deploymentService.db.triggers.getByDeployment(deployment.id)
+        const webhookTrigger = triggers.find(t => t.triggerType === 'webhook' && t.enabled)
+
+        if (!webhookTrigger) {
+          log('warn', 'No active webhook trigger found for deployment', { deploymentId: deployment.id })
           return
         }
 
         // Execute workflow with webhook data as parameters
         try {
-          await executeWorkflow({
-            ...schedule,
-            parameters: {
-              ...schedule.parameters,
-              webhook_body: webhook.body,
-              webhook_headers: webhook.headers,
-              webhook_query: webhook.query,
-              webhook_id: webhook.id
-            }
+          await deploymentService.execute(deployment.id, {
+            webhook_body: webhook.body,
+            webhook_headers: webhook.headers,
+            webhook_query: webhook.query,
+            webhook_id: webhook.id
           })
           log('info', 'Webhook workflow executed successfully', {
             webhookId: webhook.id,
-            workflowId: webhook.workflowId
+            deploymentId: deployment.id
           })
         } catch (error) {
           log('error', 'Webhook workflow execution failed', {
             webhookId: webhook.id,
-            workflowId: webhook.workflowId,
+            deploymentId: deployment.id,
             error: error.message
           })
         }
@@ -126,11 +129,14 @@ if (ENABLE_WEBHOOKS) {
  * Health check endpoint
  */
 app.get('/health', (req, res) => {
-  const activeSchedules = scheduler.getActiveSchedules()
+  const deployments = deploymentService.listDeployments({ status: 'enabled' })
+  const allTriggers = deploymentService.db.triggers.getAll({ enabled: 1 })
+
   res.json({
     status: 'ok',
     uptime: process.uptime(),
-    activeSchedules: activeSchedules.length,
+    activeDeployments: deployments.length,
+    enabledTriggers: allTriggers.length,
     webhooks: {
       enabled: ENABLE_WEBHOOKS,
       active: webhookClient?.isActive() || false,
@@ -141,121 +147,168 @@ app.get('/health', (req, res) => {
 })
 
 /**
- * Get all schedules
+ * Get all deployments
  */
-app.get('/api/schedules', (req, res) => {
+app.get('/api/deployments', (req, res) => {
   try {
     const filters = {}
-    if (req.query.enabled !== undefined) {
-      filters.enabled = req.query.enabled === 'true'
+    if (req.query.status) {
+      filters.status = req.query.status
     }
     if (req.query.workflowId) {
       filters.workflowId = req.query.workflowId
     }
 
-    const schedules = scheduler.getSchedules(filters)
-    res.json({ success: true, schedules })
+    const deployments = deploymentService.listDeployments(filters)
+    res.json({ success: true, deployments })
   } catch (error) {
-    log('error', 'Failed to get schedules', { error: error.message })
+    log('error', 'Failed to get deployments', { error: error.message })
     res.status(500).json({ success: false, error: error.message })
   }
 })
 
 /**
- * Create new schedule
+ * Deploy a package
  */
-app.post('/api/schedules', (req, res) => {
+app.post('/api/deployments', async (req, res) => {
   try {
-    const config = req.body
-    const scheduleId = scheduler.addSchedule(config)
-    log('info', 'Schedule created', { scheduleId, name: config.name })
-    res.json({ success: true, scheduleId })
+    const { packagePath, name } = req.body
+
+    if (!packagePath) {
+      return res.status(400).json({ success: false, error: 'packagePath is required' })
+    }
+
+    const deploymentId = await deploymentService.deploy(packagePath, { name })
+    log('info', 'Package deployed', { deploymentId, packagePath })
+    res.json({ success: true, deploymentId })
   } catch (error) {
-    log('error', 'Failed to create schedule', { error: error.message })
+    log('error', 'Failed to deploy package', { error: error.message })
     res.status(400).json({ success: false, error: error.message })
   }
 })
 
 /**
- * Get schedule by ID
+ * Get deployment status (includes triggers and recent executions)
  */
-app.get('/api/schedules/:id', (req, res) => {
+app.get('/api/deployments/:id', (req, res) => {
   try {
-    const schedules = scheduler.getSchedules()
-    const schedule = schedules.find(s => s.id === req.params.id)
+    const status = deploymentService.getDeploymentStatus(req.params.id)
 
-    if (!schedule) {
-      return res.status(404).json({ success: false, error: 'Schedule not found' })
+    if (!status.deployment) {
+      return res.status(404).json({ success: false, error: 'Deployment not found' })
     }
 
-    res.json({ success: true, schedule })
+    res.json({ success: true, ...status })
   } catch (error) {
-    log('error', 'Failed to get schedule', { error: error.message })
+    log('error', 'Failed to get deployment status', { error: error.message })
     res.status(500).json({ success: false, error: error.message })
   }
 })
 
 /**
- * Update schedule
+ * Undeploy a package
  */
-app.put('/api/schedules/:id', (req, res) => {
+app.delete('/api/deployments/:id', async (req, res) => {
   try {
-    const success = scheduler.updateSchedule(req.params.id, req.body)
-    if (!success) {
-      return res.status(404).json({ success: false, error: 'Schedule not found' })
-    }
-    log('info', 'Schedule updated', { scheduleId: req.params.id })
+    const deleteFiles = req.query.deleteFiles === 'true'
+    await deploymentService.delete(req.params.id, { deleteFiles })
+    log('info', 'Deployment deleted', { deploymentId: req.params.id, deleteFiles })
     res.json({ success: true })
   } catch (error) {
-    log('error', 'Failed to update schedule', { error: error.message })
-    res.status(400).json({ success: false, error: error.message })
-  }
-})
-
-/**
- * Delete schedule
- */
-app.delete('/api/schedules/:id', (req, res) => {
-  try {
-    const success = scheduler.deleteSchedule(req.params.id)
-    if (!success) {
-      return res.status(404).json({ success: false, error: 'Schedule not found' })
-    }
-    log('info', 'Schedule deleted', { scheduleId: req.params.id })
-    res.json({ success: true })
-  } catch (error) {
-    log('error', 'Failed to delete schedule', { error: error.message })
+    log('error', 'Failed to delete deployment', { error: error.message })
     res.status(500).json({ success: false, error: error.message })
   }
 })
 
 /**
- * Execute schedule immediately (manual trigger)
+ * Execute deployment manually
  */
-app.post('/api/schedules/:id/execute', async (req, res) => {
+app.post('/api/deployments/:id/execute', async (req, res) => {
   try {
-    const result = await scheduler.executeScheduleNow(req.params.id)
-    log('info', 'Manual execution triggered', { scheduleId: req.params.id })
+    const parameters = req.body.parameters || {}
+    const result = await deploymentService.execute(req.params.id, parameters)
+    log('info', 'Manual execution triggered', { deploymentId: req.params.id })
     res.json({ success: true, result })
   } catch (error) {
-    log('error', 'Failed to execute schedule', { error: error.message })
+    log('error', 'Failed to execute deployment', { error: error.message })
     res.status(500).json({ success: false, error: error.message })
   }
 })
 
 /**
- * Get execution history
+ * Get workflow parameters for a deployment
+ */
+app.get('/api/deployments/:id/parameters', (req, res) => {
+  try {
+    const result = deploymentService.getParameters(req.params.id)
+    if (!result.success) {
+      return res.status(404).json(result)
+    }
+    res.json(result)
+  } catch (error) {
+    log('error', 'Failed to get parameters', { error: error.message })
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
+/**
+ * Get all triggers
+ */
+app.get('/api/triggers', (req, res) => {
+  try {
+    const filters = {}
+    if (req.query.deploymentId) {
+      filters.deploymentId = req.query.deploymentId
+    }
+    if (req.query.triggerType) {
+      filters.triggerType = req.query.triggerType
+    }
+    if (req.query.enabled !== undefined) {
+      filters.enabled = req.query.enabled === 'true' ? 1 : 0
+    }
+
+    const triggers = filters.deploymentId
+      ? deploymentService.db.triggers.getByDeployment(filters.deploymentId)
+      : deploymentService.db.triggers.getAll(filters)
+
+    res.json({ success: true, triggers })
+  } catch (error) {
+    log('error', 'Failed to get triggers', { error: error.message })
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
+/**
+ * Toggle trigger enabled state
+ */
+app.put('/api/triggers/:id/toggle', async (req, res) => {
+  try {
+    const { enabled } = req.body
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'enabled must be a boolean' })
+    }
+
+    await deploymentService.toggleTrigger(req.params.id, enabled)
+    log('info', 'Trigger toggled', { triggerId: req.params.id, enabled })
+    res.json({ success: true })
+  } catch (error) {
+    log('error', 'Failed to toggle trigger', { error: error.message })
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
+/**
+ * Get execution history (all deployments, paginated)
  */
 app.get('/api/executions', (req, res) => {
   try {
-    const workflowId = req.query.workflowId || null
     const options = {
       limit: parseInt(req.query.limit || '50', 10),
       offset: parseInt(req.query.offset || '0', 10)
     }
 
-    const history = scheduler.getExecutionHistory(workflowId, options)
-    res.json({ success: true, history })
+    const result = deploymentService.getAllExecutions(options)
+    res.json({ success: true, ...result })
   } catch (error) {
     log('error', 'Failed to get execution history', { error: error.message })
     res.status(500).json({ success: false, error: error.message })
@@ -263,15 +316,33 @@ app.get('/api/executions', (req, res) => {
 })
 
 /**
- * Get next run times for a schedule
+ * Get execution history for a specific deployment
  */
-app.get('/api/schedules/:id/next-runs', (req, res) => {
+app.get('/api/deployments/:id/executions', (req, res) => {
   try {
-    const count = parseInt(req.query.count || '5', 10)
-    const times = scheduler.getNextRunTimes(req.params.id, count)
-    res.json({ success: true, times })
+    const options = {
+      limit: parseInt(req.query.limit || '50', 10),
+      offset: parseInt(req.query.offset || '0', 10)
+    }
+
+    const executions = deploymentService.getHistory(req.params.id, options)
+    res.json({ success: true, executions })
   } catch (error) {
-    log('error', 'Failed to get next run times', { error: error.message })
+    log('error', 'Failed to get deployment execution history', { error: error.message })
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
+/**
+ * Clear all execution history
+ */
+app.delete('/api/executions', (req, res) => {
+  try {
+    const deletedCount = deploymentService.clearAllHistory()
+    log('info', 'Execution history cleared', { deletedCount })
+    res.json({ success: true, deletedCount })
+  } catch (error) {
+    log('error', 'Failed to clear execution history', { error: error.message })
     res.status(500).json({ success: false, error: error.message })
   }
 })
@@ -285,8 +356,8 @@ app.use((err, req, res, next) => {
 // Graceful shutdown
 function shutdown() {
   log('info', 'Shutting down...')
-  if (scheduler) {
-    scheduler.close()
+  if (deploymentService) {
+    deploymentService.close()
   }
   if (webhookClient) {
     webhookClient.stop()
@@ -301,6 +372,7 @@ process.on('SIGINT', shutdown)
 app.listen(PORT, HOST, () => {
   log('info', `Prompd Service running`, { host: HOST, port: PORT })
   log('info', `Health check: http://${HOST}:${PORT}/health`)
+  log('info', `API base: http://${HOST}:${PORT}/api`)
   log('info', `Database: ${DB_PATH}`)
   log('info', 'Press Ctrl+C to stop')
 })

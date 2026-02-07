@@ -42,6 +42,7 @@ import {
   createEmptyWorkflow,
   createWorkflowNode,
 } from '../modules/services/workflowParser'
+import { validateWorkflow } from '../modules/services/workflowValidator'
 
 // ============================================================================
 // Undo/Redo History Management
@@ -434,6 +435,7 @@ interface WorkflowStoreState {
   serializeToJson: () => string
   clearWorkflow: () => void
   updateWorkflowParameters: (parameters: import('../modules/services/workflowTypes').WorkflowParameter[]) => void
+  revalidate: () => void
 
   // Clipboard for copy/paste
   clipboard: { node: WorkflowCanvasNode; edges: WorkflowCanvasEdge[] } | null
@@ -546,15 +548,30 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
 
     // Load workflow from JSON
     loadWorkflow: (json: string) => {
+      // Parse the workflow (returns empty workflow with errors if JSON is invalid/empty)
       const parsed = parseWorkflow(json)
+
       set(state => {
+        // CRITICAL: Always replace state completely to avoid stale data from previous workflows
+        // This ensures switching between workflows properly clears old content
         state.workflowFile = parsed.file
         state.nodes = parsed.nodes
         state.edges = parsed.edges
         state.errors = parsed.errors
         state.warnings = parsed.warnings
-        state.isDirty = false,
-        
+        state.isDirty = false
+
+        // Reset ALL execution and UI state
+        state.selectedNodeId = null
+        state.selectedEdgeId = null
+        state.executionState = null
+        state.executionResult = null
+        state.executionHistory = []
+        state.checkpoints = []
+        state.promptsSent = []
+        state.contextMenu = null
+        state.clipboard = null
+
         // Reset history on load
         state.history = [{
           workflowFile: cloneWorkflowFile(parsed.file),
@@ -564,9 +581,6 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         }]
         state.historyIndex = 0
         state.lastHistoryTimestamp = Date.now()
-        state.selectedNodeId = null
-        state.selectedEdgeId = null
-        state.executionState = null
 
         // First pass: Ensure edge animation is consistent and apply locked state
         state.edges = state.edges.map(edge => {
@@ -1349,6 +1363,9 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         })
         state.isDirty = true
       })
+
+      // Revalidate workflow after updating node data
+      get().revalidate()
     },
 
     // Delete a node
@@ -2361,6 +2378,20 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
     canRedo: () => {
       const state = get()
       return state.historyIndex < state.history.length - 1
+    },
+
+    /**
+     * Revalidate the current workflow and update errors/warnings
+     */
+    revalidate: () => {
+      const state = get()
+      if (!state.workflowFile) return
+
+      const validationResult = validateWorkflow(state.workflowFile)
+      set(draft => {
+        draft.errors = validationResult.errors
+        draft.warnings = validationResult.warnings
+      })
     },
   }))
 )

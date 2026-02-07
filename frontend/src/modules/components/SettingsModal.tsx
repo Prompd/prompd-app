@@ -1,13 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { X, Keyboard, User, Key, BarChart3, Trash2, Plus, Eye, EyeOff, Check, AlertCircle, ExternalLink, ChevronDown, Star, Database, Globe, Code, Layout, Shield, Package, Loader, RefreshCw, Clock, Wifi, Server } from 'lucide-react'
+import { X, Keyboard, User, Key, BarChart3, Trash2, Plus, Eye, EyeOff, Check, AlertCircle, ExternalLink, ChevronDown, Star, Database, Globe, Code, Layout, Shield, Package, Loader, RefreshCw, Clock } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { OrganizationSwitcher } from '@clerk/clerk-react'
 import { useAuthenticatedUser } from '../auth/ClerkWrapper'
 import HotkeySettings from './HotkeySettings'
 import { isElectron } from '../auth/ClerkWrapper'
-import { WebhookSettings } from './settings/WebhookSettings'
-import { ServiceSettings } from './settings/ServiceSettings'
-import { ScheduleSettings } from './settings/ScheduleSettings'
+import { DeploymentSettings } from './settings/DeploymentSettings'
 import {
   getLLMProviders,
   setLlmApiKey as setLlmApiKeyRemote,
@@ -112,7 +110,7 @@ interface SettingsModalProps {
   initialTab?: TabType
 }
 
-type TabType = 'profile' | 'api-keys' | 'registries' | 'usage' | 'shortcuts' | 'schedules' | 'webhooks' | 'service'
+type TabType = 'profile' | 'api-keys' | 'registries' | 'usage' | 'shortcuts' | 'deployments'
 
 // Default View Mode Button Component
 function DefaultViewModeButton({
@@ -1037,16 +1035,7 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
     { id: 'registries', label: 'Registries', icon: <Database size={16} /> },
     { id: 'usage', label: 'Usage', icon: <BarChart3 size={16} /> },
     { id: 'shortcuts', label: 'Shortcuts', icon: <Keyboard size={16} /> },
-    {
-      id: 'schedules',
-      label: 'Scheduler',
-      icon: <Clock size={16} />,
-      children: [
-        { id: 'schedules', label: 'Schedules', icon: <Clock size={14} /> },
-        { id: 'webhooks', label: 'Webhooks', icon: <Wifi size={14} /> },
-        { id: 'service', label: 'Service', icon: <Server size={14} /> }
-      ]
-    }
+    { id: 'deployments', label: 'Deployments', icon: <Package size={16} /> }
   ]
 
   return (
@@ -2919,20 +2908,18 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
             </div>
           )}
 
-          {/* Scheduler Tabs */}
-          {activeTab === 'schedules' && <ScheduleSettings colors={colors} />}
-
-          {activeTab === 'webhooks' && (
-            <div>
-              <WebhookSettings />
-            </div>
+          {/* Deployments Tab */}
+          {activeTab === 'deployments' && (
+            <DeploymentSettings
+              colors={colors}
+              onOpenDeployments={() => {
+                onClose()
+                // Trigger deployment panel opening
+                useUIStore.getState().openModal('deployment')
+              }}
+            />
           )}
 
-          {activeTab === 'service' && (
-            <div>
-              <ServiceSettings />
-            </div>
-          )}
         </div>
       </div>
     </div>

@@ -9,9 +9,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Tech Stack:**
 - Frontend: React 18 + TypeScript + Vite + Monaco Editor + Zustand
 - Backend: Node.js 18+ ESM + Express + MongoDB (optional - for cloud features)
-- Desktop: Electron with File System Access API and IPC bridge
+- Desktop: Electron 40 with File System Access API and IPC bridge
 - Workflow Canvas: XYFlow (React Flow)
-- Monorepo: Local `@prompd/react` package + linked `@prompd/cli`
+- Monorepo: Local `@prompd/react` + `@prompd/scheduler` packages + npm `@prompd/cli`
 
 ## Development Commands
 
@@ -19,13 +19,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **IMPORTANT - Monorepo Build Order:**
 ```bash
-# 1. Build @prompd/react first (required dependency)
-cd packages/react && npm install && npm run build
+# 1. Build @prompd/scheduler first
+cd packages/scheduler && npm install && npm run build
 
-# 2. Then install frontend
+# 2. Build @prompd/react (required by frontend)
+cd ../react && npm install && npm run build
+
+# 3. Install and run frontend
 cd ../../frontend && npm install
 
-# 3. Backend (optional)
+# 4. Backend (optional - for provider list updates, analytics)
 cd ../backend && npm install
 ```
 
@@ -33,53 +36,46 @@ cd ../backend && npm install
 ```bash
 npm run dev                   # Start frontend Vite dev server (:5173)
 npm run dev:backend           # Start backend API server (:3010)
-npm run build                 # Build @prompd/react + frontend (production)
+npm run build                 # Build scheduler + react + frontend (production)
 npm run build:react           # Build only @prompd/react package
-npm run electron:dev          # Launch Electron app
+npm run build:scheduler       # Build only @prompd/scheduler package
+npm run electron:dev          # Launch Electron app (Vite must be running)
 npm run electron:build:win    # Windows installer (NSIS + portable)
 ```
 
-### Frontend Development
+### Frontend Commands
 ```bash
 cd frontend
-
-# Development
 npm run dev                    # Vite dev server on :5173
-npm run electron:dev           # Electron with hot reload (Vite must be running)
-
-# Build
-npm run build                  # Production build (includes license generation)
-npm run electron:build         # Build for current platform
-npm run electron:build:win     # Windows (NSIS + portable)
-npm run electron:build:mac     # macOS (DMG + zip)
-npm run electron:build:linux   # Linux (AppImage + deb)
-
-# Utilities
-npx tsc --noEmit               # TypeScript validation (no emit)
+npm run electron:dev           # Electron with hot reload (starts Vite automatically)
+npm run build                  # Production build (license generation + tsc + vite)
+npx tsc --noEmit               # TypeScript validation only
 npm run clean                  # Remove dist/ and dist-electron/
-npm run generate-icons         # Generate app icons from source PNG
-npm run generate-licenses      # Generate licenses.json for About dialog
-npm run preview                # Preview production build
+npm run electron:build:win     # Windows (NSIS installer + portable .exe)
+npm run electron:build:mac     # macOS (DMG + zip)
+npm run electron:build:linux   # Linux (AppImage + deb package)
 ```
 
-### Backend Development
+### Backend Commands
 ```bash
 cd backend
-
 npm run dev                    # Development with nodemon on :3010
-npm start                      # Production mode
 npm test                       # Run all Jest tests (requires MongoDB)
 npm test -- packages.test.js   # Run specific test file
 npm test -- --testNamePattern="should create"  # Run tests matching pattern
 ```
 
-### Monorepo Package Development
+### Package Development
 ```bash
+# @prompd/react - Chat UI component library
 cd packages/react
-
 npm run dev                    # Watch mode (auto-rebuild on changes)
 npm run build                  # Production build (ESM + CJS + types)
-npm run typecheck              # TypeScript validation
+
+# @prompd/scheduler - Workflow deployment and trigger management
+cd packages/scheduler
+npm run build                  # TypeScript compilation
+npm run dev                    # Watch mode
 ```
 
 ## Architecture
@@ -88,50 +84,42 @@ npm run typecheck              # TypeScript validation
 
 ```
 prompd.app/
+├── frontend/               # Electron + React app (main application)
+│   ├── src/modules/        # All application code (components, services, editor)
+│   ├── src/stores/         # Zustand state management
+│   ├── electron/           # Main process (main.js, preload.js, tray.js)
+│   │   └── services/       # Electron services (fileWatch, webhook, packageWorkflow)
+│   └── public/             # Static assets
 ├── packages/
-│   └── react/              # @prompd/react - Chat UI component library
-│       ├── src/            # React components, hooks, stores
-│       ├── dist/           # Built output (ESM + CJS + .d.ts)
-│       └── package.json    # Exports: CJS, ESM, types, CSS
-├── frontend/               # Electron + React app
-│   ├── src/modules/        # All application code
-│   ├── electron/           # Main process, preload, IPC bridge
-│   ├── public/             # Static assets
-│   └── package.json        # Links: @prompd/react (local), @prompd/cli (symlink)
-├── backend/                # Optional backend API
-│   ├── src/routes/         # Express routes
-│   └── src/server.js       # Entry point
-└── package.json            # Root scripts (delegates to workspace)
+│   ├── react/              # @prompd/react - Chat UI component library
+│   └── scheduler/          # @prompd/scheduler - Deployment & trigger management (SQLite, node-cron)
+├── backend/                # Optional REST API (Express + MongoDB)
+├── prompd-service/         # Standalone workflow scheduler service (runs independently of Electron)
+├── scheduler-shared/       # Legacy shared scheduler logic (being replaced by packages/scheduler)
+└── docs/                   # Documentation and guides
 ```
 
-**Critical Dependencies:**
-- `@prompd/cli` - Prompt compiler (symlinked from `../../Logikbug/prompd-cli/cli/npm`)
-- `@prompd/react@^0.2.0` - Chat UI (local package via `file:../packages/react`)
+### Critical Dependencies
 
-**Note:** `@prompd/cli` is a symlink to the local Logikbug monorepo, not a versioned npm package.
+- **`@prompd/cli@^0.4.6`** - Prompt compiler (Node.js only)
+  - Frontend: npm package, accessed via Electron IPC bridge (cannot run in browser/Vite)
+  - Backend/prompd-service: local symlink (`file:../../Logikbug/prompd-cli/cli/npm`)
+  - Excluded from Vite bundling, unpacked from asar at runtime
+- **`@prompd/react@^0.2.0`** - Chat UI (local via `file:../packages/react`) - must build before frontend
+- **`@prompd/scheduler@0.1.0`** - Deployment service (local via `file:../packages/scheduler`)
 
 ### Execution Model - Local-First
 
 All core operations execute locally via Electron IPC:
 
 ```
-User Action → executionRouter → localExecutor → Direct HTTPS to LLM APIs
-                              ↘ localCompiler → Electron IPC → @prompd/cli
+User Action -> executionRouter -> localExecutor -> Direct HTTPS to LLM APIs
+                               -> localCompiler -> Electron IPC -> @prompd/cli
 ```
 
-**What Runs Locally (Electron Main Process):**
-- LLM API calls (direct to OpenAI, Anthropic, Google, etc.)
-- Prompt compilation via `@prompd/cli` (Node.js only, not browser-compatible)
-- Workflow execution and scheduling (node-cron)
-- File operations (fs, path traversal protection)
-- Git operations (whitelisted commands only - see Security)
-- Config management (~/.prompd/config.yaml)
+**Runs locally (Electron main process):** LLM API calls, prompt compilation, workflow execution/scheduling (node-cron), file operations, Git operations (whitelisted), config management (`~/.prompd/config.yaml`).
 
-**What Uses Backend API (Optional):**
-- Provider/model list updates (`/api/llm-providers`) - cached locally for offline
-- Registry package search (`registry.prompdhub.ai`)
-- Usage analytics (`/api/usage/sync`)
-- Cloud project sync (`/api/projects`)
+**Uses backend API (optional):** Provider/model list updates, registry package search, usage analytics, cloud project sync.
 
 **API Key Resolution (priority order):**
 1. Workspace `.env` file (current working directory)
@@ -140,16 +128,16 @@ User Action → executionRouter → localExecutor → Direct HTTPS to LLM APIs
 
 ### State Management (Zustand)
 
-Four stores with Immer middleware in [frontend/src/stores/](frontend/src/stores/):
+Four stores with Immer middleware in `frontend/src/stores/`:
 
-| Store | Purpose | Persisted | Size |
-|-------|---------|-----------|------|
-| [editorStore](frontend/src/stores/editorStore.ts) | Editor state, tabs, file explorer, build output | Yes | ~18KB |
-| [uiStore](frontend/src/stores/uiStore.ts) | UI state, theme, LLM provider/model selection | Yes | ~35KB |
-| [wizardStore](frontend/src/stores/wizardStore.ts) | Transient wizard flow state | No | ~3KB |
-| [workflowStore](frontend/src/stores/workflowStore.ts) | Workflow canvas, nodes, history, execution state | Yes | ~85KB |
+| Store | Purpose | Persisted |
+|-------|---------|-----------|
+| `editorStore` | Editor state, tabs, file explorer, build output | Yes |
+| `uiStore` | UI state, theme, LLM provider/model selection | Yes |
+| `wizardStore` | Transient onboarding wizard flow | No |
+| `workflowStore` | Workflow canvas, nodes, execution state, undo/redo history | Yes |
 
-**Note:** workflowStore is complex due to workflow execution tracking (executionResult, checkpoints, promptsSent, executionHistory), undo/redo system, and 25+ node type support.
+Shared types for all stores are in `stores/types.ts`.
 
 **CRITICAL PATTERN - Selective Subscriptions:**
 ```typescript
@@ -162,145 +150,48 @@ const store = useEditorStore()
 
 ### Workflow Canvas System
 
-Visual workflow editing with `.pdflow` files using XYFlow (React Flow).
+Visual workflow editing with `.pdflow` files using XYFlow (React Flow). Supports 27 node types across categories: Core (trigger, prompt, agent, chatAgent, tool, mcpTool), Execution (command, code, claudeCode, workflow), Flow Control (condition, loop, parallel variants, merge, errorHandler, guardrail), Data (transform, memory, callback, provider), UI (userInput, output), and Routing (toolCallParser, toolCallRouter, container).
 
-**Key Features:**
-- **25+ Node Types:**
-  - **Core:** trigger, prompt, agent, chatAgent, tool, mcpTool
-  - **Execution:** command, code, claudeCode, workflow
-  - **Flow Control:** condition, loop, parallel (parallelBroadcast, parallelFork), merge, errorHandler, guardrail
-  - **Data:** transform, memory, callback, provider
-  - **UI:** userInput, output
-  - **Routing:** toolCallParser, toolCallRouter, container
-- Undo/redo history (50 snapshots, 300ms debounce)
-- Real-time validation with visual feedback
-- Compound nodes (loop, parallel) with parent/child relationships
-- Scheduled workflows (cron expressions + interval)
-- Webhook triggers with proxy support
-- Node execution states: idle, running, completed, error, paused, waiting, skipped
+For the complete node type registry and deep architectural details, see [CLAUDE-ARCHITECTURE.md](CLAUDE-ARCHITECTURE.md).
 
-**Scheduler Implementation:**
-- Uses `node-cron@^3.0.3` in Electron main process
-- Persistent storage of scheduled workflows
-- IPC bridge: `window.electronAPI.scheduler.addJob({ workflowId, type, cron })`
-- Located in [frontend/electron/main.js](frontend/electron/main.js#L250-L350)
-
-**Core Files:**
-- [stores/workflowStore.ts](frontend/src/stores/workflowStore.ts) - State management
-- [services/workflowTypes.ts](frontend/src/modules/services/workflowTypes.ts) - TypeScript interfaces
-- [services/workflowParser.ts](frontend/src/modules/services/workflowParser.ts) - Parse/serialize workflows
-- [services/workflowExecutor.ts](frontend/src/modules/services/workflowExecutor.ts) - Execution engine
-- [services/workflowValidator.ts](frontend/src/modules/services/workflowValidator.ts) - Validation rules
-- [editor/WorkflowCanvas.tsx](frontend/src/modules/editor/WorkflowCanvas.tsx) - Canvas component
-- [components/workflow/nodes/](frontend/src/modules/components/workflow/nodes/) - Node components
-
-### Monaco Editor Integration
-
-**Global Configuration:**
-- Centralized in [lib/monacoConfig.ts](frontend/src/modules/lib/monacoConfig.ts)
-- Initialized once in [App.tsx](frontend/src/modules/App.tsx)
-- Presets: `defaultEditorOptions`, `yamlEditorOptions`, `markdownEditorOptions`, `readOnlyEditorOptions`
-- Theme helper: `getMonacoTheme(isDark)` returns `'vs-dark' | 'light'`
-
-**IntelliSense System:**
-- Package completions: `@namespace/package-name@^1.0.0`
-- Variable decorations: Highlights `{variable}` syntax
-- Auto-fix: Converts `@package` to `@namespace/package@latest`
-- Cross-reference: Cmd/Ctrl+Click on package imports
-- Validation: Real-time YAML/Markdown linting
-
-**Monaco Optimization (vite.config.ts):**
-```javascript
-optimizeDeps: {
-  include: ['monaco-editor/esm/vs/editor/editor.api'],
-  exclude: ['@prompd/cli']  // Main export requires Node.js (uses IPC)
-}
-```
+**Key workflow files:**
+- `stores/workflowStore.ts` - State management (~88KB, complex)
+- `modules/services/workflowTypes.ts` - TypeScript interfaces (~71KB)
+- `modules/services/workflowParser.ts` - Parse/serialize `.pdflow` files
+- `modules/services/workflowExecutor.ts` - Execution engine
+- `modules/services/workflowValidator.ts` - Validation rules
+- `modules/editor/WorkflowCanvas.tsx` - Canvas component (~67KB)
+- `modules/components/workflow/nodes/` - All node components + properties panels
 
 ### Electron IPC Bridge
 
-All native operations via `window.electronAPI` ([frontend/electron/preload.js](frontend/electron/preload.js)):
+All native operations go through `window.electronAPI` defined in `frontend/electron/preload.js`. Key namespaces: `readFile`/`writeFile`/`openFolder` (file system), `compiler.compile`/`compiler.validate` (compilation), `workflow.execute`/`workflow.stop` (execution), `scheduler.addJob`/`removeJob`/`listJobs` (scheduling), `runGitCommand` (whitelisted Git), `makeRequest` (HTTP).
 
-```typescript
-// File System
-window.electronAPI.readFile(path)
-window.electronAPI.writeFile(path, content)
-window.electronAPI.openFolder()
-window.electronAPI.selectFile(filters)
+Always check `window.electronAPI?.isElectron` before using IPC methods.
 
-// Compilation
-window.electronAPI.compiler.compile(content, options)
-window.electronAPI.compiler.validate(content)
+### Monaco Editor Integration
 
-// Workflow Execution
-window.electronAPI.workflow.execute(workflow)
-window.electronAPI.workflow.stop(workflowId)
+Centralized config in `modules/lib/monacoConfig.ts`, initialized once in `App.tsx`. Provides IntelliSense for package completions (`@namespace/package@^1.0.0`), variable decoration (`{variable}` syntax highlighting), and real-time YAML/Markdown validation.
 
-// Git Operations (whitelisted - see Security)
-window.electronAPI.runGitCommand(args, cwd)
-
-// Scheduler
-window.electronAPI.scheduler.addJob({ workflowId, type: 'cron', cron: '*/5 * * * *' })
-window.electronAPI.scheduler.removeJob(jobId)
-window.electronAPI.scheduler.listJobs()
-
-// System
-window.electronAPI.isElectron  // Boolean flag
-window.electronAPI.platform    // 'win32' | 'darwin' | 'linux'
-```
+Monaco must be pre-bundled via Vite (`optimizeDeps.include`) while `@prompd/cli` must be excluded (requires Node.js IPC).
 
 ## Security Constraints
 
 ### Git Command Whitelist
-
-Git operations are restricted to safe, read-only or user-initiated commands:
-
-**Allowed:**
-- `status`, `log`, `diff`, `show`, `branch`, `remote`, `fetch`
-- `add`, `commit`, `push`, `pull`, `checkout`, `merge`, `rebase`
-- `clone`, `init`, `config` (scoped to repo only)
-
-**Blocked:**
-- `gc`, `reflog`, `filter-branch`, `update-ref` (destructive)
-- `daemon`, `http-backend`, `shell` (server/remote execution)
-- Any command with `--exec` or `--upload-pack` flags
-
-Implementation: [frontend/electron/main.js](frontend/electron/main.js) - `runGitCommand()`
+- **Allowed:** `status`, `log`, `diff`, `show`, `branch`, `remote`, `fetch`, `add`, `commit`, `push`, `pull`, `checkout`, `merge`, `rebase`, `clone`, `init`, `config`
+- **Blocked:** `gc`, `reflog`, `filter-branch`, `update-ref`, `daemon`, `http-backend`, `shell`, any command with `--exec` or `--upload-pack`
+- Implementation: `frontend/electron/main.js` - `runGitCommand()`
 
 ### Path Traversal Protection
-
-All file system operations validate paths to prevent directory traversal:
-- Rejects paths containing `..`
-- Normalizes paths before operations
-- Scoped to workspace directory or user home
+All file system operations reject paths containing `..`, normalize paths before operations, and scope access to workspace directory or user home.
 
 ## Configuration
 
-### Frontend (.env)
-```bash
-# Optional - for cloud features
-VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
-VITE_API_BASE_URL=/api
-VITE_REGISTRY_URL=http://localhost:4000
-```
+**Frontend `.env`** (optional cloud features): `VITE_CLERK_PUBLISHABLE_KEY`, `VITE_API_BASE_URL`, `VITE_REGISTRY_URL`
 
-### Backend (.env)
-```bash
-MONGODB_URI=mongodb://localhost:27017/prompd-editor
-JWT_SECRET=your-secret-key-here
-PORT=3010
-```
+**Backend `.env`**: `MONGODB_URI`, `JWT_SECRET`, `PORT`
 
-### User Config (~/.prompd/config.yaml)
-```yaml
-apiKeys:
-  openai: sk-...
-  anthropic: sk-ant-...
-  google: ...
-defaultProvider: openai
-defaultModel: gpt-4
-registryUrl: https://registry.prompdhub.ai
-```
+**User config** (`~/.prompd/config.yaml`): API keys, default provider/model, registry URL
 
 ## Port Allocation
 
@@ -310,6 +201,13 @@ registryUrl: https://registry.prompdhub.ai
 | 3010 | Backend API | Optional |
 | 4000 | Local registry (dev) | Optional |
 
+## TypeScript
+
+- Strict mode enabled, `noEmit` (Vite handles bundling)
+- Path alias: `@/*` maps to `src/*` - configured in both `tsconfig.json` AND `vite.config.ts`
+- Target: ES2020, Module: ESNext, JSX: react-jsx
+- NEVER use `any` - always use proper types
+
 ## File Formats
 
 - `.prmd` - Prompt files (YAML frontmatter + Markdown)
@@ -317,81 +215,38 @@ registryUrl: https://registry.prompdhub.ai
 - `.pdproj` - Project files (workspace configuration)
 - `.pdpkg` - Package bundles (ZIP archives with manifest.json)
 
-## TypeScript
+## Code Style
 
-**Configuration ([frontend/tsconfig.json](frontend/tsconfig.json)):**
-- Strict mode enabled
-- Path alias: `@/*` maps to `src/modules/*` (not `src/*` - note the `/modules` subdirectory)
-- Target: ES2020
-- Module: ESNext (Vite handles bundling)
+No linter/formatter config - follow existing patterns. See [AGENTS.md](AGENTS.md) for detailed coding guidelines including import organization, component patterns, error handling, and naming conventions.
 
-**Frontend Source Structure:**
-```
-frontend/src/
-├── modules/          # Main application code (components, services, editor, etc.)
-│   ├── App.tsx       # Main application component
-│   ├── components/   # React components
-│   ├── editor/       # Editor-specific components
-│   ├── services/     # Business logic
-│   └── ...
-├── stores/           # Zustand state management
-├── constants/        # App constants
-├── styles/           # Global CSS
-└── main.tsx          # Application entry point
-```
+Key rules:
+- 2-space indentation for TypeScript/JSX
+- Functional components with hooks only (no classes)
+- Props interfaces defined above component
+- Selective Zustand subscriptions (never subscribe to entire store)
+- `BuildError` interface for compilation errors, `Toast` for user notifications
 
-**Best Practices:**
-- NEVER use `any` - always use proper types
-- All components use functional + hooks (no classes)
-- Props must have TypeScript interfaces
-- Import organization: React core → third-party → local (`@/*`)
+## Build Artifacts
+
+**Electron build pipeline:** clean -> generate-icons -> tsc -> vite build -> license generation -> electron-builder -> afterPack (`scripts/afterPack.cjs`)
+
+**Output:** `frontend/dist/` (web), `frontend/dist-electron/` (desktop + installers)
+
+**Asar:** `@prompd/cli` is excluded from asar (asarUnpack) for runtime Node.js execution. Icon files are copied to resources via extraResources.
 
 ## Common Issues
 
-### Build Issues
-- **TypeScript errors**: Run `npx tsc --noEmit` in frontend directory
-- **Monaco not loading**: Verify `optimizeDeps` in [vite.config.ts](frontend/vite.config.ts)
-- **@prompd/react not found**: Build `packages/react` first (`cd packages/react && npm run build`)
-- **@prompd/cli not found**: Verify symlink at `frontend/node_modules/@prompd/cli`
-
-### Development Issues
-- **Port 5173 in use**: Kill Vite process or change port in [vite.config.ts](frontend/vite.config.ts)
-- **Electron not starting**: Ensure Vite dev server runs first (`npm run dev`)
-- **Too many re-renders**: Use selective Zustand subscriptions (see State Management)
-- **Backend connection refused**: Verify MongoDB is running (only needed for backend)
-- **Hot reload not working**: Check HMR settings in [vite.config.ts](frontend/vite.config.ts)
-
-### Electron-Specific
-- **OAuth callback not received**: Verify `prompd://` protocol registered (check [frontend/package.json](frontend/package.json) → build.protocols)
-- **Icons not showing**: Run `npm run generate-icons` before build
-- **IPC not available**: Check `window.electronAPI?.isElectron` before using IPC methods
-- **Compilation failing**: Ensure `@prompd/cli` is properly installed (not bundled with Vite)
-
-## Code Style
-
-**NO LINTER CONFIG** - Follow existing patterns in codebase:
-- 2-space indentation for TypeScript/JSX
-- Functional components with hooks
-- Props interfaces defined above component
-- Selective Zustand subscriptions
-- Consistent import organization
-
-**Error Handling:**
-- Use `BuildError` interface for compilation errors
-- Use `Toast` interface for user notifications
-- Always wrap async/await in try/catch
-- React error boundaries for component errors
-
-**File Naming:**
-- Components: PascalCase (e.g., `PrompdEditor.tsx`)
-- Services: camelCase (e.g., `executionRouter.ts`)
-- Types: camelCase with `.types.ts` suffix
-- Utilities: camelCase
+- **`@prompd/react` not found**: Build `packages/react` first
+- **`@prompd/cli` compilation failing**: It's Node.js only - uses IPC in Electron, excluded from Vite bundling
+- **Import `@/...` resolution errors**: Ensure `vite.config.ts` has the `@` path alias configured
+- **Electron not starting**: Vite dev server must be running first on `:5173`
+- **IPC not available**: Guard with `window.electronAPI?.isElectron` check
+- **Icons not showing in build**: Run `npm run generate-icons` before `electron:build`
 
 ## Documentation
 
-- [AGENTS.md](AGENTS.md) - Coding guidelines and patterns (for agentic coding tools)
-- [README.md](README.md) - Project overview and quick start
+- [CLAUDE-ARCHITECTURE.md](CLAUDE-ARCHITECTURE.md) - Deep architectural details (node types, state management, execution model)
+- [AGENTS.md](AGENTS.md) - Coding guidelines and patterns
 - [frontend/ELECTRON.md](frontend/ELECTRON.md) - Electron build and distribution
 - [frontend/MONACO-CONFIG.md](frontend/MONACO-CONFIG.md) - Monaco editor configuration
 - [docs/editor.md](docs/editor.md) - Editor features and usage

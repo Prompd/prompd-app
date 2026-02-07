@@ -201,6 +201,7 @@ export function PrompdParameterList({
       {parameters.map((param) => {
         const currentValue = values[param.name] ?? param.default
         const hasValue = currentValue !== undefined && currentValue !== null && currentValue !== ''
+        const isArray = param.type === 'array' || param.type === 'string[]' || param.type?.includes('[]')
 
         return (
           <div
@@ -301,6 +302,12 @@ export function PrompdParameterList({
                       {currentValue ? 'Yes' : 'No'}
                     </span>
                   </label>
+                ) : isArray && param.enum && param.enum.length > 0 ? (
+                  <MultiSelectEnumInput
+                    value={currentValue}
+                    options={param.enum}
+                    onChange={(newValue) => handleChange(param.name, newValue)}
+                  />
                 ) : param.enum && param.enum.length > 0 ? (
                   <select
                     value={currentValue || ''}
@@ -843,7 +850,13 @@ function ExpandableParameterCard({
           {/* Input Field */}
           {!readOnly && (
             <div>
-              {isArray ? (
+              {isArray && param.enum && param.enum.length > 0 ? (
+                <MultiSelectEnumInput
+                  value={value}
+                  options={param.enum}
+                  onChange={(newValue) => onChange(param.name, newValue)}
+                />
+              ) : isArray ? (
                 <ArrayInput
                   value={value}
                   onChange={(newValue) => onChange(param.name, newValue)}
@@ -976,7 +989,7 @@ function BooleanInput({ value, onChange }: { value: any, onChange: (value: boole
 }
 
 /**
- * Enum/Select Input
+ * Enum/Select Input (Single Select)
  */
 function EnumInput({ value, options, onChange }: { value: any, options: string[], onChange: (value: string) => void }) {
   return (
@@ -992,6 +1005,82 @@ function EnumInput({ value, options, onChange }: { value: any, options: string[]
         </option>
       ))}
     </select>
+  )
+}
+
+/**
+ * Multi-Select Enum Input (Array + Enum = Pills)
+ */
+function MultiSelectEnumInput({ value, options, onChange }: { value: any, options: string[], onChange: (value: string[]) => void }) {
+  const selectedValues: string[] = Array.isArray(value) ? value : value ? [String(value)] : []
+
+  const toggleOption = (option: string) => {
+    if (selectedValues.includes(option)) {
+      // Remove
+      onChange(selectedValues.filter(v => v !== option))
+    } else {
+      // Add
+      onChange([...selectedValues, option])
+    }
+  }
+
+  const removeValue = (option: string) => {
+    onChange(selectedValues.filter(v => v !== option))
+  }
+
+  return (
+    <div className="space-y-2">
+      {/* Selected Pills */}
+      {selectedValues.length > 0 && (
+        <div className="flex flex-wrap gap-2 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
+          {selectedValues.map((option) => (
+            <button
+              key={option}
+              onClick={() => removeValue(option)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-500 text-white text-sm rounded-full hover:bg-blue-600 transition-colors group"
+              title={`Click to remove ${option}`}
+            >
+              <span>{option}</span>
+              <svg className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Available Options */}
+      <div className="space-y-1">
+        <label className="text-xs text-slate-600 dark:text-slate-400 font-medium">
+          {selectedValues.length > 0 ? 'Add more:' : 'Select options:'}
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {options.map((option) => {
+            const isSelected = selectedValues.includes(option)
+            return (
+              <button
+                key={option}
+                onClick={() => toggleOption(option)}
+                disabled={isSelected}
+                className={clsx(
+                  'px-3 py-1.5 text-sm rounded-lg font-medium transition-all',
+                  isSelected
+                    ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-50'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-600 border border-slate-200 dark:border-slate-700'
+                )}
+              >
+                {option}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Summary */}
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        {selectedValues.length} of {options.length} selected
+      </p>
+    </div>
   )
 }
 

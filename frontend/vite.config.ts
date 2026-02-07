@@ -1,10 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
   // Use relative base for Electron compatibility
   base: process.env.ELECTRON_START_URL ? '/' : './',
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src')
+    }
+  },
   // Serve static assets from local public folder
   publicDir: 'public',
   server: {

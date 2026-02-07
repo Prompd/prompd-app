@@ -31,6 +31,12 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
   const workspaceHandle = useEditorStore(state => state.explorerDirHandle)
   const workspacePath = useEditorStore(state => state.explorerDirPath)
 
+  // Get active workflow file path to convert workspace-relative to workflow-file-relative
+  const tabs = useEditorStore(state => state.tabs)
+  const activeTabId = useEditorStore(state => state.activeTabId)
+  const activeTab = tabs.find(t => t.id === activeTabId)
+  const workflowFilePath = activeTab?.filePath || null
+
   // Source type - defaults to 'file' if not set
   const sourceType = data.sourceType || 'file'
 
@@ -51,8 +57,35 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
     }
   }, [showDropdown])
 
-  // Determine if searching locally (starts with ".")
-  const isLocalSearch = searchQuery.trim().startsWith('.')
+  // Determine if searching locally (starts with "." or "..")
+  const trimmedQuery = searchQuery.trim()
+  const isLocalSearch = trimmedQuery.startsWith('.') || trimmedQuery.startsWith('..')
+
+  // Convert workspace-relative path (./folder/file) to workflow-file-relative path (../folder/file)
+  const convertToWorkflowRelative = (workspaceRelativePath: string): string => {
+    if (!workflowFilePath || !workspacePath) return workspaceRelativePath
+
+    // Remove leading ./ from workspace-relative path
+    const cleanPath = workspaceRelativePath.replace(/^\.\//, '')
+
+    // Get workflow directory - use Math.max to handle both / and \ separators
+    const lastSlash = Math.max(workflowFilePath.lastIndexOf('/'), workflowFilePath.lastIndexOf('\\'))
+    const workflowDir = lastSlash > 0 ? workflowFilePath.substring(0, lastSlash) : workflowFilePath
+
+    // Normalize both paths for cross-platform comparison
+    const normalizedWorkflowDir = workflowDir.replace(/\\/g, '/')
+    const normalizedWorkspace = workspacePath.replace(/\\/g, '/')
+
+    // Calculate workflow directory relative to workspace root
+    const workflowDirFromRoot = normalizedWorkflowDir.startsWith(normalizedWorkspace)
+      ? normalizedWorkflowDir.substring(normalizedWorkspace.length).replace(/^\//, '')
+      : normalizedWorkflowDir.replace(/^\//, '')
+    const depth = workflowDirFromRoot ? workflowDirFromRoot.split('/').length : 0
+
+    // Build relative path with appropriate number of ../
+    const prefix = depth > 0 ? '../'.repeat(depth) : './'
+    return prefix + cleanPath
+  }
 
   // Debounced search handler
   const handleSearchChange = useCallback(async (query: string) => {
@@ -65,7 +98,8 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
       return
     }
 
-    const isLocal = query.trim().startsWith('.')
+    const trimmedQueryInner = query.trim()
+    const isLocal = trimmedQueryInner.startsWith('.') || trimmedQueryInner.startsWith('..')
 
     // For package search require 2+ chars, for local search just need "."
     if (!isLocal && query.trim().length < 2) {
@@ -126,7 +160,10 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
   }, [workspaceHandle, workspacePath])
 
   const handleSelectLocalFile = (filePath: string) => {
-    onChange('source', filePath)
+    // If it's a workspace-relative path from dropdown, convert to workflow-file-relative
+    const finalPath = filePath.startsWith('./') ? convertToWorkflowRelative(filePath) : filePath
+    console.log('[PromptNodeProperties] Selected file:', filePath, '→', finalPath)
+    onChange('source', finalPath)
     setSearchQuery('')
     setShowDropdown(false)
     setLocalFileResults([])
@@ -177,24 +214,32 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     const hasResults = isLocalSearch ? localFileResults.length > 0 : searchResults.length > 0
-    if (!hasResults) return
-
     const resultsLength = isLocalSearch ? localFileResults.length : searchResults.length
 
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'ArrowDown' && hasResults) {
       e.preventDefault()
       setHighlightedIndex(prev => prev < resultsLength - 1 ? prev + 1 : prev)
-    } else if (e.key === 'ArrowUp') {
+    } else if (e.key === 'ArrowUp' && hasResults) {
       e.preventDefault()
       setHighlightedIndex(prev => prev > 0 ? prev - 1 : prev)
-    } else if (e.key === 'Enter' && showDropdown) {
+    } else if (e.key === 'Enter') {
       e.preventDefault()
+
+      // For local file search, allow direct path entry
       if (isLocalSearch) {
-        const selectedFile = localFileResults[highlightedIndex]
-        if (selectedFile) handleSelectLocalFile(selectedFile)
+        const trimmedQuery = searchQuery.trim()
+
+        // Always use typed path directly - don't use dropdown results
+        // This preserves ../ relative paths instead of converting to ./ workspace-relative
+        if (trimmedQuery.length > 0) {
+          handleSelectLocalFile(trimmedQuery)
+        }
       } else {
-        const selectedPkg = searchResults[highlightedIndex]
-        if (selectedPkg) handleSelectPackage(selectedPkg)
+        // For package search, only select from dropdown
+        if (hasResults && showDropdown) {
+          const selectedPkg = searchResults[highlightedIndex]
+          if (selectedPkg) handleSelectPackage(selectedPkg)
+        }
       }
     } else if (e.key === 'Escape') {
       setShowDropdown(false)
@@ -510,36 +555,40 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
                 zIndex: 9999
               }}>
                 {/* Local file results */}
-                {isLocalSearch && localFileResults.map((filePath, index) => (
-                  <div
-                    key={filePath}
-                    onMouseDown={() => handleSelectLocalFile(filePath)}
-                    onMouseEnter={() => setHighlightedIndex(index)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '8px 12px',
-                      cursor: 'pointer',
-                      background: index === highlightedIndex ? 'var(--accent)' : 'transparent'
-                    }}
-                  >
-                    <FileText size={14} style={{
-                      color: index === highlightedIndex ? 'white' : 'var(--accent)',
-                      flexShrink: 0
-                    }} />
-                    <span style={{
-                      fontSize: '12px',
-                      color: index === highlightedIndex ? 'white' : 'var(--text)',
-                      fontFamily: 'monospace',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {filePath}
-                    </span>
-                  </div>
-                ))}
+                {isLocalSearch && localFileResults.map((filePath, index) => {
+                  // Convert workspace-relative paths to workflow-file-relative for display
+                  const displayPath = filePath.startsWith('./') ? convertToWorkflowRelative(filePath) : filePath
+                  return (
+                    <div
+                      key={filePath}
+                      onMouseDown={() => handleSelectLocalFile(filePath)}
+                      onMouseEnter={() => setHighlightedIndex(index)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 12px',
+                        cursor: 'pointer',
+                        background: index === highlightedIndex ? 'var(--accent)' : 'transparent'
+                      }}
+                    >
+                      <FileText size={14} style={{
+                        color: index === highlightedIndex ? 'white' : 'var(--accent)',
+                        flexShrink: 0
+                      }} />
+                      <span style={{
+                        fontSize: '12px',
+                        color: index === highlightedIndex ? 'white' : 'var(--text)',
+                        fontFamily: 'monospace',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {displayPath}
+                      </span>
+                    </div>
+                  )
+                })}
 
                 {/* Package results */}
                 {!isLocalSearch && searchResults.map((pkg, index) => (

@@ -69,6 +69,8 @@ export type ModalType =
   | 'about'
   | 'aiGenerate'
   | 'fileChanges'
+  | 'deployment'
+  | 'deploy-workflow'
   | null
 
 /**

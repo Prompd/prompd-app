@@ -7,7 +7,7 @@
  * - View controls (zoom, fit, grid, minimap)
  */
 
-import { Play, Square, LayoutGrid, Map, ZoomIn, ZoomOut, Maximize, Settings, ChevronDown, PlayCircle, Undo2, Redo2, Link2 } from 'lucide-react'
+import { Play, Square, LayoutGrid, Map, ZoomIn, ZoomOut, Maximize, Settings, ChevronDown, PlayCircle, Undo2, Redo2, Link2, Package } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { useReactFlow } from '@xyflow/react'
 import { useWorkflowStore } from '../../../stores/workflowStore'
@@ -20,6 +20,7 @@ interface WorkflowToolbarProps {
   onStop?: () => void
   onResume?: () => void
   isPaused?: boolean
+  onDeploy?: () => void
 }
 
 // Store execution mode globally so it persists and can be accessed by EditorHeader event
@@ -38,7 +39,7 @@ export function onExecutionModeChange(listener: (mode: ExecutionMode) => void) {
   }
 }
 
-export function WorkflowToolbar({ readOnly = false, onRun, onStop, onResume, isPaused = false }: WorkflowToolbarProps) {
+export function WorkflowToolbar({ readOnly = false, onRun, onStop, onResume, isPaused = false, onDeploy }: WorkflowToolbarProps) {
   const reactFlow = useReactFlow()
   const [showModeMenu, setShowModeMenu] = useState(false)
   const [executionMode, setExecutionMode] = useState<ExecutionMode>(globalExecutionMode)
@@ -319,6 +320,26 @@ export function WorkflowToolbar({ readOnly = false, onRun, onStop, onResume, isP
               </div>
             )}
           </div>
+
+          {/* Deploy button */}
+          {onDeploy && (
+            <button
+              onClick={onDeploy}
+              disabled={isExecuting}
+              style={{
+                ...buttonBaseStyle,
+                background: 'color-mix(in srgb, var(--node-purple) 15%, transparent)',
+                color: isExecuting ? 'var(--muted)' : 'var(--node-purple)',
+                padding: '6px 10px',
+                gap: '4px',
+                opacity: isExecuting ? 0.5 : 1,
+              }}
+              title="Deploy workflow"
+            >
+              <Package style={{ width: 14, height: 14 }} />
+              <span style={{ fontSize: '11px', fontWeight: 500 }}>Deploy</span>
+            </button>
+          )}
 
           <div style={{ width: '1px', height: '24px', background: 'var(--border)', margin: '0 4px' }} />
         </>

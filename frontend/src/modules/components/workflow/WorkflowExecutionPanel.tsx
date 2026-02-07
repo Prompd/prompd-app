@@ -269,8 +269,6 @@ export function WorkflowExecutionPanel({
                     borderRadius: '6px',
                     fontSize: '11px',
                     lineHeight: 1.5,
-                    overflow: 'auto',
-                    maxHeight: '300px',
                     color: 'var(--text-secondary)',
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word'
@@ -544,9 +542,6 @@ export function WorkflowExecutionPanel({
                                 borderRadius: '4px',
                                 fontSize: '11px',
                                 color: 'var(--text)',
-                                overflowX: 'auto',
-                                maxHeight: '300px',
-                                overflowY: 'auto',
                                 fontFamily: 'monospace',
                                 lineHeight: '1.5',
                               }}>
@@ -798,8 +793,6 @@ function CheckpointCard({ checkpoint }: CheckpointCardProps) {
             background: 'var(--panel)',
             borderRadius: '8px',
             fontSize: '10px',
-            overflow: 'auto',
-            maxHeight: '120px',
             color: 'var(--text-secondary)'
           }}>
             {typeof checkpoint.previousOutput === 'string'

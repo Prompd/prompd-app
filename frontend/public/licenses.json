@@ -97,7 +97,7 @@
     "publisher": "Prompd LLC",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend"
   },
-  "@prompd/cli@0.4.5": {
+  "@prompd/cli@0.4.7": {
     "licenses": "MIT",
     "publisher": "Logikbug",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli",
@@ -108,6 +108,11 @@
     "publisher": "Stephen Baker",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\README.md"
+  },
+  "@prompd/scheduler@0.1.0": {
+    "licenses": "MIT",
+    "publisher": "Prompd Team",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler"
   },
   "@socket.io/component-emitter@3.1.2": {
     "licenses": "MIT",
@@ -345,8 +350,8 @@
     "repository": "https://github.com/micromatch/anymatch",
     "publisher": "Elan Shanker",
     "url": "https://github.com/es128",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\anymatch",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\anymatch\\LICENSE"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\anymatch",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\anymatch\\LICENSE"
   },
   "aproba@2.1.0": {
     "licenses": "ISC",
@@ -476,14 +481,31 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\bcrypt",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\bcrypt\\LICENSE"
   },
+  "better-sqlite3@12.6.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/WiseLibs/better-sqlite3",
+    "publisher": "Joshua Wise",
+    "email": "joshuathomaswise@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\better-sqlite3",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\better-sqlite3\\LICENSE"
+  },
   "binary-extensions@2.3.0": {
     "licenses": "MIT",
     "repository": "https://github.com/sindresorhus/binary-extensions",
     "publisher": "Sindre Sorhus",
     "email": "sindresorhus@gmail.com",
     "url": "https://sindresorhus.com",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\binary-extensions",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\binary-extensions\\license"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\binary-extensions",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\binary-extensions\\license"
+  },
+  "bindings@1.5.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/TooTallNate/node-bindings",
+    "publisher": "Nathan Rajlich",
+    "email": "nathan@tootallnate.net",
+    "url": "http://tootallnate.net",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\bindings",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\bindings\\LICENSE.md"
   },
   "bl@4.1.0": {
     "licenses": "MIT",
@@ -529,8 +551,8 @@
     "repository": "https://github.com/micromatch/braces",
     "publisher": "Jon Schlinkert",
     "url": "https://github.com/jonschlinkert",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\braces",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\braces\\LICENSE"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\braces",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\braces\\LICENSE"
   },
   "buffer-crc32@0.2.13": {
     "licenses": "MIT",
@@ -659,8 +681,17 @@
     "repository": "https://github.com/paulmillr/chokidar",
     "publisher": "Paul Miller",
     "url": "https://paulmillr.com",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\chokidar",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\chokidar\\LICENSE"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\chokidar",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\chokidar\\LICENSE"
+  },
+  "chownr@1.1.4": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/chownr",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\chownr",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\chownr\\LICENSE"
   },
   "chownr@2.0.0": {
     "licenses": "ISC",
@@ -900,6 +931,13 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\crc32-stream",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\crc32-stream\\LICENSE"
   },
+  "cron-parser@4.9.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/harrisiirak/cron-parser",
+    "publisher": "Harri Siirak",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\cron-parser",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\cron-parser\\LICENSE"
+  },
   "cronstrue@2.59.0": {
     "licenses": "MIT",
     "repository": "https://github.com/bradymholt/cronstrue",
@@ -1044,6 +1082,23 @@
     "url": "https://wooorm.com",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\decode-named-character-reference",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react\\node_modules\\decode-named-character-reference\\license"
+  },
+  "decompress-response@6.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/decompress-response",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\decompress-response",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\decompress-response\\license"
+  },
+  "deep-extend@0.6.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/unclechu/node-deep-extend",
+    "publisher": "Viacheslav Lotsmanov",
+    "email": "lotsmanov89@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\deep-extend",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\deep-extend\\LICENSE"
   },
   "defaults@1.0.4": {
     "licenses": "MIT",
@@ -1216,6 +1271,14 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\encodeurl",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\encodeurl\\LICENSE"
   },
+  "end-of-stream@1.4.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mafintosh/end-of-stream",
+    "publisher": "Mathias Buus",
+    "email": "mathiasbuus@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\end-of-stream",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\end-of-stream\\LICENSE"
+  },
   "engine.io-client@6.6.4": {
     "licenses": "MIT",
     "repository": "https://github.com/socketio/socket.io",
@@ -1298,6 +1361,14 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\etag",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\etag\\LICENSE"
   },
+  "expand-template@2.0.3": {
+    "licenses": "(MIT OR WTFPL)",
+    "repository": "https://github.com/ralphtheninja/expand-template",
+    "publisher": "LM",
+    "email": "ralphtheninja@riseup.net",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\expand-template",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\expand-template\\LICENSE"
+  },
   "express-rate-limit@7.5.1": {
     "licenses": "MIT",
     "repository": "https://github.com/express-rate-limit/express-rate-limit",
@@ -1340,13 +1411,22 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\fast-fifo",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\fast-fifo\\LICENSE"
   },
+  "file-uri-to-path@1.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/TooTallNate/file-uri-to-path",
+    "publisher": "Nathan Rajlich",
+    "email": "nathan@tootallnate.net",
+    "url": "http://n8.io/",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\file-uri-to-path",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\file-uri-to-path\\LICENSE"
+  },
   "fill-range@7.1.1": {
     "licenses": "MIT",
     "repository": "https://github.com/jonschlinkert/fill-range",
     "publisher": "Jon Schlinkert",
     "url": "https://github.com/jonschlinkert",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\fill-range",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\fill-range\\LICENSE"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\fill-range",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\fill-range\\LICENSE"
   },
   "finalhandler@1.3.1": {
     "licenses": "MIT",
@@ -1405,13 +1485,21 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\fresh",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\fresh\\LICENSE"
   },
+  "fs-constants@1.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mafintosh/fs-constants",
+    "publisher": "Mathias Buus",
+    "url": "@mafintosh",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\fs-constants",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\fs-constants\\LICENSE"
+  },
   "fs-extra@10.1.0": {
     "licenses": "MIT",
     "repository": "https://github.com/jprichardson/node-fs-extra",
     "publisher": "JP Richardson",
     "email": "jprichardson@gmail.com",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\electron-updater\\node_modules\\fs-extra",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\electron-updater\\node_modules\\fs-extra\\LICENSE"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\fs-extra",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\fs-extra\\LICENSE"
   },
   "fs-extra@11.3.1": {
     "licenses": "MIT",
@@ -1471,14 +1559,23 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\get-proto",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\get-proto\\LICENSE"
   },
+  "github-from-package@0.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/substack/github-from-package",
+    "publisher": "James Halliday",
+    "email": "mail@substack.net",
+    "url": "http://substack.net",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\github-from-package",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\github-from-package\\LICENSE"
+  },
   "glob-parent@5.1.2": {
     "licenses": "ISC",
     "repository": "https://github.com/gulpjs/glob-parent",
     "publisher": "Gulp Team",
     "email": "team@gulpjs.com",
     "url": "https://gulpjs.com/",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\glob-parent",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\glob-parent\\LICENSE"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\glob-parent",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\glob-parent\\LICENSE"
   },
   "glob-to-regexp@0.4.1": {
     "licenses": "BSD-2-Clause",
@@ -1767,6 +1864,15 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\inherits",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\inherits\\LICENSE"
   },
+  "ini@1.3.8": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/ini",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\ini",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\ini\\LICENSE"
+  },
   "inline-style-parser@0.2.7": {
     "licenses": "MIT",
     "repository": "https://github.com/remarkablemark/inline-style-parser",
@@ -1813,8 +1919,8 @@
     "publisher": "Sindre Sorhus",
     "email": "sindresorhus@gmail.com",
     "url": "sindresorhus.com",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-binary-path",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-binary-path\\license"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\is-binary-path",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\is-binary-path\\license"
   },
   "is-decimal@2.0.1": {
     "licenses": "MIT",
@@ -1830,8 +1936,8 @@
     "repository": "https://github.com/jonschlinkert/is-extglob",
     "publisher": "Jon Schlinkert",
     "url": "https://github.com/jonschlinkert",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-extglob",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-extglob\\LICENSE"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\is-extglob",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\is-extglob\\LICENSE"
   },
   "is-fullwidth-code-point@3.0.0": {
     "licenses": "MIT",
@@ -1847,8 +1953,8 @@
     "repository": "https://github.com/micromatch/is-glob",
     "publisher": "Jon Schlinkert",
     "url": "https://github.com/jonschlinkert",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-glob",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-glob\\LICENSE"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\is-glob",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\is-glob\\LICENSE"
   },
   "is-hexadecimal@2.0.1": {
     "licenses": "MIT",
@@ -1873,8 +1979,8 @@
     "repository": "https://github.com/jonschlinkert/is-number",
     "publisher": "Jon Schlinkert",
     "url": "https://github.com/jonschlinkert",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-number",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\is-number\\LICENSE"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\is-number",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\is-number\\LICENSE"
   },
   "is-plain-obj@4.1.0": {
     "licenses": "MIT",
@@ -2171,6 +2277,13 @@
     "publisher": "Eric Fennis",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\lucide-react",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\lucide-react\\LICENSE"
+  },
+  "luxon@3.7.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/moment/luxon",
+    "publisher": "Isaac Cambron",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\luxon",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\luxon\\LICENSE.md"
   },
   "make-dir@3.1.0": {
     "licenses": "MIT",
@@ -2653,6 +2766,15 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\mimic-fn",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\mimic-fn\\license"
   },
+  "mimic-response@3.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/mimic-response",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\mimic-response",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\mimic-response\\license"
+  },
   "minimatch@3.1.2": {
     "licenses": "ISC",
     "repository": "https://github.com/isaacs/minimatch",
@@ -2679,6 +2801,15 @@
     "url": "http://blog.izs.me",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\minimatch",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\minimatch\\LICENSE"
+  },
+  "minimist@1.2.8": {
+    "licenses": "MIT",
+    "repository": "https://github.com/minimistjs/minimist",
+    "publisher": "James Halliday",
+    "email": "mail@substack.net",
+    "url": "http://substack.net",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\minimist",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\minimist\\LICENSE"
   },
   "minipass@3.3.6": {
     "licenses": "ISC",
@@ -2725,6 +2856,14 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\minizlib",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\minizlib\\LICENSE"
   },
+  "mkdirp-classic@0.5.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mafintosh/mkdirp-classic",
+    "publisher": "Mathias Buus",
+    "url": "@mafintosh",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\mkdirp-classic",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\mkdirp-classic\\LICENSE"
+  },
   "mkdirp@1.0.4": {
     "licenses": "MIT",
     "repository": "https://github.com/isaacs/node-mkdirp",
@@ -2763,6 +2902,13 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\mute-stream",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\mute-stream\\LICENSE"
   },
+  "napi-build-utils@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/inspiredware/napi-build-utils",
+    "publisher": "Jim Schlight",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\napi-build-utils",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\napi-build-utils\\LICENSE"
+  },
   "negotiator@0.6.3": {
     "licenses": "MIT",
     "repository": "https://github.com/jshttp/negotiator",
@@ -2775,6 +2921,13 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\negotiator",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\negotiator\\LICENSE"
   },
+  "node-abi@3.87.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/electron/node-abi",
+    "publisher": "Lukas Geiger",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\node-abi",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\node-abi\\LICENSE"
+  },
   "node-addon-api@5.1.0": {
     "licenses": "MIT",
     "repository": "https://github.com/nodejs/node-addon-api",
@@ -2785,8 +2938,8 @@
     "licenses": "ISC",
     "repository": "https://github.com/merencia/node-cron",
     "publisher": "Lucas Merencia",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\node-cron",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\node-cron\\LICENSE.md"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\node-cron",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\node-cron\\LICENSE.md"
   },
   "node-fetch@2.7.0": {
     "licenses": "MIT",
@@ -2995,8 +3148,16 @@
     "repository": "https://github.com/micromatch/picomatch",
     "publisher": "Jon Schlinkert",
     "url": "https://github.com/jonschlinkert",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\anymatch\\node_modules\\picomatch",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\anymatch\\node_modules\\picomatch\\LICENSE"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\picomatch",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\picomatch\\LICENSE"
+  },
+  "prebuild-install@7.1.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/prebuild/prebuild-install",
+    "publisher": "Mathias Buus",
+    "url": "@mafintosh",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\prebuild-install",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\prebuild-install\\LICENSE"
   },
   "process-nextick-args@2.0.1": {
     "licenses": "MIT",
@@ -3030,6 +3191,14 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\proxy-from-env",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\proxy-from-env\\LICENSE"
   },
+  "pump@3.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mafintosh/pump",
+    "publisher": "Mathias Buus Madsen",
+    "email": "mathiasbuus@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\pump",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\pump\\LICENSE"
+  },
   "qs@6.13.0": {
     "licenses": "BSD-3-Clause",
     "repository": "https://github.com/ljharb/qs",
@@ -3062,6 +3231,15 @@
     "url": "http://jongleberry.com",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\raw-body",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\raw-body\\LICENSE"
+  },
+  "rc@1.2.8": {
+    "licenses": "(BSD-2-Clause OR MIT OR Apache-2.0)",
+    "repository": "https://github.com/dominictarr/rc",
+    "publisher": "Dominic Tarr",
+    "email": "dominic.tarr@gmail.com",
+    "url": "dominictarr.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\rc",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\rc\\LICENSE.APACHE2"
   },
   "react-cron-generator@2.1.4": {
     "licenses": "ISC",
@@ -3124,8 +3302,8 @@
     "publisher": "Thorsten Lorenz",
     "email": "thlorenz@gmx.de",
     "url": "thlorenz.com",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\readdirp",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\readdirp\\LICENSE"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\readdirp",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\readdirp\\LICENSE"
   },
   "rehype-highlight@7.0.2": {
     "licenses": "MIT",
@@ -3278,6 +3456,13 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\electron-updater\\node_modules\\semver",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\electron-updater\\node_modules\\semver\\LICENSE"
   },
+  "semver@7.7.4": {
+    "licenses": "ISC",
+    "repository": "https://github.com/npm/node-semver",
+    "publisher": "GitHub Inc.",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\semver",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\semver\\LICENSE"
+  },
   "send@0.19.0": {
     "licenses": "MIT",
     "repository": "https://github.com/pillarjs/send",
@@ -3389,6 +3574,24 @@
     "email": "ben@npmjs.com",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\signal-exit",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\signal-exit\\LICENSE.txt"
+  },
+  "simple-concat@1.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/feross/simple-concat",
+    "publisher": "Feross Aboukhadijeh",
+    "email": "feross@feross.org",
+    "url": "https://feross.org",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\simple-concat",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\simple-concat\\LICENSE"
+  },
+  "simple-get@4.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/feross/simple-get",
+    "publisher": "Feross Aboukhadijeh",
+    "email": "feross@feross.org",
+    "url": "https://feross.org",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\simple-get",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\simple-get\\LICENSE"
   },
   "socket.io-client@4.8.3": {
     "licenses": "MIT",
@@ -3512,6 +3715,15 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\@isaacs\\cliui\\node_modules\\strip-ansi",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\@isaacs\\cliui\\node_modules\\strip-ansi\\license"
   },
+  "strip-json-comments@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/strip-json-comments",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\strip-json-comments",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\strip-json-comments\\license"
+  },
   "style-to-js@1.1.21": {
     "licenses": "MIT",
     "repository": "https://github.com/remarkablemark/style-to-js",
@@ -3542,6 +3754,21 @@
     "repository": "https://github.com/vercel/swr",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\swr",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\swr\\LICENSE"
+  },
+  "tar-fs@2.1.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mafintosh/tar-fs",
+    "publisher": "Mathias Buus",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\tar-fs",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\tar-fs\\LICENSE"
+  },
+  "tar-stream@2.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mafintosh/tar-stream",
+    "publisher": "Mathias Buus",
+    "email": "mathiasbuus@gmail.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\tar-stream",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\tar-stream\\LICENSE"
   },
   "tar-stream@3.1.7": {
     "licenses": "MIT",
@@ -3594,8 +3821,8 @@
     "repository": "https://github.com/micromatch/to-regex-range",
     "publisher": "Jon Schlinkert",
     "url": "https://github.com/jonschlinkert",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\to-regex-range",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\to-regex-range\\LICENSE"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\to-regex-range",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\to-regex-range\\LICENSE"
   },
   "toidentifier@1.0.1": {
     "licenses": "MIT",
@@ -3636,6 +3863,15 @@
     "publisher": "Microsoft Corp.",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\tslib",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\tslib\\LICENSE.txt"
+  },
+  "tunnel-agent@0.6.0": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/mikeal/tunnel-agent",
+    "publisher": "Mikeal Rogers",
+    "email": "mikeal.rogers@gmail.com",
+    "url": "http://www.futurealoof.com",
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\tunnel-agent",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\tunnel-agent\\LICENSE"
   },
   "type-fest@0.21.3": {
     "licenses": "(MIT OR CC0-1.0)",
@@ -3775,8 +4011,8 @@
   "uuid@8.3.2": {
     "licenses": "MIT",
     "repository": "https://github.com/uuidjs/uuid",
-    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\uuid",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\uuid\\LICENSE.md"
+    "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\uuid",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\uuid\\LICENSE.md"
   },
   "vary@1.1.2": {
     "licenses": "MIT",

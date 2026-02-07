@@ -44,9 +44,11 @@ interface WorkflowCanvasProps {
   activeTabId?: string
   onChange?: (json: string) => void
   readOnly?: boolean
+  onDeploy?: () => void
+  onExport?: () => void
 }
 
-function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false }: WorkflowCanvasProps) {
+function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false, onDeploy, onExport }: WorkflowCanvasProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const reactFlowInstance = useReactFlow()
 
@@ -540,9 +542,19 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false 
   // Track content to prevent re-loading from our own serialization
   const lastContentRef = useRef<string>('')
   const isInternalUpdate = useRef(false)
+  const isFirstMountRef = useRef(true)
 
   // Load workflow content when it changes externally (not from our own edits)
   useEffect(() => {
+    // Always load on first mount to clear stale global store data from previous tabs
+    if (isFirstMountRef.current) {
+      console.log('[WorkflowCanvas] First mount, loading workflow:', content.substring(0, 50))
+      loadWorkflow(content)
+      lastContentRef.current = content
+      isFirstMountRef.current = false
+      return
+    }
+
     // Skip if this is our own update (from serializeToJson -> onChange -> content prop)
     if (isInternalUpdate.current) {
       isInternalUpdate.current = false
@@ -1485,6 +1497,8 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false 
                   onStop={handleStop}
                   onResume={handleResume}
                   isPaused={isPaused}
+                  onDeploy={onDeploy}
+                  onExport={onExport}
                 />
               </div>
             ) : (
@@ -1500,6 +1514,8 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false 
                     onStop={handleStop}
                     onResume={handleResume}
                     isPaused={isPaused}
+                    onDeploy={onDeploy}
+                    onExport={onExport}
                   />
                 </div>
               </Panel>

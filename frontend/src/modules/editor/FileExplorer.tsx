@@ -1162,7 +1162,7 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
       <input id={uploadInputId} type="file" webkitdirectory="" multiple style={{ display: 'none' }} onChange={onUploadFolder as any} />
       <div className="fe-path" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
-          {topLevelPdproj ? <img src="/icons/pdproj-icon.svg" alt="pdproj" style={{ width: 14, height: 14, marginRight: 6 }} /> : null}
+          {topLevelPdproj ? <img src="./icons/pdproj-icon.svg" alt="pdproj" style={{ width: 14, height: 14, marginRight: 6 }} /> : null}
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {pathLabel}{topLevelPdproj ? ` — ${topLevelPdproj.path}` : ''}{loading ? ' — loading…' : ''}
           </span>
@@ -1737,12 +1737,34 @@ function iconFor(name: string, isIgnored = false) {
   const ext = lower.split('.').pop() || ''
   const ignoredColor = '#6b7280' // Grey color for ignored files
 
-  // Prompd-specific files (purple/magenta theme)
+  // Prompd-specific files with custom SVG icons
   if (lower.endsWith('.prmd')) {
-    return <MessageCircle size={16} color={isIgnored ? ignoredColor : "#C586C0"} />
+    return (
+      <img
+        src="./icons/prmd-color.svg"
+        alt="prmd"
+        style={{
+          width: 20,
+          height: 20,
+          opacity: isIgnored ? 0.5 : 1,
+          filter: isIgnored ? 'grayscale(100%)' : 'none'
+        }}
+      />
+    )
   }
   if (lower.endsWith('.pdflow') || lower.endsWith('.prompdflow')) {
-    return <Workflow size={16} color={isIgnored ? ignoredColor : "#C586C0"} />
+    return (
+      <img
+        src="./icons/prompdflow-color.svg"
+        alt="pdflow"
+        style={{
+          width: 20,
+          height: 20,
+          opacity: isIgnored ? 0.5 : 1,
+          filter: isIgnored ? 'grayscale(100%)' : 'none'
+        }}
+      />
+    )
   }
   if (lower.endsWith('.pdpkg')) {
     return <Package size={16} color={isIgnored ? ignoredColor : "#C586C0"} />

@@ -18,6 +18,7 @@ import type {
   WorkflowValidationWarning,
   WorkflowNodeType,
   BaseNodeData,
+  WorkflowMetadata,
 } from './workflowTypes'
 import { validateWorkflow } from './workflowValidator'
 
@@ -31,6 +32,7 @@ export interface ParsedWorkflow {
   edges: WorkflowCanvasEdge[]
   errors: WorkflowValidationError[]
   warnings: WorkflowValidationWarning[]
+  metadata?: WorkflowMetadata  // Convenience accessor for file.metadata
 }
 
 // Valid node types

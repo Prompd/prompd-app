@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Input Required</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 20px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+      -webkit-app-region: drag;
+    }
+
+    .header {
+      margin-bottom: 16px;
+      -webkit-app-region: no-drag;
+    }
+
+    .workflow-name {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #94a3b8;
+      margin-bottom: 4px;
+    }
+
+    .node-label {
+      font-size: 18px;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+
+    .prompt {
+      font-size: 14px;
+      color: #cbd5e1;
+      margin-bottom: 16px;
+      line-height: 1.5;
+      -webkit-app-region: no-drag;
+    }
+
+    .context-box {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 16px;
+      max-height: 120px;
+      overflow-y: auto;
+      font-size: 12px;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      color: #94a3b8;
+      white-space: pre-wrap;
+      word-break: break-word;
+      -webkit-app-region: no-drag;
+    }
+
+    .context-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+
+    .form-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      -webkit-app-region: no-drag;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    textarea {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 10px 12px;
+      color: #e2e8f0;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    textarea:focus {
+      border-color: #6366f1;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+      flex: 1;
+    }
+
+    .choices {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .choice-btn {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 10px 14px;
+      color: #e2e8f0;
+      font-size: 14px;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s;
+    }
+
+    .choice-btn:hover {
+      border-color: #6366f1;
+      background: #1e1b4b;
+    }
+
+    .choice-btn.selected {
+      border-color: #6366f1;
+      background: #312e81;
+    }
+
+    .confirm-btns {
+      display: flex;
+      gap: 12px;
+    }
+
+    .confirm-btn {
+      flex: 1;
+      padding: 14px;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .confirm-yes {
+      background: #065f46;
+      color: #a7f3d0;
+      border-color: #047857;
+    }
+
+    .confirm-yes:hover {
+      background: #047857;
+    }
+
+    .confirm-no {
+      background: #7f1d1d;
+      color: #fecaca;
+      border-color: #991b1b;
+    }
+
+    .confirm-no:hover {
+      background: #991b1b;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #334155;
+      -webkit-app-region: no-drag;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+
+    .btn-submit {
+      background: #4f46e5;
+      color: white;
+    }
+
+    .btn-submit:hover {
+      background: #4338ca;
+    }
+
+    .btn-submit:disabled {
+      background: #334155;
+      color: #64748b;
+      cursor: not-allowed;
+    }
+
+    .btn-cancel {
+      background: transparent;
+      color: #94a3b8;
+      border: 1px solid #475569;
+    }
+
+    .btn-cancel:hover {
+      background: #334155;
+    }
+
+    .validation-error {
+      color: #f87171;
+      font-size: 12px;
+      margin-top: 6px;
+    }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #64748b;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root" class="loading">Loading...</div>
+
+  <script>
+    let selectedChoice = null
+    let requestData = null
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const data = await window.popupAPI.getRequestData()
+        if (!data || data.error) {
+          document.getElementById('root').textContent = data?.error || 'No request data'
+          return
+        }
+        requestData = data
+        renderUI(data)
+      } catch (err) {
+        document.getElementById('root').textContent = 'Error: ' + err.message
+      }
+    })
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        handleCancel()
+      }
+    })
+
+    function renderUI({ request, metadata }) {
+      const root = document.getElementById('root')
+      root.className = ''
+      root.innerHTML = ''
+
+      // Header
+      const header = document.createElement('div')
+      header.className = 'header'
+
+      if (metadata?.workflowName) {
+        const wfName = document.createElement('div')
+        wfName.className = 'workflow-name'
+        wfName.textContent = metadata.workflowName
+        header.appendChild(wfName)
+      }
+
+      const nodeLabel = document.createElement('div')
+      nodeLabel.className = 'node-label'
+      nodeLabel.textContent = request.nodeLabel || 'User Input'
+      header.appendChild(nodeLabel)
+      root.appendChild(header)
+
+      // Prompt
+      if (request.prompt) {
+        const prompt = document.createElement('div')
+        prompt.className = 'prompt'
+        prompt.textContent = request.prompt
+        root.appendChild(prompt)
+      }
+
+      // Context
+      if (request.showContext && request.context?.previousOutput != null) {
+        const contextLabel = document.createElement('div')
+        contextLabel.className = 'context-label'
+        contextLabel.textContent = 'Previous Output'
+        root.appendChild(contextLabel)
+
+        const contextBox = document.createElement('div')
+        contextBox.className = 'context-box'
+        const output = request.context.previousOutput
+        contextBox.textContent = typeof output === 'string'
+          ? output
+          : JSON.stringify(output, null, 2)
+        root.appendChild(contextBox)
+      }
+
+      // Form area
+      const formArea = document.createElement('div')
+      formArea.className = 'form-area'
+      root.appendChild(formArea)
+
+      renderInput(formArea, request)
+
+      // Actions (skip for confirm type - it has its own buttons)
+      if (request.inputType !== 'confirm') {
+        const actions = document.createElement('div')
+        actions.className = 'actions'
+
+        const cancelBtn = document.createElement('button')
+        cancelBtn.className = 'btn btn-cancel'
+        cancelBtn.textContent = 'Cancel'
+        cancelBtn.onclick = handleCancel
+        actions.appendChild(cancelBtn)
+
+        const submitBtn = document.createElement('button')
+        submitBtn.id = 'submit-btn'
+        submitBtn.className = 'btn btn-submit'
+        submitBtn.textContent = 'Submit'
+        submitBtn.onclick = handleSubmit
+        actions.appendChild(submitBtn)
+
+        root.appendChild(actions)
+      }
+
+      // Focus first input
+      const firstInput = root.querySelector('input, textarea')
+      if (firstInput) {
+        setTimeout(() => firstInput.focus(), 50)
+      }
+    }
+
+    function renderInput(container, request) {
+      const type = request.inputType || 'text'
+
+      switch (type) {
+        case 'text': {
+          const input = document.createElement('input')
+          input.type = 'text'
+          input.id = 'user-input'
+          input.placeholder = request.placeholder || 'Enter value...'
+          if (request.defaultValue) input.value = request.defaultValue
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleSubmit()
+          })
+          container.appendChild(input)
+          break
+        }
+
+        case 'number': {
+          const input = document.createElement('input')
+          input.type = 'number'
+          input.id = 'user-input'
+          input.placeholder = request.placeholder || 'Enter number...'
+          if (request.defaultValue) input.value = request.defaultValue
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleSubmit()
+          })
+          container.appendChild(input)
+          break
+        }
+
+        case 'textarea': {
+          const ta = document.createElement('textarea')
+          ta.id = 'user-input'
+          ta.placeholder = request.placeholder || 'Enter text...'
+          if (request.defaultValue) ta.value = request.defaultValue
+          container.appendChild(ta)
+          break
+        }
+
+        case 'choice': {
+          const choices = document.createElement('div')
+          choices.className = 'choices'
+
+          ;(request.choices || []).forEach((choice, i) => {
+            const btn = document.createElement('button')
+            btn.className = 'choice-btn'
+            btn.textContent = choice
+            btn.onclick = () => {
+              // Deselect all
+              choices.querySelectorAll('.choice-btn').forEach(b => b.classList.remove('selected'))
+              btn.classList.add('selected')
+              selectedChoice = choice
+            }
+
+            // Select default
+            if (request.defaultValue === choice) {
+              btn.classList.add('selected')
+              selectedChoice = choice
+            }
+
+            choices.appendChild(btn)
+          })
+
+          container.appendChild(choices)
+          break
+        }
+
+        case 'confirm': {
+          const btns = document.createElement('div')
+          btns.className = 'confirm-btns'
+          btns.style.marginTop = '8px'
+
+          const yesBtn = document.createElement('button')
+          yesBtn.className = 'confirm-btn confirm-yes'
+          yesBtn.textContent = 'Yes'
+          yesBtn.onclick = () => submitValue(true)
+
+          const noBtn = document.createElement('button')
+          noBtn.className = 'confirm-btn confirm-no'
+          noBtn.textContent = 'No'
+          noBtn.onclick = () => submitValue(false)
+
+          btns.appendChild(yesBtn)
+          btns.appendChild(noBtn)
+          container.appendChild(btns)
+
+          // Cancel action below
+          const actions = document.createElement('div')
+          actions.className = 'actions'
+          const cancelBtn = document.createElement('button')
+          cancelBtn.className = 'btn btn-cancel'
+          cancelBtn.textContent = 'Cancel'
+          cancelBtn.style.flex = 'none'
+          cancelBtn.style.width = '100%'
+          cancelBtn.onclick = handleCancel
+          actions.appendChild(cancelBtn)
+          document.getElementById('root').appendChild(actions)
+          break
+        }
+      }
+    }
+
+    function getValue() {
+      if (!requestData) return undefined
+
+      const type = requestData.request.inputType || 'text'
+
+      if (type === 'choice') return selectedChoice
+
+      const input = document.getElementById('user-input')
+      if (!input) return undefined
+
+      if (type === 'number') return input.value ? Number(input.value) : undefined
+      return input.value || undefined
+    }
+
+    function handleSubmit() {
+      if (!requestData) return
+
+      const value = getValue()
+      const { request } = requestData
+
+      // Validate required
+      if (request.required && (value === undefined || value === null || value === '')) {
+        showValidation('This field is required')
+        return
+      }
+
+      submitValue(value)
+    }
+
+    function submitValue(value) {
+      window.popupAPI.submitInput({ value, cancelled: false })
+    }
+
+    function handleCancel() {
+      window.popupAPI.cancel()
+    }
+
+    function showValidation(msg) {
+      // Remove existing
+      const existing = document.querySelector('.validation-error')
+      if (existing) existing.remove()
+
+      const err = document.createElement('div')
+      err.className = 'validation-error'
+      err.textContent = msg
+      const formArea = document.querySelector('.form-area')
+      if (formArea) formArea.appendChild(err)
+    }
+  </script>
+</body>
+</html>

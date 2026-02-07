@@ -1,0 +1,315 @@
+.service-webhook-settings {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 4px 0;
+}
+
+.section-description {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.service-url-config {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.service-url-config label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.url-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.url-input-group input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.url-input-group input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.service-status-card,
+.webhook-status-card {
+  padding: 16px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-icon {
+  flex-shrink: 0;
+}
+
+.status-icon.status-enabled {
+  color: #10b981;
+}
+
+.status-icon.status-inactive {
+  color: #6b7280;
+}
+
+.status-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.status-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.status-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.status-item .label {
+  color: var(--muted);
+}
+
+.status-item .value {
+  font-weight: 500;
+}
+
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+  border: 1px solid var(--error);
+  border-radius: 6px;
+  color: var(--error);
+  font-size: 13px;
+}
+
+.service-management {
+  margin-top: 8px;
+}
+
+.install-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.info-box,
+.warning-box {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.warning-box {
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.info-box p,
+.warning-box p {
+  margin: 0;
+}
+
+.info-box strong,
+.warning-box strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.service-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.button-group {
+  display: flex;
+  gap: 8px;
+}
+
+.service-info {
+  padding: 12px;
+  background: var(--panel);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.service-info p {
+  margin: 4px 0;
+}
+
+.webhook-url-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.webhook-url-section label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.webhook-url-display {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.webhook-url {
+  flex: 1;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.help-text {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 0 0;
+}
+
+.help-text code {
+  padding: 2px 6px;
+  background: var(--panel-2);
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.btn-icon,
+.btn-primary,
+.btn-secondary,
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: 1px solid;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-icon {
+  padding: 8px;
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.btn-icon:hover {
+  background: var(--panel-2);
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background: var(--panel-2);
+}
+
+.btn-danger {
+  background: transparent;
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.btn-danger:hover {
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+}
+
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}

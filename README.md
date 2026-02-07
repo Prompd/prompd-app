@@ -30,7 +30,7 @@ A local-first Electron application for creating and executing AI workflows with 
 
 - **Frontend**: React 18 + TypeScript + Vite + Monaco Editor + Zustand
 - **Desktop**: Electron with File System Access API and IPC bridge
-- **Compilation**: `@prompd/cli@^0.3.3` (npm package)
+- **Compilation**: `@prompd/cli@^0.4.6` (npm package)
 - **Backend** (optional): Node.js ESM + Express + MongoDB
 
 ## Quick Start

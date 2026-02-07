@@ -19,7 +19,7 @@
   "author": "Prompd Team",
   "license": "MIT",
   "dependencies": {
-    "@prompd/scheduler-shared": "file:../scheduler-shared",
+    "@prompd/scheduler": "file:../packages/scheduler",
     "express": "^4.18.2",
     "cors": "^2.8.5",
     "helmet": "^7.1.0",

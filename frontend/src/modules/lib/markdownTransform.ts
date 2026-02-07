@@ -18,12 +18,13 @@ export function toTrimmed(markdown: string): string {
   let result = markdown
 
   // Preserve code blocks by replacing them with placeholders
+  // Use <<< >>> to avoid conflicts with markdown syntax (__, *, etc.)
   const codeBlocks: string[] = []
   result = result.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
     const index = codeBlocks.length
     // Keep code blocks with language hint for LLM context
     codeBlocks.push(lang ? `[${lang}]\n${code.trim()}\n[/${lang}]` : `[code]\n${code.trim()}\n[/code]`)
-    return `__CODE_BLOCK_${index}__`
+    return `<<<CODE_BLOCK_${index}>>>`
   })
 
   // Preserve inline code
@@ -31,7 +32,7 @@ export function toTrimmed(markdown: string): string {
   result = result.replace(/`([^`]+)`/g, (_, code) => {
     const index = inlineCode.length
     inlineCode.push(code)
-    return `__INLINE_CODE_${index}__`
+    return `<<<INLINE_CODE_${index}>>>`
   })
 
   // Preserve URLs (both markdown links and raw URLs)
@@ -40,13 +41,13 @@ export function toTrimmed(markdown: string): string {
   result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
     const index = urls.length
     urls.push(`${text} (${url})`)
-    return `__URL_${index}__`
+    return `<<<URL_${index}>>>`
   })
   // Raw URLs
   result = result.replace(/(https?:\/\/[^\s\)]+)/g, (url) => {
     const index = urls.length
     urls.push(url)
-    return `__URL_${index}__`
+    return `<<<URL_${index}>>>`
   })
 
   // Strip headers (# ## ### etc)
@@ -83,17 +84,17 @@ export function toTrimmed(markdown: string): string {
 
   // Restore code blocks
   codeBlocks.forEach((code, index) => {
-    result = result.replace(`__CODE_BLOCK_${index}__`, code)
+    result = result.replace(`<<<CODE_BLOCK_${index}>>>`, code)
   })
 
   // Restore inline code (without backticks, just the content)
   inlineCode.forEach((code, index) => {
-    result = result.replace(`__INLINE_CODE_${index}__`, code)
+    result = result.replace(`<<<INLINE_CODE_${index}>>>`, code)
   })
 
   // Restore URLs
   urls.forEach((url, index) => {
-    result = result.replace(`__URL_${index}__`, url)
+    result = result.replace(`<<<URL_${index}>>>`, url)
   })
 
   // Normalize whitespace: collapse multiple blank lines to single

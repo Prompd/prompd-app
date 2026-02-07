@@ -7,6 +7,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import PrompdEditor, { PendingEdit } from './PrompdEditor'
 import { CompiledPreview } from './CompiledPreview'
+import type { GenerationMode } from '../components/GenerationControls'
 import { GripVertical } from 'lucide-react'
 
 interface SplitEditorProps {
@@ -42,6 +43,46 @@ interface SplitEditorProps {
   parameters?: Record<string, unknown>
   /** Callback when preview parameters change */
   onParametersChange?: (params: Record<string, unknown>) => void
+  /** Whether to show context sections in preview */
+  showContextSections?: boolean
+  /** Has folder open (for file browser) */
+  hasFolderOpen?: boolean
+  /** File upload handler for context sections */
+  onFileUpload?: (sectionName: string, files: File[]) => Promise<string[]>
+  /** Select from browser handler */
+  onSelectFromBrowser?: (sectionName: string) => Promise<string | null>
+  /** Show execution controls in preview */
+  showExecution?: boolean
+  /** Execute handler */
+  onExecute?: () => void
+  /** Is executing */
+  isExecuting?: boolean
+  /** Can execute (all params valid) */
+  canExecute?: boolean
+  /** Execution disabled reason */
+  executionDisabledReason?: string
+  /** Execution provider */
+  executionProvider?: string
+  /** Execution model */
+  executionModel?: string
+  /** Available providers */
+  executionProviders?: Array<{ id: string, name: string, models: Array<{ id: string, name: string }> }>
+  /** Provider change handler */
+  onExecutionProviderChange?: (provider: string) => void
+  /** Model change handler */
+  onExecutionModelChange?: (model: string) => void
+  /** Max tokens */
+  executionMaxTokens?: number
+  /** Temperature */
+  executionTemperature?: number
+  /** Generation mode */
+  executionMode?: GenerationMode
+  /** Max tokens change handler */
+  onExecutionMaxTokensChange?: (value: number) => void
+  /** Temperature change handler */
+  onExecutionTemperatureChange?: (value: number) => void
+  /** Mode change handler */
+  onExecutionModeChange?: (mode: GenerationMode) => void
 }
 
 export function SplitEditor({
@@ -61,7 +102,27 @@ export function SplitEditor({
   showPreview,
   onClosePreview,
   parameters = {},
-  onParametersChange
+  onParametersChange,
+  showContextSections = true,
+  hasFolderOpen = false,
+  onFileUpload,
+  onSelectFromBrowser,
+  showExecution = false,
+  onExecute,
+  isExecuting = false,
+  canExecute = true,
+  executionDisabledReason,
+  executionProvider,
+  executionModel,
+  executionProviders = [],
+  onExecutionProviderChange,
+  onExecutionModelChange,
+  executionMaxTokens = 4096,
+  executionTemperature = 0.7,
+  executionMode = 'default',
+  onExecutionMaxTokensChange,
+  onExecutionTemperatureChange,
+  onExecutionModeChange
 }: SplitEditorProps) {
   // Split position as percentage (0-100)
   const [splitPosition, setSplitPosition] = useState(50)
@@ -218,6 +279,27 @@ export function SplitEditor({
             isMaximized={isPreviewMaximized}
             onToggleMaximize={() => setIsPreviewMaximized(!isPreviewMaximized)}
             onClose={onClosePreview}
+            showContextSections={showContextSections}
+            onContextSectionsChange={onChange}
+            onFileUpload={onFileUpload}
+            onSelectFromBrowser={onSelectFromBrowser}
+            hasFolderOpen={hasFolderOpen}
+            showExecution={showExecution}
+            onExecute={onExecute}
+            isExecuting={isExecuting}
+            canExecute={canExecute}
+            executionDisabledReason={executionDisabledReason}
+            executionProvider={executionProvider}
+            executionModel={executionModel}
+            executionProviders={executionProviders}
+            onExecutionProviderChange={onExecutionProviderChange}
+            onExecutionModelChange={onExecutionModelChange}
+            executionMaxTokens={executionMaxTokens}
+            executionTemperature={executionTemperature}
+            executionMode={executionMode}
+            onExecutionMaxTokensChange={onExecutionMaxTokensChange}
+            onExecutionTemperatureChange={onExecutionTemperatureChange}
+            onExecutionModeChange={onExecutionModeChange}
           />
         </div>
       )}
