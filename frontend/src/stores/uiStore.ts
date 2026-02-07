@@ -45,9 +45,14 @@ export interface ProviderWithPricing {
  */
 export type LLMProvider = string // Support any provider ID
 
+export type GenerationMode = 'default' | 'thinking' | 'json'
+
 export interface LLMProviderConfig {
   provider: string
   model: string
+  maxTokens: number
+  temperature: number
+  generationMode: GenerationMode
   // Legacy format for backward compatibility
   availableProviders: {
     openai: { hasKey: boolean; models: string[] }
@@ -131,7 +136,7 @@ interface UIState {
 
   // Bottom panel (unified tab interface)
   showBottomPanel: boolean
-  activeBottomTab: 'output' | 'execution'
+  activeBottomTab: 'errors' | 'prompds' | 'workflows' | 'packages' | 'output'
   bottomPanelHeight: number
   bottomPanelPinned: boolean
   bottomPanelMinimized: boolean
@@ -172,6 +177,9 @@ interface UIActions {
   // LLM Provider
   setLLMProvider: (provider: string) => void
   setLLMModel: (model: string) => void
+  setLLMMaxTokens: (maxTokens: number) => void
+  setLLMTemperature: (temperature: number) => void
+  setLLMGenerationMode: (mode: GenerationMode) => void
   setAvailableProviders: (providers: LLMProviderConfig['availableProviders']) => void
   setProvidersWithPricing: (providers: ProviderWithPricing[]) => void
   setLLMLoading: (loading: boolean) => void
@@ -210,7 +218,7 @@ interface UIActions {
 
   // Bottom panel (unified)
   setShowBottomPanel: (show: boolean) => void
-  setActiveBottomTab: (tab: 'output' | 'execution') => void
+  setActiveBottomTab: (tab: 'errors' | 'prompds' | 'workflows' | 'packages' | 'output') => void
   setBottomPanelHeight: (height: number) => void
   setBottomPanelPinned: (pinned: boolean) => void
   setBottomPanelMinimized: (minimized: boolean) => void
@@ -243,6 +251,9 @@ export const useUIStore = create<UIStore>()(
           llmProvider: {
             provider: 'anthropic',
             model: 'claude-haiku-4-5-20251015', // Default to cheapest
+            maxTokens: 4096,
+            temperature: 0.7,
+            generationMode: 'default',
             availableProviders: null,
             providersWithPricing: null,
             isLoading: false,
@@ -258,7 +269,7 @@ export const useUIStore = create<UIStore>()(
           workflowPanelPinned: false,
           showConnectionsPanel: false,
           showBottomPanel: false,
-          activeBottomTab: 'output',
+          activeBottomTab: 'errors',
           bottomPanelHeight: 200,
           bottomPanelPinned: false,
           bottomPanelMinimized: false,
@@ -340,6 +351,18 @@ export const useUIStore = create<UIStore>()(
 
           setLLMModel: (model) => set((state) => {
             state.llmProvider.model = model
+          }),
+
+          setLLMMaxTokens: (maxTokens) => set((state) => {
+            state.llmProvider.maxTokens = maxTokens
+          }),
+
+          setLLMTemperature: (temperature) => set((state) => {
+            state.llmProvider.temperature = temperature
+          }),
+
+          setLLMGenerationMode: (mode) => set((state) => {
+            state.llmProvider.generationMode = mode
           }),
 
           setAvailableProviders: (providers) => set((state) => {
@@ -840,7 +863,10 @@ export const useUIStore = create<UIStore>()(
             defaultViewMode: state.defaultViewMode,
             llmProvider: {
               provider: state.llmProvider.provider,
-              model: state.llmProvider.model
+              model: state.llmProvider.model,
+              maxTokens: state.llmProvider.maxTokens,
+              temperature: state.llmProvider.temperature,
+              generationMode: state.llmProvider.generationMode
             },
             recentProjects: state.recentProjects,
             buildPanelPinned: state.buildPanelPinned,

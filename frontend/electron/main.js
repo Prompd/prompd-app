@@ -12,17 +12,22 @@ try {
 }
 
 const { app, BrowserWindow, ipcMain, dialog, Menu, shell, powerMonitor, net } = require('electron')
-const { autoUpdater } = require('electron-updater')
 const fs = require('fs-extra')
 const os = require('os')
 
+// Lazy-load autoUpdater after app is ready (v6.x requires app.getVersion())
+let autoUpdater = null
+function getAutoUpdater() {
+  if (!autoUpdater) {
+    autoUpdater = require('electron-updater').autoUpdater
+  }
+  return autoUpdater
+}
+
 // Tray and trigger services for background workflow execution
 const { trayManager } = require('./tray')
-const { triggerService } = require('./services/triggerService')
-const { TraySchedulerService, createWorkflowExecutor } = require('./services/trayScheduler')
+const { DeploymentService } = require('@prompd/scheduler')
 
-// Set app name for protocol handler display
-app.setName('Prompd')
 const { spawn } = require('child_process')
 const { Worker } = require('worker_threads')
 const yaml = require('yaml')
@@ -42,8 +47,10 @@ async function getPrompdCli() {
   return prompdCliModule
 }
 
-// Tray scheduler instance (initialized in createWindow)
-let trayScheduler = null
+// Deployment service instance (initialized in createWindow)
+
+// Deployment service instance (initialized in createWindow)
+let deploymentService = null
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling
 // Only needed for Squirrel.Windows installer (not NSIS)
@@ -65,6 +72,7 @@ let menuState = {
   hasWorkspace: false,      // Is a folder/workspace open?
   hasActiveTab: false,      // Is there an active tab?
   isPrompdFile: false,      // Is the active file a .prmd file?
+  isWorkflowFile: false,    // Is the active file a .pdflow workflow?
   canExecute: false         // Can we execute (has .prmd file open)?
 }
 
@@ -93,57 +101,60 @@ function updateWindowTitle() {
   }
 }
 
-// Configure auto-updater
-autoUpdater.autoDownload = true
-autoUpdater.autoInstallOnAppQuit = true
+// Configure auto-updater (called after app is ready)
+function setupAutoUpdater() {
+  const updater = getAutoUpdater()
+  updater.autoDownload = true
+  updater.autoInstallOnAppQuit = true
 
-// Auto-update event handlers
-autoUpdater.on('checking-for-update', () => {
-  console.log('[AutoUpdater] Checking for updates...')
-})
+  // Auto-update event handlers
+  updater.on('checking-for-update', () => {
+    console.log('[AutoUpdater] Checking for updates...')
+  })
 
-autoUpdater.on('update-available', (info) => {
-  console.log('[AutoUpdater] Update available:', info.version)
-  if (mainWindow) {
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Update Available',
-      message: `A new version (${info.version}) is available!`,
-      detail: 'The update will be downloaded in the background. You will be notified when it is ready to install.',
-      buttons: ['OK']
-    })
-  }
-})
+  updater.on('update-available', (info) => {
+    console.log('[AutoUpdater] Update available:', info.version)
+    if (mainWindow) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Update Available',
+        message: `A new version (${info.version}) is available!`,
+        detail: 'The update will be downloaded in the background. You will be notified when it is ready to install.',
+        buttons: ['OK']
+      })
+    }
+  })
 
-autoUpdater.on('update-not-available', (info) => {
-  console.log('[AutoUpdater] No updates available. Current version:', info.version)
-})
+  updater.on('update-not-available', (info) => {
+    console.log('[AutoUpdater] No updates available. Current version:', info.version)
+  })
 
-autoUpdater.on('error', (err) => {
-  console.error('[AutoUpdater] Error:', err)
-})
+  updater.on('error', (err) => {
+    console.error('[AutoUpdater] Error:', err)
+  })
 
-autoUpdater.on('download-progress', (progressObj) => {
-  const message = `Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}%`
-  console.log('[AutoUpdater]', message)
-})
+  updater.on('download-progress', (progressObj) => {
+    const message = `Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}%`
+    console.log('[AutoUpdater]', message)
+  })
 
-autoUpdater.on('update-downloaded', (info) => {
-  console.log('[AutoUpdater] Update downloaded:', info.version)
-  if (mainWindow) {
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Update Ready',
-      message: 'Update downloaded successfully!',
-      detail: 'The application will restart to install the update.',
-      buttons: ['Restart Now', 'Later']
-    }).then((result) => {
-      if (result.response === 0) {
-        autoUpdater.quitAndInstall()
-      }
-    })
-  }
-})
+  updater.on('update-downloaded', (info) => {
+    console.log('[AutoUpdater] Update downloaded:', info.version)
+    if (mainWindow) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Update Ready',
+        message: 'Update downloaded successfully!',
+        detail: 'The application will restart to install the update.',
+        buttons: ['Restart Now', 'Later']
+      }).then((result) => {
+        if (result.response === 0) {
+          updater.quitAndInstall()
+        }
+      })
+    }
+  })
+}
 
 function createWindow() {
   console.log('[Electron] Creating window...')
@@ -186,7 +197,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: false,  // TEMP: Disabled to test Monaco List component issue
+      userAgent: `Prompd/${app.getVersion()} (${os.type()} ${os.arch()}) Electron/${process.versions.electron}`
     },
     title: 'Prompd',
     backgroundColor: '#1e293b',
@@ -218,8 +230,8 @@ function createWindow() {
 
   // Handle window close - minimize to tray instead of quitting
   mainWindow.on('close', (event) => {
-    // Check if app is actually quitting or just closing window
-    if (!trayManager.isAppQuitting() && triggerService.settings?.minimizeToTray) {
+    // Check if app is actually quitting or just closing window (minimize to tray)
+    if (!trayManager.isAppQuitting()) {
       event.preventDefault()
       mainWindow.hide()
       console.log('[Electron] Window hidden to tray')
@@ -612,6 +624,23 @@ function createMenu() {
             }
           }
         },
+        {
+          label: 'Deploy Workflow',
+          enabled: menuState.isWorkflowFile,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-package-deploy')
+            }
+          }
+        },
+        {
+          label: 'Manage Deployments...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-deployment-manage')
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'Install Package...',
@@ -686,7 +715,7 @@ function createMenu() {
         {
           label: 'Check for Updates',
           click: () => {
-            autoUpdater.checkForUpdatesAndNotify()
+            getAutoUpdater().checkForUpdatesAndNotify()
             if (mainWindow) {
               dialog.showMessageBox(mainWindow, {
                 type: 'info',
@@ -717,6 +746,9 @@ function createMenu() {
 
 // This method will be called when Electron has finished initialization
 app.whenReady().then(() => {
+  // Set app name for protocol handler display
+  app.setName('Prompd')
+
   console.log('[Electron] App ready')
   console.log('[Electron] Platform:', process.platform)
   console.log('[Electron] Node version:', process.version)
@@ -728,10 +760,13 @@ app.whenReady().then(() => {
   createWindow()
   // Menu is created later when user is authenticated (via showAppMenu IPC)
 
+  // Setup auto-updater (must be after app.whenReady)
+  setupAutoUpdater()
+
   // Check for updates on startup (only in production)
   if (!process.env.ELECTRON_START_URL) {
     console.log('[Electron] Checking for updates...')
-    autoUpdater.checkForUpdatesAndNotify()
+    getAutoUpdater().checkForUpdatesAndNotify()
   }
 
   // Power monitor events - notify renderer about sleep/wake to prevent unwanted reloads
@@ -766,25 +801,188 @@ app.whenReady().then(() => {
   // Initialize system tray for background workflow execution
   trayManager.init(mainWindow)
 
-  // Initialize trigger service
-  triggerService.init({ trayManager, mainWindow }).catch(err => {
-    console.error('[Electron] Failed to initialize trigger service:', err)
-  })
-
-  // Initialize tray scheduler (persistent workflow scheduling)
+  // Initialize deployment service (package-based workflow deployment)
   try {
-    const workflowExecutor = createWorkflowExecutor(mainWindow)
-    trayScheduler = new TraySchedulerService({
-      mainWindow,
-      trayManager,
-      workflowExecutor
+    const dbPath = path.join(app.getPath('userData'), 'scheduler', 'schedules.db')
+    const deploymentsPath = path.join(app.getPath('home'), '.prompd', 'workflows')
+
+    // Create deployment executor wrapper
+    const executeDeployedWorkflow = async (deployment, trigger, context) => {
+      console.log(`[Electron] Executing deployed workflow: ${deployment.name}`)
+      console.log(`[Electron] Deployment path: ${deployment.packagePath}`)
+      console.log(`[Electron] Trigger type: ${trigger.triggerType || 'manual'}`)
+
+      try {
+        // Resolve workflow file from prompd.json > main, fallback to recursive search
+        let workflowPath = null
+
+        const manifestPath = path.join(deployment.packagePath, 'prompd.json')
+        if (fs.existsSync(manifestPath)) {
+          try {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'))
+            if (manifest.main) {
+              const mainPath = path.join(deployment.packagePath, manifest.main)
+              if (fs.existsSync(mainPath)) {
+                workflowPath = mainPath
+                console.log(`[Electron] Resolved workflow from prompd.json main: ${manifest.main}`)
+              }
+            }
+          } catch (err) {
+            console.warn(`[Electron] Failed to read prompd.json:`, err.message)
+          }
+        }
+
+        // Fallback: search recursively for .pdflow
+        if (!workflowPath) {
+          const findPdflow = (dir) => {
+            const entries = fs.readdirSync(dir, { withFileTypes: true })
+            for (const entry of entries) {
+              const fullPath = path.join(dir, entry.name)
+              if (entry.isDirectory()) {
+                const found = findPdflow(fullPath)
+                if (found) return found
+              } else if (entry.name.endsWith('.pdflow')) {
+                return fullPath
+              }
+            }
+            return null
+          }
+          workflowPath = findPdflow(deployment.packagePath)
+        }
+
+        if (!workflowPath) {
+          throw new Error('No workflow file found in deployment')
+        }
+
+        console.log(`[Electron] Workflow path: ${workflowPath}`)
+
+        // Execute workflow via IPC to renderer process
+        console.log(`[Electron] Sending execute-workflow message to renderer...`)
+
+        return new Promise((resolve, reject) => {
+          // Send execution request to renderer process
+          mainWindow.webContents.send('execute-workflow', {
+            workflowPath,
+            parameters: context.payload || {},
+            trigger: trigger.triggerType || 'manual',
+            deploymentId: deployment.id,
+            triggerId: trigger.id
+          })
+
+          // Wait for execution result (30 minutes timeout for complex workflows with LLM calls)
+          const timeoutId = setTimeout(() => {
+            console.error('[Electron] Workflow execution timeout (30 minutes)')
+            reject(new Error('Workflow execution timeout (30 minutes)'))
+          }, 30 * 60 * 1000)
+
+          // Listen for result from renderer process
+          const resultHandler = (event, result) => {
+            console.log('[Electron] Received workflow-execution-result:', result)
+            clearTimeout(timeoutId)
+            ipcMain.off('workflow-execution-result', resultHandler)
+
+            if (result.error) {
+              console.error('[Electron] Execution failed with error:', result.error)
+              reject(new Error(result.error))
+            } else {
+              console.log('[Electron] Execution succeeded')
+              resolve(result)
+            }
+          }
+
+          ipcMain.on('workflow-execution-result', resultHandler)
+        }).then((result) => {
+          console.log(`[Electron] Workflow execution completed:`, result)
+          return result
+        })
+
+        // Emit execution complete event
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('trigger:execution-complete', {
+            deploymentId: deployment.id,
+            triggerId: trigger.id,
+            status: result.status || 'success',
+            timestamp: Date.now()
+          })
+        }
+
+        return result
+      } catch (error) {
+        console.error(`[Electron] Workflow execution failed:`, error)
+
+        // Emit error event
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('trigger:execution-complete', {
+            deploymentId: deployment.id,
+            triggerId: trigger.id,
+            status: 'error',
+            error: error.message,
+            timestamp: Date.now()
+          })
+        }
+
+        throw error
+      }
+    }
+
+    deploymentService = new DeploymentService({
+      dbPath,
+      deploymentsPath,
+      executeWorkflow: executeDeployedWorkflow
     })
-    trayScheduler.start()
-    console.log('[Electron] Tray scheduler initialized')
+    console.log('[Electron] Deployment service initialized')
+
+    // Update tray with deployments
+    updateTrayWithDeployments()
+
+    // Refresh tray every 30 seconds with latest deployment data
+    setInterval(() => {
+      updateTrayWithDeployments()
+    }, 30000)
   } catch (error) {
-    console.error('[Electron] Failed to initialize tray scheduler:', error.message)
-    console.error('[Electron] Scheduled workflows will not work. Make sure scheduler-shared dependencies are installed.')
-    trayScheduler = null
+    console.error('[Electron] Failed to initialize deployment service:', error.message)
+    console.error('[Electron] Full error:', error)
+    console.error('[Electron] Stack trace:', error.stack)
+    deploymentService = null
+  }
+
+  // Helper function to update tray with deployment data
+  function updateTrayWithDeployments() {
+    if (!deploymentService) return
+
+    try {
+      const deployments = deploymentService.listDeployments({ status: 'enabled' })
+
+      // Get trigger information for each deployment
+      const deploymentsWithTriggers = deployments.map(d => {
+        const triggers = deploymentService.db.triggers.getByDeployment(d.id)
+        const scheduleTriggers = triggers.filter(t => t.enabled && t.triggerType === 'schedule')
+
+        // Find next run time across all schedule triggers
+        let nextRunAt = null
+        for (const trigger of scheduleTriggers) {
+          if (trigger.nextRunAt && (!nextRunAt || trigger.nextRunAt < nextRunAt)) {
+            nextRunAt = trigger.nextRunAt
+          }
+        }
+
+        return {
+          id: d.id,
+          name: d.name,
+          version: d.version,
+          status: d.status,
+          triggerCount: triggers.length,
+          nextRunAt: nextRunAt ? new Date(nextRunAt).toISOString() : undefined
+        }
+      })
+
+      trayManager.setState({
+        deployments: deploymentsWithTriggers,
+        scheduledTriggers: deploymentsWithTriggers.reduce((sum, d) => sum + d.triggerCount, 0)
+      })
+    } catch (error) {
+      console.error('[Electron] Failed to update tray with deployments:', error)
+    }
   }
 
   // Tray event handlers
@@ -801,30 +999,59 @@ app.whenReady().then(() => {
   })
 
   trayManager.on('pause-all-schedules', async () => {
-    if (trayScheduler) {
-      const schedules = trayScheduler.getActiveSchedules()
-      for (const schedule of schedules) {
-        trayScheduler.updateSchedule(schedule.id, { enabled: false })
+    if (deploymentService) {
+      try {
+        const deployments = deploymentService.listDeployments({ status: 'enabled' })
+        let pausedCount = 0
+        for (const deployment of deployments) {
+          const triggers = deploymentService.db.triggers.getByDeployment(deployment.id)
+          for (const trigger of triggers) {
+            if (trigger.enabled) {
+              deploymentService.db.triggers.update(trigger.id, { enabled: 0 })
+              await deploymentService.triggerManager.unregister(trigger.id)
+              pausedCount++
+            }
+          }
+        }
+        trayManager.showNotification({
+          title: 'Triggers Paused',
+          body: `Paused ${pausedCount} trigger(s)`,
+          type: 'info'
+        })
+      } catch (err) {
+        console.error('[Electron] Failed to pause triggers:', err)
       }
-      trayManager.showNotification({
-        title: 'Schedules Paused',
-        body: `Paused ${schedules.length} scheduled workflow(s)`,
-        type: 'info'
-      })
     }
   })
 
   trayManager.on('resume-all-schedules', async () => {
-    if (trayScheduler) {
-      const schedules = trayScheduler.getSchedules({ enabled: false })
-      for (const schedule of schedules) {
-        trayScheduler.updateSchedule(schedule.id, { enabled: true })
+    if (deploymentService) {
+      try {
+        const deployments = deploymentService.listDeployments({ status: 'enabled' })
+        let resumedCount = 0
+        for (const deployment of deployments) {
+          const triggers = deploymentService.db.triggers.getByDeployment(deployment.id)
+          for (const trigger of triggers) {
+            if (!trigger.enabled) {
+              deploymentService.db.triggers.update(trigger.id, { enabled: 1 })
+              const triggerData = JSON.parse(trigger.config || '{}')
+              await deploymentService.triggerManager.register(trigger.id, triggerData, {
+                deploymentId: deployment.id,
+                workflowId: deployment.workflowId,
+                packagePath: deployment.packagePath
+              })
+              resumedCount++
+            }
+          }
+        }
+        trayManager.showNotification({
+          title: 'Triggers Resumed',
+          body: `Resumed ${resumedCount} trigger(s)`,
+          type: 'info'
+        })
+      } catch (err) {
+        console.error('[Electron] Failed to resume triggers:', err)
       }
-      trayManager.showNotification({
-        title: 'Schedules Resumed',
-        body: `Resumed ${schedules.length} scheduled workflow(s)`,
-        type: 'info'
-      })
     }
   })
 
@@ -838,17 +1065,62 @@ app.whenReady().then(() => {
     console.log('[Tray] Restart all file watchers requested')
   })
 
-  trayManager.on('toggle-webhook-server', async () => {
-    // Will be implemented when webhookService is added
-    console.log('[Tray] Toggle webhook server requested')
+  // Deployment event handlers
+  trayManager.on('execute-deployment', async (deploymentId, deploymentName) => {
+    console.log(`[Tray] Execute deployment requested: ${deploymentName}`)
+    if (deploymentService) {
+      try {
+        const result = await deploymentService.execute(deploymentId, {})
+
+        // Emit execution complete event
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('trigger:execution-complete', {
+            deploymentId,
+            executionId: result.id,
+            status: result.status || 'success',
+            timestamp: Date.now()
+          })
+        }
+
+        trayManager.showNotification({
+          title: 'Workflow Completed',
+          body: `${deploymentName} executed successfully`,
+          type: 'success'
+        })
+      } catch (error) {
+        console.error('[Tray] Failed to execute deployment:', error)
+
+        // Emit error event
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('trigger:execution-complete', {
+            deploymentId,
+            executionId: null,
+            status: 'error',
+            error: error.message,
+            timestamp: Date.now()
+          })
+        }
+
+        trayManager.showNotification({
+          title: 'Execution Failed',
+          body: `${deploymentName}: ${error.message}`,
+          type: 'error'
+        })
+      }
+    }
   })
 
-  trayManager.on('toggle-notifications', (enabled) => {
-    triggerService.updateSettings({ notificationsEnabled: enabled })
+  trayManager.on('show-deployments', () => {
+    if (mainWindow) {
+      mainWindow.webContents.send('menu-deployment-manage')
+    }
   })
 
-  trayManager.on('toggle-minimize-to-tray', (enabled) => {
-    triggerService.updateSettings({ minimizeToTray: enabled })
+  trayManager.on('show-execution-history', () => {
+    if (mainWindow) {
+      // Open DeploymentPanel (it has History tab)
+      mainWindow.webContents.send('menu-deployment-manage')
+    }
   })
 
   app.on('activate', () => {
@@ -863,10 +1135,12 @@ app.whenReady().then(() => {
   })
 })
 
-// Handle app quitting - ensure trigger service shuts down cleanly
+// Handle app quitting - ensure deployment service shuts down cleanly
 app.on('before-quit', async () => {
   trayManager.setQuitting(true)
-  await triggerService.shutdown()
+  if (deploymentService) {
+    await deploymentService.stop()
+  }
 })
 
 // Quit when all windows are closed (except on macOS or when minimizing to tray)
@@ -1056,6 +1330,30 @@ ipcMain.handle('fs:delete', async (event, targetPath, options = {}) => {
     if (targetPath.includes('..')) {
       return { success: false, error: 'Invalid path: parent directory references not allowed' }
     }
+
+    // Check if deleting a workflow file - if so, remove associated deployments
+    if (targetPath.endsWith('.pdflow')) {
+      try {
+        const workflowContent = await fs.promises.readFile(targetPath, 'utf-8')
+        const workflow = JSON.parse(workflowContent)
+        const workflowId = workflow.metadata?.id
+
+        if (workflowId && deploymentService) {
+          // Find and delete any deployments with this workflow ID
+          const deployments = deploymentService.listDeployments({ workflowId })
+          for (const deployment of deployments) {
+            if (deployment.status !== 'deleted') {
+              console.log(`[File Delete] Deleting workflow deployment: ${deployment.name}`)
+              await deploymentService.delete(deployment.id, { deleteFiles: false })
+            }
+          }
+        }
+      } catch (err) {
+        // If we can't read/parse workflow or delete deployment, log but continue with file deletion
+        console.error('[File Delete] Failed to delete workflow deployment:', err)
+      }
+    }
+
     const stat = await fs.promises.stat(targetPath)
     if (stat.isDirectory()) {
       await fs.promises.rm(targetPath, { recursive: options.recursive || false })
@@ -3633,274 +3931,473 @@ ipcMain.handle('package:installAll', async (_event, workspacePath) => {
 // Trigger Service IPC Handlers
 // ============================================================================
 
-/**
- * Register a workflow trigger
- * Called when user saves a workflow with trigger configuration
- */
-ipcMain.handle('trigger:register', async (_event, config) => {
-  return triggerService.register(config)
-})
+// Deployment Service IPC Handlers
+// Package-based workflow deployment with multi-trigger support
+// ============================================================================
 
-/**
- * Unregister a workflow trigger
- */
-ipcMain.handle('trigger:unregister', async (_event, workflowId) => {
-  return triggerService.unregister(workflowId)
-})
+const { packageWorkflow } = require('./services/packageWorkflow')
 
-/**
- * Enable or disable a trigger
- */
-ipcMain.handle('trigger:setEnabled', async (_event, workflowId, enabled) => {
-  return triggerService.setEnabled(workflowId, enabled)
-})
-
-/**
- * Get all registered triggers
- */
-ipcMain.handle('trigger:list', async () => {
-  return triggerService.list()
-})
-
-/**
- * Get trigger status for a specific workflow
- */
-ipcMain.handle('trigger:status', async (_event, workflowId) => {
-  return triggerService.getStatus(workflowId)
-})
-
-/**
- * Get execution history
- */
-ipcMain.handle('trigger:history', async (_event, workflowId, limit) => {
-  return triggerService.getHistory(workflowId, limit)
-})
-
-/**
- * Get webhook server info
- */
-ipcMain.handle('trigger:webhookServerInfo', async () => {
-  return triggerService.getWebhookServerInfo()
-})
-
-/**
- * Get tray state summary
- */
-ipcMain.handle('trigger:trayState', async () => {
-  return triggerService.getTrayState()
-})
-
-/**
- * Update trigger service settings
- */
-ipcMain.handle('trigger:updateSettings', async (_event, settings) => {
-  await triggerService.updateSettings(settings)
-  return { success: true }
-})
-
-/**
- * Open file picker to add a workflow to trigger service
- * Returns the workflow's trigger configuration for the UI to edit
- */
-ipcMain.handle('trigger:addWorkflow', async () => {
-  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-    title: 'Select Workflow to Add',
-    properties: ['openFile'],
-    filters: [
-      { name: 'Prompd Workflow', extensions: ['pdflow'] },
-      { name: 'All Files', extensions: ['*'] }
-    ]
-  })
-
-  if (canceled || filePaths.length === 0) {
-    return { success: false, canceled: true }
+// Deploy a package or workflow file
+ipcMain.handle('deployment:deploy', async (_event, workflowPath, options = {}) => {
+  if (!deploymentService) {
+    return { success: false, error: 'Deployment service not initialized' }
   }
 
-  const workflowPath = filePaths[0]
-
   try {
-    // Read and parse the workflow
-    const content = await fs.promises.readFile(workflowPath, 'utf-8')
+    // Check if it's a .pdflow file (needs packaging) or a .pdpkg (ready to deploy)
+    const isWorkflowFile = workflowPath.endsWith('.pdflow')
 
-    if (!content || content.trim() === '') {
-      return {
-        success: false,
-        error: 'Workflow file is empty'
+    let packagePath = workflowPath
+    let workspaceDependencies = null
+
+    if (isWorkflowFile) {
+      console.log('[Electron] Packaging workflow for deployment:', workflowPath)
+
+      // Read workspace prompd.json to preserve dependencies
+      if (options.workspacePath) {
+        const workspacePrompdJson = path.join(options.workspacePath, 'prompd.json')
+        if (fs.existsSync(workspacePrompdJson)) {
+          const prompdData = JSON.parse(fs.readFileSync(workspacePrompdJson, 'utf-8'))
+          if (prompdData.dependencies) {
+            workspaceDependencies = prompdData.dependencies
+            console.log('[Electron] Preserving', Object.keys(workspaceDependencies).length, 'dependencies from workspace')
+          }
+        }
       }
-    }
 
-    const workflow = JSON.parse(content)
+      // Use shared packaging utility
+      const result = await packageWorkflow(workflowPath, options, getPrompdCli)
 
-    // Find the trigger node
-    const triggerNode = workflow.nodes?.find(n => n.type === 'trigger')
-
-    if (!triggerNode) {
-      return {
-        success: false,
-        error: 'Workflow does not have a trigger node'
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to create package')
       }
+
+      packagePath = result.packagePath
     }
 
-    // Extract trigger config from node data
-    const triggerData = triggerNode.data || {}
-
-    return {
-      success: true,
-      workflowPath,
-      workflowName: workflow.metadata?.name || path.basename(workflowPath, '.pdflow'),
-      workflowId: workflow.metadata?.id || path.basename(workflowPath, '.pdflow'),
-      triggerConfig: {
-        triggerType: triggerData.triggerType || 'manual',
-        // Schedule config
-        scheduleType: triggerData.scheduleType,
-        scheduleCron: triggerData.scheduleCron,
-        scheduleIntervalMs: triggerData.scheduleIntervalMs,
-        scheduleTimezone: triggerData.scheduleTimezone,
-        scheduleEnabled: triggerData.scheduleEnabled,
-        // Webhook config
-        webhookPath: triggerData.webhookPath,
-        webhookSecret: triggerData.webhookSecret,
-        webhookMethods: triggerData.webhookMethods,
-        webhookRequireAuth: triggerData.webhookRequireAuth,
-        // File watch config
-        fileWatchPaths: triggerData.fileWatchPaths,
-        fileWatchEvents: triggerData.fileWatchEvents,
-        fileWatchDebounceMs: triggerData.fileWatchDebounceMs,
-        fileWatchRecursive: triggerData.fileWatchRecursive,
-        // Event config
-        eventName: triggerData.eventName,
-        eventFilter: triggerData.eventFilter,
-      }
+    if (!packagePath) {
+      throw new Error('Package path is undefined after creation')
     }
-  } catch (err) {
-    console.error('[Trigger] Failed to read workflow:', err)
-    return {
-      success: false,
-      error: `Failed to read workflow: ${err.message}`
+
+    // Pass dependencies to deployment service
+    const deployOptions = {
+      ...options,
+      ...(workspaceDependencies && { dependencies: workspaceDependencies })
     }
+
+    const deploymentId = await deploymentService.deploy(packagePath, deployOptions)
+    return { success: true, deploymentId }
+  } catch (err) {
+    console.error('[Electron] Deployment failed:', err)
+    return { success: false, error: err.message }
   }
 })
 
-/**
- * Manually trigger a workflow (for testing)
- */
-ipcMain.handle('trigger:runManually', async (_event, workflowId) => {
+// Delete a deployment (soft-delete: stops triggers, marks as deleted)
+ipcMain.handle('deployment:undeploy', async (_event, deploymentId, options = {}) => {
+  if (!deploymentService) {
+    return { success: false, error: 'Deployment service not initialized' }
+  }
+
   try {
-    const result = await triggerService.executeWorkflow(workflowId, {
-      triggeredBy: 'manual'
-    })
-    return { success: true, result }
+    await deploymentService.delete(deploymentId, options)
+    return { success: true }
   } catch (err) {
     return { success: false, error: err.message }
   }
 })
 
-/**
- * Scheduler IPC handlers - Persistent workflow scheduling
- */
-
-/**
- * Get all schedules
- */
-ipcMain.handle('scheduler:getSchedules', async (_event, filters) => {
-  if (!trayScheduler) {
-    return { success: false, error: 'Scheduler not initialized' }
+// List all deployments
+ipcMain.handle('deployment:list', async (_event, filters = {}) => {
+  if (!deploymentService) {
+    return { success: false, error: 'Deployment service not initialized' }
   }
+
   try {
-    const schedules = trayScheduler.getSchedules(filters || {})
-    return { success: true, schedules }
+    const deployments = await deploymentService.listDeployments(filters)
+    return { success: true, deployments }
   } catch (err) {
     return { success: false, error: err.message }
   }
 })
 
-/**
- * Add a new schedule
- */
-ipcMain.handle('scheduler:addSchedule', async (_event, config) => {
-  if (!trayScheduler) {
-    return { success: false, error: 'Scheduler not initialized' }
+// Get deployment status
+ipcMain.handle('deployment:getStatus', async (_event, deploymentId) => {
+  if (!deploymentService) {
+    return { success: false, error: 'Deployment service not initialized' }
   }
+
   try {
-    const scheduleId = trayScheduler.addSchedule(config)
-    return { success: true, scheduleId }
+    const status = await deploymentService.getDeploymentStatus(deploymentId)
+    return { success: true, ...status }
   } catch (err) {
     return { success: false, error: err.message }
   }
 })
 
-/**
- * Update a schedule
- */
-ipcMain.handle('scheduler:updateSchedule', async (_event, scheduleId, updates) => {
-  if (!trayScheduler) {
-    return { success: false, error: 'Scheduler not initialized' }
+// Toggle individual trigger
+ipcMain.handle('deployment:toggleTrigger', async (_event, triggerId, enabled) => {
+  if (!deploymentService) {
+    return { success: false, error: 'Deployment service not initialized' }
   }
+
   try {
-    const success = trayScheduler.updateSchedule(scheduleId, updates)
-    return { success }
+    await deploymentService.toggleTrigger(triggerId, enabled)
+    return { success: true }
   } catch (err) {
     return { success: false, error: err.message }
   }
 })
 
-/**
- * Delete a schedule
- */
-ipcMain.handle('scheduler:deleteSchedule', async (_event, scheduleId) => {
-  if (!trayScheduler) {
-    return { success: false, error: 'Scheduler not initialized' }
+// Execute deployment manually
+ipcMain.handle('deployment:execute', async (event, deploymentId, parameters = {}) => {
+  if (!deploymentService) {
+    return { success: false, error: 'Deployment service not initialized' }
   }
+
   try {
-    const success = trayScheduler.deleteSchedule(scheduleId)
-    return { success }
+    const result = await deploymentService.execute(deploymentId, parameters)
+
+    // Emit execution complete event to all windows
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('trigger:execution-complete', {
+        deploymentId,
+        executionId: result.id,
+        status: result.status || 'success',
+        timestamp: Date.now()
+      })
+    }
+
+    return { success: true, executionId: result.id }
   } catch (err) {
+    // Emit error event
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('trigger:execution-complete', {
+        deploymentId,
+        executionId: null,
+        status: 'error',
+        error: err.message,
+        timestamp: Date.now()
+      })
+    }
+
     return { success: false, error: err.message }
   }
 })
 
-/**
- * Execute a schedule immediately (manual trigger)
- */
-ipcMain.handle('scheduler:executeNow', async (_event, scheduleId) => {
-  if (!trayScheduler) {
-    return { success: false, error: 'Scheduler not initialized' }
+// Get execution history for deployment
+ipcMain.handle('deployment:getHistory', async (_event, deploymentId, options = {}) => {
+  if (!deploymentService) {
+    return { success: false, error: 'Deployment service not initialized' }
   }
-  try {
-    const result = await trayScheduler.executeScheduleNow(scheduleId)
-    return { success: true, result }
-  } catch (err) {
-    return { success: false, error: err.message }
-  }
-})
 
-/**
- * Get execution history
- */
-ipcMain.handle('scheduler:getHistory', async (_event, workflowId, options) => {
-  if (!trayScheduler) {
-    return { success: false, error: 'Scheduler not initialized' }
-  }
   try {
-    const history = trayScheduler.getExecutionHistory(workflowId, options || {})
+    const history = await deploymentService.getHistory(deploymentId, options)
     return { success: true, history }
   } catch (err) {
     return { success: false, error: err.message }
   }
 })
 
-/**
- * Get next run times for a schedule
- */
-ipcMain.handle('scheduler:getNextRunTimes', async (_event, scheduleId, count) => {
-  if (!trayScheduler) {
-    return { success: false, error: 'Scheduler not initialized' }
+// Get all execution history (across all deployments) with pagination
+ipcMain.handle('deployment:getAllExecutions', async (_event, options = {}) => {
+  if (!deploymentService) {
+    return { success: false, error: 'Deployment service not initialized' }
   }
+
   try {
-    const times = trayScheduler.getNextRunTimes(scheduleId, count || 5)
-    return { success: true, times }
+    const result = deploymentService.getAllExecutions(options)
+    return { success: true, ...result }
   } catch (err) {
     return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('deployment:getParameters', async (_event, deploymentId) => {
+  if (!deploymentService) {
+    return { success: false, error: 'Deployment service not initialized' }
+  }
+
+  try {
+    const parameters = deploymentService.getParameters(deploymentId)
+    return { success: true, ...parameters }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// Clear all execution history
+ipcMain.handle('deployment:clearAllHistory', async (_event) => {
+  if (!deploymentService) {
+    return { success: false, error: 'Deployment service not initialized' }
+  }
+
+  try {
+    const deletedCount = deploymentService.clearAllHistory()
+    return { success: true, deletedCount }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// Toggle deployment status (enable/disable)
+ipcMain.handle('deployment:toggleStatus', async (_event, deploymentId) => {
+  if (!deploymentService) {
+    return { success: false, error: 'Deployment service not initialized' }
+  }
+
+  try {
+    const result = await deploymentService.toggleStatus(deploymentId)
+    return { success: true, deployment: result }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// Purge all deleted deployments
+ipcMain.handle('deployment:purgeDeleted', async (_event) => {
+  if (!deploymentService) {
+    return { success: false, error: 'Deployment service not initialized' }
+  }
+
+  try {
+    const result = await deploymentService.purgeDeleted()
+    return { success: true, purgedCount: result.purgedCount }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ============================================================================
+// Service Management IPC Handlers
+// User-level service install/uninstall for 24/7 background execution
+// ============================================================================
+
+const { exec } = require('child_process')
+const util = require('util')
+const execAsync = util.promisify(exec)
+
+ipcMain.handle('service:getStatus', async () => {
+  const platform = process.platform
+
+  try {
+    if (platform === 'win32') {
+      // Windows: System service not supported - use tray deployment instead
+      return {
+        installed: false,
+        running: false,
+        mode: 'electron',
+        autoStart: false
+      }
+    } else if (platform === 'darwin') {
+      // Check macOS LaunchAgent
+      const plistPath = path.join(os.homedir(), 'Library/LaunchAgents/com.prompd.service.plist')
+      const installed = fs.existsSync(plistPath)
+      if (installed) {
+        try {
+          const { stdout } = await execAsync('launchctl list | grep com.prompd.service')
+          const running = stdout.includes('com.prompd.service')
+          return { installed, running, mode: 'system-service', autoStart: true }
+        } catch (err) {
+          return { installed, running: false, mode: 'system-service', autoStart: true }
+        }
+      }
+      return { installed: false, running: false, mode: 'electron', autoStart: false }
+    } else if (platform === 'linux') {
+      // Check systemd user service
+      try {
+        const { stdout } = await execAsync('systemctl --user is-enabled prompd-service')
+        const installed = stdout.trim() === 'enabled'
+        const { stdout: status } = await execAsync('systemctl --user is-active prompd-service')
+        const running = status.trim() === 'active'
+        return { installed, running, mode: 'system-service', autoStart: true }
+      } catch (err) {
+        return { installed: false, running: false, mode: 'electron', autoStart: false }
+      }
+    }
+  } catch (error) {
+    console.error('[Service] Failed to check service status:', error)
+    return { installed: false, running: false, mode: 'electron', autoStart: false }
+  }
+})
+
+ipcMain.handle('service:install', async () => {
+  const platform = process.platform
+  const serviceDir = path.join(app.getPath('userData'), '..', 'prompd-service')
+  const serviceSrcDir = path.join(__dirname, '..', '..', 'prompd-service')
+
+  try {
+    // Copy service files to user data directory
+    if (!fs.existsSync(serviceDir)) {
+      fs.mkdirSync(serviceDir, { recursive: true })
+      // Copy prompd-service/* to serviceDir
+      await fs.copy(serviceSrcDir, serviceDir)
+
+      // Copy @prompd/scheduler to avoid symlink issues on Windows
+      const schedulerSrc = path.join(__dirname, '..', '..', 'packages', 'scheduler')
+      const schedulerDest = path.join(serviceDir, 'node_modules', '@prompd', 'scheduler')
+      if (fs.existsSync(schedulerSrc)) {
+        fs.mkdirSync(path.dirname(schedulerDest), { recursive: true })
+        await fs.copy(schedulerSrc, schedulerDest)
+      }
+
+      // Install npm dependencies (without symlinks)
+      console.log('[Service] Installing service dependencies...')
+      await execAsync('npm install --production --no-optional --prefer-copy', { cwd: serviceDir })
+    }
+
+    if (platform === 'win32') {
+      // Windows: System service not supported - use tray deployment instead
+      return {
+        success: false,
+        error: 'System service installation is not supported on Windows. Use the tray deployment service instead.'
+      }
+    } else if (platform === 'darwin') {
+      // macOS: Create LaunchAgent
+      const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.prompd.service</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>${serviceDir}/src/server.js</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>${serviceDir}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${os.homedir()}/Library/Logs/prompd-service.log</string>
+  <key>StandardErrorPath</key>
+  <string>${os.homedir()}/Library/Logs/prompd-service-error.log</string>
+</dict>
+</plist>`
+
+      const plistPath = path.join(os.homedir(), 'Library/LaunchAgents/com.prompd.service.plist')
+      fs.writeFileSync(plistPath, plistContent)
+      await execAsync(`launchctl load "${plistPath}"`)
+
+      return { success: true, message: 'Service installed and started' }
+    } else if (platform === 'linux') {
+      // Linux: Create systemd user service
+      const serviceContent = `[Unit]
+Description=Prompd Workflow Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${serviceDir}
+ExecStart=/usr/bin/node ${serviceDir}/src/server.js
+Restart=always
+Environment="PROMPD_DB_PATH=${os.homedir()}/.prompd/scheduler/schedules.db"
+
+[Install]
+WantedBy=default.target`
+
+      const systemdDir = path.join(os.homedir(), '.config/systemd/user')
+      if (!fs.existsSync(systemdDir)) {
+        fs.mkdirSync(systemdDir, { recursive: true })
+      }
+
+      const serviceFile = path.join(systemdDir, 'prompd-service.service')
+      fs.writeFileSync(serviceFile, serviceContent)
+
+      await execAsync('systemctl --user daemon-reload')
+      await execAsync('systemctl --user enable prompd-service')
+      await execAsync('systemctl --user start prompd-service')
+
+      return { success: true, message: 'Service installed and started' }
+    }
+
+    return { success: false, error: 'Unsupported platform' }
+  } catch (error) {
+    console.error('[Service] Install failed:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('service:uninstall', async () => {
+  const platform = process.platform
+
+  try {
+    if (platform === 'win32') {
+      // Windows: System service not supported
+      return {
+        success: false,
+        error: 'System service not supported on Windows'
+      }
+    } else if (platform === 'darwin') {
+      const plistPath = path.join(os.homedir(), 'Library/LaunchAgents/com.prompd.service.plist')
+      await execAsync(`launchctl unload "${plistPath}"`)
+      fs.unlinkSync(plistPath)
+      return { success: true, message: 'Service uninstalled' }
+    } else if (platform === 'linux') {
+      await execAsync('systemctl --user stop prompd-service')
+      await execAsync('systemctl --user disable prompd-service')
+      return { success: true, message: 'Service uninstalled' }
+    }
+
+    return { success: false, error: 'Unsupported platform' }
+  } catch (error) {
+    console.error('[Service] Uninstall failed:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('service:start', async () => {
+  const platform = process.platform
+
+  try {
+    if (platform === 'win32') {
+      // Windows: System service not supported
+      return {
+        success: false,
+        error: 'System service not supported on Windows'
+      }
+    } else if (platform === 'darwin') {
+      const plistPath = path.join(os.homedir(), 'Library/LaunchAgents/com.prompd.service.plist')
+      await execAsync(`launchctl load "${plistPath}"`)
+      return { success: true, message: 'Service started' }
+    } else if (platform === 'linux') {
+      await execAsync('systemctl --user start prompd-service')
+      return { success: true, message: 'Service started' }
+    }
+
+    return { success: false, error: 'Unsupported platform' }
+  } catch (error) {
+    console.error('[Service] Start failed:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('service:stop', async () => {
+  const platform = process.platform
+
+  try {
+    if (platform === 'win32') {
+      // Windows: System service not supported
+      return {
+        success: false,
+        error: 'System service not supported on Windows'
+      }
+    } else if (platform === 'darwin') {
+      const plistPath = path.join(os.homedir(), 'Library/LaunchAgents/com.prompd.service.plist')
+      await execAsync(`launchctl unload "${plistPath}"`)
+      return { success: true, message: 'Service stopped' }
+    } else if (platform === 'linux') {
+      await execAsync('systemctl --user stop prompd-service')
+      return { success: true, message: 'Service stopped' }
+    }
+
+    return { success: false, error: 'Unsupported platform' }
+  } catch (error) {
+    console.error('[Service] Stop failed:', error)
+    return { success: false, error: error.message }
   }
 })
 
@@ -3912,6 +4409,80 @@ ipcMain.handle('scheduler:getNextRunTimes', async (_event, scheduleId, count) =>
 // Track running executions and pending user input requests
 const runningExecutions = new Map()
 const pendingUserInputs = new Map() // requestId -> { resolve, reject }
+
+// Popup window for user input during automated workflow execution
+let popupWindow = null
+let currentPopupRequest = null
+
+function createInputPopupWindow(request, requestId, metadata) {
+  // Close existing popup if any
+  if (popupWindow && !popupWindow.isDestroyed()) {
+    popupWindow.close()
+  }
+
+  currentPopupRequest = { request, requestId, metadata }
+
+  // Resolve icon path (reuse same logic as main window)
+  const isPackaged = app.isPackaged
+  let popupIcon
+  if (isPackaged) {
+    popupIcon = process.platform === 'win32'
+      ? path.join(process.resourcesPath, 'logo.ico')
+      : path.join(process.resourcesPath, 'logo.png')
+  } else {
+    const basePath = path.join(__dirname, '..')
+    popupIcon = process.platform === 'win32'
+      ? path.join(basePath, 'public/logo.ico')
+      : path.join(basePath, 'public/logo.png')
+  }
+
+  popupWindow = new BrowserWindow({
+    width: 450,
+    height: 500,
+    resizable: true,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    icon: popupIcon,
+    title: 'User Input Required - Prompd',
+    backgroundColor: '#1e293b',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'popup-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    },
+    parent: mainWindow,
+    modal: false,
+    alwaysOnTop: true,
+    show: false
+  })
+
+  popupWindow.loadFile(path.join(__dirname, 'popup-input.html'))
+
+  popupWindow.once('ready-to-show', () => {
+    popupWindow.show()
+    popupWindow.focus()
+  })
+
+  popupWindow.on('closed', () => {
+    // If user closed window without responding, cancel the request
+    if (currentPopupRequest && currentPopupRequest.requestId === requestId) {
+      const pending = pendingUserInputs.get(requestId)
+      if (pending) {
+        pendingUserInputs.delete(requestId)
+        if (currentPopupRequest.isCheckpoint) {
+          pending.resolve(false)
+        } else {
+          pending.resolve({ value: undefined, cancelled: true })
+        }
+      }
+      currentPopupRequest = null
+    }
+    popupWindow = null
+  })
+}
 
 // Import CLI modules once at startup (prevents blocking on first execution)
 let cliModules = null
@@ -3961,6 +4532,18 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
 
       const { executeWorkflow } = cliModules
 
+      // Apply workflow parameter defaults for any missing values
+      // workflow may be a ParsedWorkflow ({ file: WorkflowFile, ... }) or a raw WorkflowFile
+      const workflowParams = workflow.file?.parameters || workflow.parameters
+      if (workflowParams && Array.isArray(workflowParams)) {
+        for (const param of workflowParams) {
+          if (param.name && !(param.name in params) && param.default !== undefined) {
+            params[param.name] = param.default
+          }
+        }
+        console.log('[Workflow Executor] Applied parameter defaults, params:', JSON.stringify(params))
+      }
+
       // Build options with event-emitting callbacks
       const executorOptions = {
         ...options,
@@ -4006,11 +4589,44 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
             timestamp: Date.now()
           })
         },
-        // Bidirectional: Request user input from renderer
+        // Bidirectional: Request user input from renderer (or popup in automated mode)
         onUserInput: async (request) => {
           const requestId = `input-${Date.now()}-${Math.random().toString(36).substring(7)}`
+          const isAutomated = options?.executionMode === 'automated'
 
-          // Emit request event
+          if (isAutomated) {
+            // Automated mode: show OS notification + popup window
+            console.log(`[Workflow Executor] Automated mode - opening popup for user input (${requestId})`)
+
+            trayManager.showNotification({
+              title: 'Workflow Needs Input',
+              body: `${workflow?.metadata?.name || 'Workflow'}: ${request.prompt || request.nodeLabel || 'Input required'}`,
+              type: 'info',
+              executionId
+            })
+
+            createInputPopupWindow(request, requestId, {
+              workflowName: workflow?.metadata?.name || 'Workflow',
+              executionId
+            })
+
+            return new Promise((resolve, reject) => {
+              pendingUserInputs.set(requestId, { resolve, reject })
+
+              // 10 minute timeout for automated mode
+              setTimeout(() => {
+                if (pendingUserInputs.has(requestId)) {
+                  pendingUserInputs.delete(requestId)
+                  if (popupWindow && !popupWindow.isDestroyed()) {
+                    popupWindow.close()
+                  }
+                  reject(new Error('User input timed out after 10 minutes'))
+                }
+              }, 600000)
+            })
+          }
+
+          // Interactive mode: send to renderer
           sender.send('workflow:event', {
             type: 'user-input-request',
             executionId,
@@ -4019,7 +4635,6 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
             timestamp: Date.now()
           })
 
-          // Wait for response
           return new Promise((resolve, reject) => {
             pendingUserInputs.set(requestId, { resolve, reject })
 
@@ -4032,11 +4647,57 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
             }, 300000)
           })
         },
-        // Bidirectional: Request checkpoint confirmation from renderer
+        // Bidirectional: Request checkpoint confirmation from renderer (or popup in automated mode)
         onCheckpoint: async (event) => {
           const requestId = `checkpoint-${Date.now()}-${Math.random().toString(36).substring(7)}`
+          const isAutomated = options?.executionMode === 'automated'
+          const needsAck = event.waitForAck === true
 
-          // Emit request event
+          if (isAutomated && needsAck) {
+            // Automated mode with approval required: show popup
+            console.log(`[Workflow Executor] Automated mode - opening popup for checkpoint (${requestId})`)
+
+            trayManager.showNotification({
+              title: 'Workflow Checkpoint',
+              body: `${workflow?.metadata?.name || 'Workflow'}: ${event.checkpointName || 'Approval required'}`,
+              type: 'info',
+              executionId
+            })
+
+            const checkpointRequest = {
+              nodeLabel: event.checkpointName || 'Checkpoint',
+              prompt: event.description || 'Continue workflow execution?',
+              inputType: 'confirm',
+              required: true,
+              showContext: !!event.data,
+              context: { previousOutput: event.data, variables: {} }
+            }
+
+            createInputPopupWindow(checkpointRequest, requestId, {
+              workflowName: workflow?.metadata?.name || 'Workflow',
+              executionId,
+              isCheckpoint: true
+            })
+
+            // Store isCheckpoint flag so popup handler resolves correctly
+            currentPopupRequest.isCheckpoint = true
+
+            return new Promise((resolve, reject) => {
+              pendingUserInputs.set(requestId, { resolve, reject })
+
+              setTimeout(() => {
+                if (pendingUserInputs.has(requestId)) {
+                  pendingUserInputs.delete(requestId)
+                  if (popupWindow && !popupWindow.isDestroyed()) {
+                    popupWindow.close()
+                  }
+                  reject(new Error('Checkpoint timed out after 10 minutes'))
+                }
+              }, 600000)
+            })
+          }
+
+          // Interactive mode or auto-continue: send to renderer
           sender.send('workflow:event', {
             type: 'checkpoint-request',
             executionId,
@@ -4045,7 +4706,6 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
             timestamp: Date.now()
           })
 
-          // Wait for response (boolean: continue or not)
           return new Promise((resolve, reject) => {
             pendingUserInputs.set(requestId, { resolve, reject })
 
@@ -4060,6 +4720,9 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
         },
         // Local prompt execution through CLI (centralized compilation + execution)
         executePrompt: async (source, promptParams, provider, model) => {
+          // Merge workflow-level params (includes defaults) into node-level prompt params
+          // Node params take priority over workflow params
+          const mergedParams = { ...params, ...promptParams }
           let tempFilePath = null
           try {
             console.log(`[Workflow Executor] Executing prompt via CLI: ${source}`)
@@ -4068,8 +4731,14 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
             let fileToExecute = source
 
             if (source.startsWith('./') || source.startsWith('../') || source.startsWith('@')) {
-              // File path - resolve to absolute path
-              fileToExecute = path.resolve(source)
+              // File path - resolve relative to workflow file directory (not workspace root)
+              // Source paths in workflow nodes are relative to the workflow file's location
+              const workflowDir = options?.workflowFilePath
+                ? path.dirname(options.workflowFilePath)
+                : currentWorkspacePath
+              fileToExecute = workflowDir
+                ? path.resolve(workflowDir, source)
+                : path.resolve(source)
             } else if (source.startsWith('raw:')) {
               // Raw inline prompt - write to temp file
               const rawText = source.substring(4)
@@ -4110,7 +4779,7 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               provider: provider || 'openai',
               model: model || 'gpt-4o',
               apiKey,
-              params: promptParams
+              params: mergedParams
             })
 
             // Clean up temp file
@@ -4199,16 +4868,99 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
             }
           }
         },
-        // Command execution for workflow Command nodes
+        // Tool execution for workflow Tool nodes
         onToolCall: async (request) => {
           try {
             console.log(`[Workflow Executor] Tool call request: ${request.toolType}`)
 
-            // Only handle 'command' tool type
+            // Handle HTTP requests
+            if (request.toolType === 'http') {
+              const { method, url, headers, body } = request.httpConfig || {}
+
+              if (!url) {
+                return {
+                  success: false,
+                  error: 'Missing HTTP URL'
+                }
+              }
+
+              try {
+                const https = require('https')
+                const http = require('http')
+                const urlModule = require('url')
+
+                const parsedUrl = urlModule.parse(url)
+                const isHttps = parsedUrl.protocol === 'https:'
+                const httpModule = isHttps ? https : http
+
+                return await new Promise((resolve) => {
+                  const options = {
+                    method: method || 'GET',
+                    headers: {
+                      'User-Agent': 'Prompd/1.0',
+                      ...headers
+                    }
+                  }
+
+                  const req = httpModule.request(url, options, (res) => {
+                    let responseData = ''
+
+                    res.on('data', (chunk) => {
+                      responseData += chunk
+                    })
+
+                    res.on('end', () => {
+                      const success = res.statusCode >= 200 && res.statusCode < 300
+
+                      // Try to parse JSON response
+                      let parsedData = responseData
+                      try {
+                        parsedData = JSON.parse(responseData)
+                      } catch (e) {
+                        // Not JSON, use raw string
+                      }
+
+                      resolve({
+                        success,
+                        result: parsedData,
+                        statusCode: res.statusCode,
+                        headers: res.headers,
+                        error: success ? undefined : `HTTP ${res.statusCode}: ${res.statusMessage}`
+                      })
+                    })
+                  })
+
+                  req.on('error', (err) => {
+                    console.error('[Workflow Executor] HTTP request error:', err)
+                    resolve({
+                      success: false,
+                      error: err.message,
+                      result: null
+                    })
+                  })
+
+                  // Send request body if present
+                  if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+                    const bodyData = typeof body === 'string' ? body : JSON.stringify(body)
+                    req.write(bodyData)
+                  }
+
+                  req.end()
+                })
+              } catch (error) {
+                return {
+                  success: false,
+                  error: error.message,
+                  result: null
+                }
+              }
+            }
+
+            // Handle command execution
             if (request.toolType !== 'command') {
               return {
                 success: false,
-                error: `Unsupported tool type: ${request.toolType}. Only 'command' is supported.`
+                error: `Unsupported tool type: ${request.toolType}. Supported: 'command', 'http'.`
               }
             }
 
@@ -4451,6 +5203,78 @@ ipcMain.handle('workflow:checkpoint-response', async (_event, requestId, shouldC
 })
 
 /**
+ * Popup window IPC handlers (for automated workflow user input)
+ */
+ipcMain.handle('popup:getRequestData', async () => {
+  if (!currentPopupRequest) {
+    return { error: 'No active request' }
+  }
+  return {
+    request: currentPopupRequest.request,
+    metadata: currentPopupRequest.metadata
+  }
+})
+
+ipcMain.handle('popup:submitInput', async (_event, response) => {
+  if (!currentPopupRequest) {
+    return { success: false, error: 'No active request' }
+  }
+
+  const { requestId, isCheckpoint } = currentPopupRequest
+  const pending = pendingUserInputs.get(requestId)
+
+  if (pending) {
+    pendingUserInputs.delete(requestId)
+
+    if (isCheckpoint) {
+      pending.resolve(response.value === true)
+    } else {
+      pending.resolve(response)
+    }
+
+    console.log(`[Popup] Input received for: ${requestId}`)
+
+    // Close popup (will clear currentPopupRequest via closed handler)
+    if (popupWindow && !popupWindow.isDestroyed()) {
+      currentPopupRequest = null
+      popupWindow.close()
+    }
+
+    return { success: true }
+  }
+
+  return { success: false, error: 'Request expired' }
+})
+
+ipcMain.handle('popup:cancel', async () => {
+  if (!currentPopupRequest) {
+    return { success: false }
+  }
+
+  const { requestId, isCheckpoint } = currentPopupRequest
+  const pending = pendingUserInputs.get(requestId)
+
+  if (pending) {
+    pendingUserInputs.delete(requestId)
+
+    if (isCheckpoint) {
+      pending.resolve(false)
+    } else {
+      pending.resolve({ value: undefined, cancelled: true })
+    }
+
+    console.log(`[Popup] Input cancelled for: ${requestId}`)
+  }
+
+  if (popupWindow && !popupWindow.isDestroyed()) {
+    currentPopupRequest = null
+    popupWindow.close()
+  }
+
+  return { success: true }
+})
+
+/**
  * Download execution trace to file
  * trace: ExecutionTrace object
  * filename: Optional custom filename
@@ -4495,193 +5319,64 @@ ipcMain.handle('workflow:downloadTrace', async (event, trace, filename) => {
   }
 })
 
-// ============================================================================
-// Service Management IPC Handlers
-// For controlling standalone scheduler service (separate Node.js process)
-// ============================================================================
-
 /**
- * Start the standalone scheduler service
+ * Export workflow as Docker deployment
+ * workflow: Workflow object
+ * workflowPath: Path to the .pdflow file
+ * prompdjson: Optional prompd.json manifest
  */
-ipcMain.handle('service:start', async () => {
+ipcMain.handle('workflow:exportDocker', async (event, workflow, workflowPath, prompdjson) => {
   try {
-    // Check if service is already running
-    const status = await checkServiceHealth()
-    if (status.running) {
-      return {
-        success: false,
-        error: 'Service is already running',
-        message: `Service running on port ${status.port}`
-      }
-    }
+    const { dialog } = require('electron')
+    const path = require('path')
+    const { WorkflowExportService } = require('./services/workflowExportService')
+    const workflowExportService = new WorkflowExportService(getPrompdCli)
 
-    // Start service process
-    const { spawn } = require('child_process')
-    const servicePath = path.join(__dirname, '../../prompd-service/src/server.js')
+    // Get the browser window that sent this request
+    const win = BrowserWindow.fromWebContents(event.sender)
 
-    // Check if service path exists
-    if (!fs.existsSync(servicePath)) {
-      return {
-        success: false,
-        error: 'Service not found',
-        message: 'prompd-service not installed. Please run: cd prompd-service && npm install'
-      }
-    }
+    // Show directory selection dialog
+    const workflowName = workflow.name || 'workflow'
+    const defaultDir = `${workflowName}-docker`
 
-    // Spawn service process (detached so it continues running)
-    const serviceProcess = spawn('node', [servicePath], {
-      detached: true,
-      stdio: 'ignore',
-      cwd: path.dirname(servicePath)
+    const { filePaths, canceled } = await dialog.showOpenDialog(win, {
+      title: 'Select Export Directory',
+      defaultPath: defaultDir,
+      properties: ['openDirectory', 'createDirectory', 'promptToCreate']
     })
 
-    serviceProcess.unref() // Allow parent to exit independently
-
-    // Wait a moment for service to start
-    await new Promise(resolve => setTimeout(resolve, 2000))
-
-    // Verify service started
-    const newStatus = await checkServiceHealth()
-    if (newStatus.running) {
-      return {
-        success: true,
-        message: `Service started on port ${newStatus.port}`
-      }
-    } else {
-      return {
-        success: false,
-        error: 'Service failed to start',
-        message: 'Check service logs for details'
-      }
+    if (canceled || !filePaths || filePaths.length === 0) {
+      console.log('[Workflow Export] Export cancelled by user')
+      return { success: false, cancelled: true }
     }
 
-  } catch (err) {
-    console.error('[Service] Start failed:', err)
-    return {
-      success: false,
-      error: err.message,
-      message: 'Failed to start service'
-    }
-  }
-})
+    const outputDir = filePaths[0]
+    console.log(`[Workflow Export] Exporting to: ${outputDir}`)
 
-/**
- * Stop the standalone scheduler service
- */
-ipcMain.handle('service:stop', async () => {
-  try {
-    // Call service shutdown endpoint
-    const config = await loadServiceConfig()
-    const serviceUrl = `http://${config.host}:${config.port}`
-
-    const response = await fetch(`${serviceUrl}/api/shutdown`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+    // Call export service
+    const result = await workflowExportService.exportWorkflow({
+      workflow,
+      workflowPath,
+      outputDir,
+      prompdjson: prompdjson || {}
     })
 
-    if (response.ok) {
+    if (result.success) {
+      console.log(`[Workflow Export] Successfully exported ${result.files.length} files`)
       return {
         success: true,
-        message: 'Service stopped successfully'
+        outputDir: result.outputDir,
+        files: result.files
       }
     } else {
+      console.error('[Workflow Export] Export failed:', result.error)
       return {
         success: false,
-        error: `Service responded with status ${response.status}`,
-        message: 'Failed to stop service'
+        error: result.error
       }
     }
-
   } catch (err) {
-    console.error('[Service] Stop failed:', err)
-    return {
-      success: false,
-      error: err.message,
-      message: 'Failed to stop service (may already be stopped)'
-    }
-  }
-})
-
-/**
- * Restart the standalone scheduler service
- */
-ipcMain.handle('service:restart', async () => {
-  try {
-    // Stop the service first
-    const stopResult = await ipcMain.handle('service:stop', async () => {})()
-
-    // Wait for service to fully shut down
-    await new Promise(resolve => setTimeout(resolve, 2000))
-
-    // Start the service again
-    const startResult = await ipcMain.handle('service:start', async () => {})()
-
-    if (startResult.success) {
-      return {
-        success: true,
-        message: 'Service restarted successfully'
-      }
-    } else {
-      return {
-        success: false,
-        error: startResult.error,
-        message: 'Failed to restart service'
-      }
-    }
-
-  } catch (err) {
-    console.error('[Service] Restart failed:', err)
-    return {
-      success: false,
-      error: err.message,
-      message: 'Failed to restart service'
-    }
-  }
-})
-
-/**
- * Get service status
- */
-ipcMain.handle('service:getStatus', async () => {
-  try {
-    const status = await checkServiceHealth()
-    return {
-      success: true,
-      running: status.running,
-      port: status.port,
-      uptime: status.uptime
-    }
-  } catch (err) {
-    return {
-      success: false,
-      running: false,
-      error: err.message
-    }
-  }
-})
-
-/**
- * Save service configuration
- */
-ipcMain.handle('service:saveConfig', async (_event, config) => {
-  try {
-    const configPath = getServiceConfigPath()
-    const configDir = path.dirname(configPath)
-
-    // Ensure config directory exists
-    if (!fs.existsSync(configDir)) {
-      fs.mkdirSync(configDir, { recursive: true })
-    }
-
-    // Write config to JSON file
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
-
-    return {
-      success: true,
-      path: configPath
-    }
-  } catch (err) {
-    console.error('[Service] Save config failed:', err)
+    console.error('[Workflow Export] Export failed:', err)
     return {
       success: false,
       error: err.message
@@ -4690,16 +5385,43 @@ ipcMain.handle('service:saveConfig', async (_event, config) => {
 })
 
 /**
- * Load service configuration
+ * Export workflow to specific directory (no dialog)
+ * workflow: Workflow object
+ * workflowPath: Path to the .pdflow file
+ * outputDir: Directory to export to
+ * prompdjson: Optional prompd.json manifest
  */
-ipcMain.handle('service:loadConfig', async () => {
+ipcMain.handle('workflow:exportDockerToPath', async (_event, workflow, workflowPath, outputDir, prompdjson) => {
   try {
-    const config = await loadServiceConfig()
-    return {
-      success: true,
-      config
+    const { WorkflowExportService } = require('./services/workflowExportService')
+    const workflowExportService = new WorkflowExportService(getPrompdCli)
+
+    console.log(`[Workflow Export] Exporting to: ${outputDir}`)
+
+    // Call export service
+    const result = await workflowExportService.exportWorkflow({
+      workflow,
+      workflowPath,
+      outputDir,
+      prompdjson: prompdjson || {}
+    })
+
+    if (result.success) {
+      console.log(`[Workflow Export] Successfully exported ${result.files.length} files`)
+      return {
+        success: true,
+        outputDir: result.outputDir,
+        files: result.files
+      }
+    } else {
+      console.error('[Workflow Export] Export failed:', result.error)
+      return {
+        success: false,
+        error: result.error
+      }
     }
   } catch (err) {
+    console.error('[Workflow Export] Export failed:', err)
     return {
       success: false,
       error: err.message
@@ -4707,68 +5429,54 @@ ipcMain.handle('service:loadConfig', async () => {
   }
 })
 
-// ============================================================================
-// Service Helper Functions
-// ============================================================================
-
 /**
- * Get path to service config file
+ * Export workflow to specific path with export type (Docker or Kubernetes)
+ * workflow: Workflow object
+ * workflowPath: Path to the .pdflow file
+ * outputDir: Directory to export to
+ * prompdjson: Optional prompd.json manifest
+ * options: { exportType: 'docker' | 'kubernetes', kubernetesOptions?: {...} }
  */
-function getServiceConfigPath() {
-  const userDataPath = app.getPath('userData')
-  return path.join(userDataPath, '.prompd', 'service-config.json')
-}
-
-/**
- * Load service configuration with defaults
- */
-async function loadServiceConfig() {
-  const configPath = getServiceConfigPath()
-
-  const defaultConfig = {
-    port: 9876,
-    host: '127.0.0.1',
-    enableWebhooks: true,
-    dbPath: path.join(app.getPath('userData'), '.prompd', 'scheduler', 'schedules.db')
-  }
-
+ipcMain.handle('workflow:exportToPath', async (_event, workflow, workflowPath, outputDir, prompdjson, options = {}) => {
   try {
-    if (fs.existsSync(configPath)) {
-      const content = fs.readFileSync(configPath, 'utf-8')
-      const config = JSON.parse(content)
-      return { ...defaultConfig, ...config }
-    }
-  } catch (err) {
-    console.error('[Service] Failed to load config:', err)
-  }
+    const { WorkflowExportService } = require('./services/workflowExportService')
+    const workflowExportService = new WorkflowExportService(getPrompdCli)
 
-  return defaultConfig
-}
+    const { exportType = 'docker', kubernetesOptions, workspacePath } = options
 
-/**
- * Check if service is running by hitting health endpoint
- */
-async function checkServiceHealth() {
-  const config = await loadServiceConfig()
-  const serviceUrl = `http://${config.host}:${config.port}`
+    console.log(`[Workflow Export] Exporting as ${exportType} to: ${outputDir}`)
 
-  try {
-    const response = await fetch(`${serviceUrl}/health`, {
-      signal: AbortSignal.timeout(2000)
+    // Call export service with export type
+    const result = await workflowExportService.exportWorkflow({
+      workflow,
+      workflowPath,
+      outputDir,
+      prompdjson: prompdjson || {},
+      exportType,
+      kubernetesOptions: kubernetesOptions || {},
+      workspacePath // Pass through workspace path for preserving directory structure
     })
 
-    if (response.ok) {
-      const data = await response.json()
+    if (result.success) {
+      console.log(`[Workflow Export] Successfully exported ${result.files.length} files as ${exportType}`)
       return {
-        running: true,
-        port: config.port,
-        uptime: data.uptime,
-        activeSchedules: data.activeSchedules
+        success: true,
+        outputDir: result.outputDir,
+        files: result.files
+      }
+    } else {
+      console.error('[Workflow Export] Export failed:', result.error)
+      return {
+        success: false,
+        error: result.error
       }
     }
   } catch (err) {
-    // Service not responding
+    console.error('[Workflow Export] Export failed:', err)
+    return {
+      success: false,
+      error: err.message
+    }
   }
+})
 
-  return { running: false }
-}

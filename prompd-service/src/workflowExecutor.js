@@ -2,32 +2,75 @@
  * Workflow Executor for Prompd Service
  *
  * Executes .pdflow workflow files using @prompd/cli
- * This is a simplified executor - full implementation would integrate with
- * the complete workflow execution system from the Electron app
+ * Supports deployment-based workflow execution with full package context
  */
 
-import { readFileSync, existsSync } from 'fs'
-import { spawn } from 'child_process'
+import { readFileSync, existsSync, readdirSync } from 'fs'
+import path from 'path'
+import { executeWorkflow as executeWorkflowCLI } from '@prompd/cli'
 
 /**
- * Execute a workflow file
+ * Resolve the workflow file path from a deployment directory.
+ * Uses prompd.json > main as primary source, falls back to recursive search.
+ * @param {string} packagePath - Deployment directory path
+ * @returns {string|null} - Absolute path to workflow file, or null
+ */
+function resolveWorkflowPath(packagePath) {
+  // Check prompd.json manifest for main field
+  const manifestPath = path.join(packagePath, 'prompd.json')
+  if (existsSync(manifestPath)) {
+    try {
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+      if (manifest.main) {
+        const mainPath = path.join(packagePath, manifest.main)
+        if (existsSync(mainPath)) {
+          return mainPath
+        }
+        console.warn(`[WorkflowExecutor] prompd.json main "${manifest.main}" not found at: ${mainPath}`)
+      }
+    } catch (err) {
+      console.warn(`[WorkflowExecutor] Failed to read prompd.json:`, err.message)
+    }
+  }
+
+  // Fallback: search recursively for .pdflow
+  const findPdflow = (dir) => {
+    const entries = readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        const found = findPdflow(fullPath)
+        if (found) return found
+      } else if (entry.name.endsWith('.pdflow')) {
+        return fullPath
+      }
+    }
+    return null
+  }
+  return findPdflow(packagePath)
+}
+
+/**
+ * Execute a deployed workflow
  *
- * @param {object} schedule - Schedule data from database
+ * @param {object} deployment - Deployment record from database
+ * @param {object} trigger - Trigger record from database
+ * @param {object} context - Trigger context (payload, event data, etc.)
  * @returns {Promise<object>} - Execution result
  */
-export async function executeWorkflow(schedule) {
-  const { workflowPath, parameters } = schedule
+export async function executeDeployedWorkflow(deployment, trigger, context = {}) {
+  const { packagePath, name } = deployment
 
-  // Validate workflow file exists
-  if (!existsSync(workflowPath)) {
-    throw new Error(`Workflow file not found: ${workflowPath}`)
+  // Resolve workflow file from prompd.json > main, fallback to recursive search
+  const workflowFile = resolveWorkflowPath(packagePath)
+
+  if (!workflowFile) {
+    throw new Error(`No workflow file found in deployment: ${packagePath}`)
   }
 
   try {
-    // Read workflow file
-    const workflowContent = readFileSync(workflowPath, 'utf-8')
-
-    // Parse workflow (basic validation)
+    // Read and parse workflow file
+    const workflowContent = readFileSync(workflowFile, 'utf-8')
     let workflow
     try {
       workflow = JSON.parse(workflowContent)
@@ -37,97 +80,60 @@ export async function executeWorkflow(schedule) {
 
     // Log execution start
     const startTime = Date.now()
-    console.log(`[WorkflowExecutor] Starting workflow: ${schedule.name}`)
-    console.log(`[WorkflowExecutor] Path: ${workflowPath}`)
+    console.log(`[WorkflowExecutor] Starting deployed workflow: ${name}`)
+    console.log(`[WorkflowExecutor] Deployment ID: ${deployment.id}`)
+    console.log(`[WorkflowExecutor] Trigger: ${trigger.triggerType}`)
+    console.log(`[WorkflowExecutor] Package path: ${packagePath}`)
+
+    // Build parameters from trigger context
+    const parameters = {
+      ...(context.payload || {}),
+      _trigger: {
+        type: trigger.triggerType,
+        triggeredAt: Date.now(),
+        triggerId: trigger.id,
+        ...context
+      }
+    }
+
     console.log(`[WorkflowExecutor] Parameters:`, parameters)
 
-    // TODO: Full workflow execution would happen here
-    // This would integrate with @prompd/cli or the workflow execution engine
-    // For now, we'll simulate execution
-
-    // Simulate workflow execution delay
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // Execute workflow using @prompd/cli
+    const result = await executeWorkflowCLI(workflow, parameters, {
+      workingDirectory: packagePath,
+      packagePath,
+      onNodeStart: (nodeId) => {
+        console.log(`[WorkflowExecutor] Node started: ${nodeId}`)
+      },
+      onNodeComplete: (nodeId, output) => {
+        console.log(`[WorkflowExecutor] Node completed: ${nodeId}`)
+      },
+      onError: (error) => {
+        console.error(`[WorkflowExecutor] Error:`, error.message)
+      }
+    })
 
     const endTime = Date.now()
     const duration = endTime - startTime
 
-    console.log(`[WorkflowExecutor] Workflow completed in ${duration}ms`)
+    console.log(`[WorkflowExecutor] Workflow ${result.success ? 'completed' : 'failed'} in ${duration}ms`)
 
     return {
-      status: 'success',
-      workflowId: schedule.workflowId,
-      scheduleId: schedule.id,
+      status: result.success ? 'success' : 'error',
+      workflowId: deployment.workflowId,
+      deploymentId: deployment.id,
+      triggerId: trigger.id,
       startTime,
       endTime,
       duration,
-      message: `Workflow "${schedule.name}" executed successfully`,
-      // Real execution would return actual workflow results here
-      result: {
-        nodeCount: workflow.nodes?.length || 0,
-        executed: true
-      }
+      message: result.success
+        ? `Workflow "${name}" executed successfully`
+        : `Workflow "${name}" failed: ${result.error?.message || 'Unknown error'}`,
+      result: result.output,
+      error: result.error?.message
     }
   } catch (error) {
     console.error(`[WorkflowExecutor] Execution failed:`, error.message)
     throw error
   }
-}
-
-/**
- * Execute workflow via CLI (alternative approach using @prompd/cli command)
- *
- * @param {string} workflowPath - Path to workflow file
- * @param {object} parameters - Workflow parameters
- * @returns {Promise<object>} - Execution result
- */
-export async function executeWorkflowViaCLI(workflowPath, parameters = {}) {
-  return new Promise((resolve, reject) => {
-    // Build CLI command
-    const args = ['execute', workflowPath]
-
-    // Add parameters if provided
-    if (Object.keys(parameters).length > 0) {
-      args.push('--params', JSON.stringify(parameters))
-    }
-
-    // Spawn CLI process
-    const child = spawn('prompd', args, {
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
-
-    let stdout = ''
-    let stderr = ''
-
-    child.stdout.on('data', (data) => {
-      stdout += data.toString()
-    })
-
-    child.stderr.on('data', (data) => {
-      stderr += data.toString()
-    })
-
-    child.on('close', (code) => {
-      if (code === 0) {
-        try {
-          // Parse CLI output
-          const result = JSON.parse(stdout)
-          resolve({
-            status: 'success',
-            result
-          })
-        } catch (error) {
-          resolve({
-            status: 'success',
-            result: { stdout }
-          })
-        }
-      } else {
-        reject(new Error(`CLI execution failed with code ${code}: ${stderr}`))
-      }
-    })
-
-    child.on('error', (error) => {
-      reject(new Error(`Failed to spawn CLI: ${error.message}`))
-    })
-  })
 }

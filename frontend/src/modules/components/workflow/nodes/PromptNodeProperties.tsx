@@ -4,7 +4,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { FileText, AlignLeft, Package, Search } from 'lucide-react'
+import { FileText, AlignLeft, Package, Search, Shield, ChevronDown, ChevronRight } from 'lucide-react'
 import type { PromptNodeData } from '../../../services/workflowTypes'
 import { useEditorStore } from '../../../../stores/editorStore'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
@@ -26,9 +26,16 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
   const [showDropdown, setShowDropdown] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null)
+  const [guardrailExpanded, setGuardrailExpanded] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const workspaceHandle = useEditorStore(state => state.explorerDirHandle)
   const workspacePath = useEditorStore(state => state.explorerDirPath)
+
+  // Get active workflow file path to convert workspace-relative to workflow-file-relative
+  const tabs = useEditorStore(state => state.tabs)
+  const activeTabId = useEditorStore(state => state.activeTabId)
+  const activeTab = tabs.find(t => t.id === activeTabId)
+  const workflowFilePath = activeTab?.filePath || null
 
   // Source type - defaults to 'file' if not set
   const sourceType = data.sourceType || 'file'
@@ -50,8 +57,35 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
     }
   }, [showDropdown])
 
-  // Determine if searching locally (starts with ".")
-  const isLocalSearch = searchQuery.trim().startsWith('.')
+  // Determine if searching locally (starts with "." or "..")
+  const trimmedQuery = searchQuery.trim()
+  const isLocalSearch = trimmedQuery.startsWith('.') || trimmedQuery.startsWith('..')
+
+  // Convert workspace-relative path (./folder/file) to workflow-file-relative path (../folder/file)
+  const convertToWorkflowRelative = (workspaceRelativePath: string): string => {
+    if (!workflowFilePath || !workspacePath) return workspaceRelativePath
+
+    // Remove leading ./ from workspace-relative path
+    const cleanPath = workspaceRelativePath.replace(/^\.\//, '')
+
+    // Get workflow directory - use Math.max to handle both / and \ separators
+    const lastSlash = Math.max(workflowFilePath.lastIndexOf('/'), workflowFilePath.lastIndexOf('\\'))
+    const workflowDir = lastSlash > 0 ? workflowFilePath.substring(0, lastSlash) : workflowFilePath
+
+    // Normalize both paths for cross-platform comparison
+    const normalizedWorkflowDir = workflowDir.replace(/\\/g, '/')
+    const normalizedWorkspace = workspacePath.replace(/\\/g, '/')
+
+    // Calculate workflow directory relative to workspace root
+    const workflowDirFromRoot = normalizedWorkflowDir.startsWith(normalizedWorkspace)
+      ? normalizedWorkflowDir.substring(normalizedWorkspace.length).replace(/^\//, '')
+      : normalizedWorkflowDir.replace(/^\//, '')
+    const depth = workflowDirFromRoot ? workflowDirFromRoot.split('/').length : 0
+
+    // Build relative path with appropriate number of ../
+    const prefix = depth > 0 ? '../'.repeat(depth) : './'
+    return prefix + cleanPath
+  }
 
   // Debounced search handler
   const handleSearchChange = useCallback(async (query: string) => {
@@ -64,7 +98,8 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
       return
     }
 
-    const isLocal = query.trim().startsWith('.')
+    const trimmedQueryInner = query.trim()
+    const isLocal = trimmedQueryInner.startsWith('.') || trimmedQueryInner.startsWith('..')
 
     // For package search require 2+ chars, for local search just need "."
     if (!isLocal && query.trim().length < 2) {
@@ -125,7 +160,10 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
   }, [workspaceHandle, workspacePath])
 
   const handleSelectLocalFile = (filePath: string) => {
-    onChange('source', filePath)
+    // If it's a workspace-relative path from dropdown, convert to workflow-file-relative
+    const finalPath = filePath.startsWith('./') ? convertToWorkflowRelative(filePath) : filePath
+    console.log('[PromptNodeProperties] Selected file:', filePath, '→', finalPath)
+    onChange('source', finalPath)
     setSearchQuery('')
     setShowDropdown(false)
     setLocalFileResults([])
@@ -176,24 +214,32 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     const hasResults = isLocalSearch ? localFileResults.length > 0 : searchResults.length > 0
-    if (!hasResults) return
-
     const resultsLength = isLocalSearch ? localFileResults.length : searchResults.length
 
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'ArrowDown' && hasResults) {
       e.preventDefault()
       setHighlightedIndex(prev => prev < resultsLength - 1 ? prev + 1 : prev)
-    } else if (e.key === 'ArrowUp') {
+    } else if (e.key === 'ArrowUp' && hasResults) {
       e.preventDefault()
       setHighlightedIndex(prev => prev > 0 ? prev - 1 : prev)
-    } else if (e.key === 'Enter' && showDropdown) {
+    } else if (e.key === 'Enter') {
       e.preventDefault()
+
+      // For local file search, allow direct path entry
       if (isLocalSearch) {
-        const selectedFile = localFileResults[highlightedIndex]
-        if (selectedFile) handleSelectLocalFile(selectedFile)
+        const trimmedQuery = searchQuery.trim()
+
+        // Always use typed path directly - don't use dropdown results
+        // This preserves ../ relative paths instead of converting to ./ workspace-relative
+        if (trimmedQuery.length > 0) {
+          handleSelectLocalFile(trimmedQuery)
+        }
       } else {
-        const selectedPkg = searchResults[highlightedIndex]
-        if (selectedPkg) handleSelectPackage(selectedPkg)
+        // For package search, only select from dropdown
+        if (hasResults && showDropdown) {
+          const selectedPkg = searchResults[highlightedIndex]
+          if (selectedPkg) handleSelectPackage(selectedPkg)
+        }
       }
     } else if (e.key === 'Escape') {
       setShowDropdown(false)
@@ -509,36 +555,40 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
                 zIndex: 9999
               }}>
                 {/* Local file results */}
-                {isLocalSearch && localFileResults.map((filePath, index) => (
-                  <div
-                    key={filePath}
-                    onMouseDown={() => handleSelectLocalFile(filePath)}
-                    onMouseEnter={() => setHighlightedIndex(index)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '8px 12px',
-                      cursor: 'pointer',
-                      background: index === highlightedIndex ? 'var(--accent)' : 'transparent'
-                    }}
-                  >
-                    <FileText size={14} style={{
-                      color: index === highlightedIndex ? 'white' : 'var(--accent)',
-                      flexShrink: 0
-                    }} />
-                    <span style={{
-                      fontSize: '12px',
-                      color: index === highlightedIndex ? 'white' : 'var(--text)',
-                      fontFamily: 'monospace',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {filePath}
-                    </span>
-                  </div>
-                ))}
+                {isLocalSearch && localFileResults.map((filePath, index) => {
+                  // Convert workspace-relative paths to workflow-file-relative for display
+                  const displayPath = filePath.startsWith('./') ? convertToWorkflowRelative(filePath) : filePath
+                  return (
+                    <div
+                      key={filePath}
+                      onMouseDown={() => handleSelectLocalFile(filePath)}
+                      onMouseEnter={() => setHighlightedIndex(index)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 12px',
+                        cursor: 'pointer',
+                        background: index === highlightedIndex ? 'var(--accent)' : 'transparent'
+                      }}
+                    >
+                      <FileText size={14} style={{
+                        color: index === highlightedIndex ? 'white' : 'var(--accent)',
+                        flexShrink: 0
+                      }} />
+                      <span style={{
+                        fontSize: '12px',
+                        color: index === highlightedIndex ? 'white' : 'var(--text)',
+                        fontFamily: 'monospace',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {displayPath}
+                      </span>
+                    </div>
+                  )
+                })}
 
                 {/* Package results */}
                 {!isLocalSearch && searchResults.map((pkg, index) => (
@@ -624,6 +674,212 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
           <option value="none">None</option>
           <option value="auto">Auto (as previous_output)</option>
         </select>
+      </div>
+
+      {/* Guardrail Settings - Collapsible Section */}
+      <div style={{
+        marginTop: '16px',
+        borderTop: '1px solid var(--border)',
+        paddingTop: '12px'
+      }}>
+        <button
+          onClick={() => setGuardrailExpanded(!guardrailExpanded)}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '8px 10px',
+            background: 'var(--panel-2)',
+            border: '1px solid var(--border)',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontWeight: 600,
+            color: 'var(--text)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Shield size={14} style={{ color: 'var(--accent)' }} />
+            Guardrail Settings
+          </div>
+          {guardrailExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+
+        {guardrailExpanded && (
+          <div style={{
+            marginTop: '12px',
+            padding: '12px',
+            background: 'var(--panel-2)',
+            border: '1px solid var(--border)',
+            borderRadius: '6px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            {/* Output Mode */}
+            <div>
+              <label style={labelStyle}>Output Mode</label>
+              <select
+                value={data.guardrail?.outputMode || 'passthrough'}
+                onChange={(e) => onChange('guardrail', {
+                  ...data.guardrail,
+                  outputMode: e.target.value as 'passthrough' | 'original' | 'reject-message'
+                })}
+                style={selectStyle}
+              >
+                <option value="passthrough">Pass Through (return LLM response)</option>
+                <option value="original">Pass Original Input (when clean)</option>
+                <option value="reject-message">Custom Reject Message</option>
+              </select>
+              <p style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+                What to output when guardrail passes
+              </p>
+            </div>
+
+            {/* Expected Response Format */}
+            <div>
+              <label style={labelStyle}>Expected Response Format</label>
+              <select
+                value={data.guardrail?.expectedFormat || 'json'}
+                onChange={(e) => onChange('guardrail', {
+                  ...data.guardrail,
+                  expectedFormat: e.target.value as 'json' | 'text'
+                })}
+                style={selectStyle}
+              >
+                <option value="json">JSON Object</option>
+                <option value="text">Plain Text</option>
+              </select>
+            </div>
+
+            {data.guardrail?.expectedFormat === 'json' && (
+              <>
+                {/* Field to Check */}
+                <div>
+                  <label style={labelStyle}>Rejection Field</label>
+                  <input
+                    type="text"
+                    value={data.guardrail?.rejectionField || 'rejected'}
+                    onChange={(e) => onChange('guardrail', {
+                      ...data.guardrail,
+                      rejectionField: e.target.value
+                    })}
+                    placeholder="rejected"
+                    style={inputStyle}
+                  />
+                  <p style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+                    JSON field that indicates rejection (e.g., "rejected", "blocked", "unsafe")
+                  </p>
+                </div>
+
+                {/* Pass Condition */}
+                <div>
+                  <label style={labelStyle}>Pass When</label>
+                  <select
+                    value={data.guardrail?.passWhen || 'false'}
+                    onChange={(e) => onChange('guardrail', {
+                      ...data.guardrail,
+                      passWhen: e.target.value as 'false' | 'true'
+                    })}
+                    style={selectStyle}
+                  >
+                    <option value="false">Field is false</option>
+                    <option value="true">Field is true</option>
+                  </select>
+                  <p style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+                    Workflow continues if this condition is met
+                  </p>
+                </div>
+
+                {/* Advanced: Custom Rejection Expression */}
+                <div>
+                  <label style={labelStyle}>
+                    Custom Rejection Expression (Advanced)
+                  </label>
+                  <input
+                    type="text"
+                    value={data.guardrail?.rejectionExpression || ''}
+                    onChange={(e) => onChange('guardrail', {
+                      ...data.guardrail,
+                      rejectionExpression: e.target.value
+                    })}
+                    placeholder="e.g., {{ response.rejected === true || response.score > 0.8 }}"
+                    style={inputStyle}
+                  />
+                  <p style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+                    Optional: Override field check with custom expression. Supports {'{{ }}'} syntax.
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* Action on Fail */}
+            <div>
+              <label style={labelStyle}>Action on Fail</label>
+              <select
+                value={data.guardrail?.failAction || 'error'}
+                onChange={(e) => onChange('guardrail', {
+                  ...data.guardrail,
+                  failAction: e.target.value as 'error' | 'stop' | 'continue'
+                })}
+                style={selectStyle}
+              >
+                <option value="error">Throw Error</option>
+                <option value="stop">Stop Workflow Silently</option>
+                <option value="continue">Continue Anyway (log warning)</option>
+              </select>
+            </div>
+
+            {/* Custom Reject Message */}
+            {data.guardrail?.outputMode === 'reject-message' && (
+              <div>
+                <label style={labelStyle}>Custom Reject Message</label>
+                <textarea
+                  value={data.guardrail?.customRejectMessage || ''}
+                  onChange={(e) => onChange('guardrail', {
+                    ...data.guardrail,
+                    customRejectMessage: e.target.value
+                  })}
+                  placeholder="Input rejected by guardrail"
+                  rows={3}
+                  style={{
+                    ...inputStyle,
+                    resize: 'vertical',
+                    fontSize: '11px'
+                  }}
+                />
+                <p style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+                  Message to show when guardrail fails
+                </p>
+              </div>
+            )}
+
+            {/* Example Configuration */}
+            <div style={{
+              padding: '8px 10px',
+              background: 'var(--panel)',
+              borderRadius: '4px',
+              border: '1px solid var(--border)'
+            }}>
+              <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                Example Setup:
+              </div>
+              <code style={{
+                fontSize: '10px',
+                color: 'var(--muted)',
+                fontFamily: 'monospace',
+                display: 'block',
+                lineHeight: '1.4'
+              }}>
+                1. LLM returns: {`{"rejected": false, "score": 0}`}<br />
+                2. Check field "rejected" === false<br />
+                3. If true → output original input<br />
+                4. If false → throw error
+              </code>
+            </div>
+          </div>
+        )}
       </div>
     </>
   )

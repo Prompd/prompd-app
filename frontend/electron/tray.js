@@ -16,10 +16,11 @@ const EventEmitter = require('events')
  * @property {number} activeWorkflows - Number of running workflows
  * @property {number} scheduledTriggers - Number of scheduled triggers
  * @property {number} fileWatchers - Number of active file watchers
- * @property {boolean} webhookServerRunning - Whether webhook server is active
- * @property {number} [webhookPort] - Webhook server port if running
+ * @property {boolean} webhookServerRunning - Whether webhook server is active (reserved for future use)
+ * @property {number} [webhookPort] - Webhook server port if running (reserved for future use)
  * @property {string} [nextScheduledRun] - ISO timestamp of next scheduled run
  * @property {string} [lastError] - Last error message if any
+ * @property {Array<{id: string, name: string, version: string, status: string}>} [deployments] - List of deployments
  */
 
 class TrayManager extends EventEmitter {
@@ -36,6 +37,7 @@ class TrayManager extends EventEmitter {
       webhookPort: undefined,
       nextScheduledRun: undefined,
       lastError: undefined,
+      deployments: [],
     }
     this.mainWindow = null
     this.isQuitting = false
@@ -119,6 +121,47 @@ class TrayManager extends EventEmitter {
   updateMenu() {
     if (!this.tray) return
 
+    // Build deployments submenu
+    const deploymentsSubmenu = []
+
+    if (this.state.deployments && this.state.deployments.length > 0) {
+      // Add first 10 active deployments
+      const activeDeployments = this.state.deployments
+        .filter(d => d.status === 'enabled')
+        .slice(0, 10)
+
+      if (activeDeployments.length > 0) {
+        activeDeployments.forEach(deployment => {
+          deploymentsSubmenu.push({
+            label: `${deployment.name} (v${deployment.version || '1.0.0'})`,
+            click: () => this.emit('execute-deployment', deployment.id, deployment.name)
+          })
+        })
+      } else {
+        deploymentsSubmenu.push({
+          label: 'No active deployments',
+          enabled: false
+        })
+      }
+
+      deploymentsSubmenu.push({ type: 'separator' })
+    } else {
+      deploymentsSubmenu.push({
+        label: 'No deployments yet',
+        enabled: false
+      })
+      deploymentsSubmenu.push({ type: 'separator' })
+    }
+
+    // Add "Manage All..." option
+    deploymentsSubmenu.push({
+      label: 'Manage All...',
+      click: () => {
+        this.showMainWindow()
+        this.emit('show-deployments')
+      }
+    })
+
     const menuTemplate = [
       // Status section
       {
@@ -127,20 +170,10 @@ class TrayManager extends EventEmitter {
       },
       { type: 'separator' },
 
-      // Active triggers info
+      // Deployments submenu
       {
-        label: `Scheduled: ${this.state.scheduledTriggers}`,
-        enabled: false,
-      },
-      {
-        label: `File Watchers: ${this.state.fileWatchers}`,
-        enabled: false,
-      },
-      {
-        label: this.state.webhookServerRunning
-          ? `Webhooks: :${this.state.webhookPort}`
-          : 'Webhooks: Off',
-        enabled: false,
+        label: `Deployments (${this.state.deployments?.filter(d => d.status === 'enabled').length || 0})`,
+        submenu: deploymentsSubmenu
       },
       { type: 'separator' },
 
@@ -150,12 +183,11 @@ class TrayManager extends EventEmitter {
         click: () => this.showMainWindow(),
       },
       {
-        label: 'View Active Workflows',
+        label: 'Execution History',
         click: () => {
           this.showMainWindow()
-          this.emit('show-workflows')
+          this.emit('show-execution-history')
         },
-        enabled: this.state.activeWorkflows > 0,
       },
       { type: 'separator' },
 
@@ -182,45 +214,21 @@ class TrayManager extends EventEmitter {
             label: 'Restart File Watchers',
             click: () => this.emit('restart-all-file-watchers'),
           },
-          { type: 'separator' },
-          {
-            label: this.state.webhookServerRunning
-              ? 'Stop Webhook Server'
-              : 'Start Webhook Server',
-            click: () => this.emit('toggle-webhook-server'),
-          },
         ],
       },
       { type: 'separator' },
 
       // Settings
       {
-        label: 'Settings',
-        submenu: [
-          {
-            label: 'Notifications',
-            type: 'checkbox',
-            checked: true, // Will be managed by triggerService
-            click: (menuItem) => this.emit('toggle-notifications', menuItem.checked),
-          },
-          {
-            label: 'Start on Login',
-            type: 'checkbox',
-            checked: app.getLoginItemSettings().openAtLogin,
-            click: (menuItem) => {
-              app.setLoginItemSettings({
-                openAtLogin: menuItem.checked,
-                openAsHidden: true, // Start minimized to tray
-              })
-            },
-          },
-          {
-            label: 'Minimize to Tray on Close',
-            type: 'checkbox',
-            checked: true, // Will be managed by config
-            click: (menuItem) => this.emit('toggle-minimize-to-tray', menuItem.checked),
-          },
-        ],
+        label: 'Start on Login',
+        type: 'checkbox',
+        checked: app.getLoginItemSettings().openAtLogin,
+        click: (menuItem) => {
+          app.setLoginItemSettings({
+            openAtLogin: menuItem.checked,
+            openAsHidden: true,
+          })
+        },
       },
       { type: 'separator' },
 

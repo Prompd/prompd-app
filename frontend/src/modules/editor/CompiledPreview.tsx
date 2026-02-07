@@ -5,12 +5,14 @@
  * and renders the result as formatted markdown.
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Loader2, AlertCircle, RefreshCw, CheckCircle2, Clock, Sparkles, ChevronDown, ChevronRight, Eye, Code, Maximize2, Minimize2, X, Hash, FileText, Scissors, Layout, Map } from 'lucide-react'
-import { PrompdParameterList, type PrompdParameter } from '@prompd/react'
+import { Loader2, AlertCircle, RefreshCw, CheckCircle2, Clock, Sparkles, ChevronDown, ChevronRight, Eye, Code, Maximize2, Minimize2, X, Hash, FileText, Scissors, Layout, Map as MapIcon } from 'lucide-react'
+import { PrompdParameterList, type PrompdParameter, PrompdContextArea, type PrompdFileSections, type PrompdFileSection } from '@prompd/react'
 import Editor from '@monaco-editor/react'
 import MarkdownPreview from '../components/MarkdownPreview'
 import XmlDesignView, { type XmlDesignViewHandle } from '../components/XmlDesignView'
 import { ContentMinimap, type MinimapSection } from '../components/ContentMinimap'
+import { ExecutionControls } from '../components/ExecutionControls'
+import type { GenerationMode } from '../components/GenerationControls'
 import { localCompiler } from '../services/localCompiler'
 import { parsePrompd } from '../lib/prompdParser'
 import { getMonacoTheme, registerPrompdThemes, readOnlyEditorOptions } from '../lib/monacoConfig'
@@ -48,6 +50,53 @@ interface CompiledPreviewProps {
   onToggleMaximize?: () => void
   /** Callback to close the preview */
   onClose?: () => void
+
+  // Optional execution features
+  /** Show execution controls */
+  showExecution?: boolean
+  /** Provider data for execution */
+  executionProvider?: string
+  /** Model for execution */
+  executionModel?: string
+  /** Available providers list */
+  executionProviders?: Array<{ id: string, name: string, models: Array<{ id: string, name: string }> }>
+  /** Provider change callback */
+  onExecutionProviderChange?: (provider: string) => void
+  /** Model change callback */
+  onExecutionModelChange?: (model: string) => void
+  /** Max tokens */
+  executionMaxTokens?: number
+  /** Temperature */
+  executionTemperature?: number
+  /** Generation mode */
+  executionMode?: GenerationMode
+  /** Max tokens change callback */
+  onExecutionMaxTokensChange?: (value: number) => void
+  /** Temperature change callback */
+  onExecutionTemperatureChange?: (value: number) => void
+  /** Mode change callback */
+  onExecutionModeChange?: (mode: GenerationMode) => void
+  /** Execute callback */
+  onExecute?: () => void
+  /** Is executing */
+  isExecuting?: boolean
+  /** Can execute (all required params filled) */
+  canExecute?: boolean
+  /** Disabled reason */
+  executionDisabledReason?: string
+
+  /** Show context sections */
+  showContextSections?: boolean
+  /** Context sections data */
+  contextSections?: Record<string, any>
+  /** Context sections change callback (updates content in editor) */
+  onContextSectionsChange?: (updatedContent: string) => void
+  /** File upload callback */
+  onFileUpload?: (sectionName: string, files: File[]) => Promise<string[]>
+  /** Select from browser callback */
+  onSelectFromBrowser?: (sectionName: string) => Promise<string | null>
+  /** Has folder open */
+  hasFolderOpen?: boolean
 }
 
 interface CompilationState {
@@ -73,7 +122,31 @@ export function CompiledPreview({
   workspacePath,
   isMaximized = false,
   onToggleMaximize,
-  onClose
+  onClose,
+  // Execution props
+  showExecution = false,
+  executionProvider = 'openai',
+  executionModel = 'gpt-4',
+  executionProviders = [],
+  onExecutionProviderChange,
+  onExecutionModelChange,
+  executionMaxTokens = 4096,
+  executionTemperature = 0.7,
+  executionMode = 'default',
+  onExecutionMaxTokensChange,
+  onExecutionTemperatureChange,
+  onExecutionModeChange,
+  onExecute,
+  isExecuting = false,
+  canExecute = true,
+  executionDisabledReason,
+  // Context sections props
+  showContextSections = false,
+  contextSections = {},
+  onContextSectionsChange,
+  onFileUpload,
+  onSelectFromBrowser,
+  hasFolderOpen = false
 }: CompiledPreviewProps) {
   const [state, setState] = useState<CompilationState>({
     status: 'idle',
@@ -86,6 +159,7 @@ export function CompiledPreview({
 
   // UI state
   const [paramsCollapsed, setParamsCollapsed] = useState(false)
+  const [contextCollapsed, setContextCollapsed] = useState(false)
   const [viewMode, setViewMode] = useState<'rendered' | 'raw'>('rendered')
   const [xmlViewMode, setXmlViewMode] = useState<'designer' | 'raw'>('designer')
   const [outputFormat, setOutputFormat] = useState<OutputFormat>('markdown')
@@ -99,8 +173,12 @@ export function CompiledPreview({
   // Use external parameters directly (stored in tab state for persistence)
   const parameters = externalParameters
 
-  // Parse content to extract parameter definitions and content-type
-  const { parsedParams, contentType } = useMemo((): { parsedParams: PrompdParameter[], contentType: 'md' | 'xml' } => {
+  // Parse content to extract parameter definitions, content-type, and sections
+  const { parsedParams, contentType, parsedSections } = useMemo((): {
+    parsedParams: PrompdParameter[],
+    contentType: 'md' | 'xml',
+    parsedSections: Record<string, any>
+  } => {
     try {
       const parsed = parsePrompd(content)
 
@@ -108,49 +186,369 @@ export function CompiledPreview({
       const rawContentType = parsed.frontmatter?.['content-type'] || parsed.frontmatter?.contentType
       const detectedContentType: 'md' | 'xml' = rawContentType === 'xml' ? 'xml' : 'md'
 
-      if (!parsed.frontmatter?.parameters) {
-        return { parsedParams: [], contentType: detectedContentType }
-      }
+      // Extract sections from frontmatter (top-level context/system/etc fields)
+      const sections: Record<string, any> = {}
+      const sectionNames = ['context', 'system', 'user', 'assistant', 'task', 'output', 'response']
 
-      // Handle both array and object format parameters
-      const params = parsed.frontmatter.parameters
-      let paramList: PrompdParameter[] = []
-
-      if (Array.isArray(params)) {
-        paramList = params.map((p: Record<string, unknown>) => ({
-          name: String(p.name || ''),
-          type: String(p.type || 'string'),
-          description: p.description ? String(p.description) : undefined,
-          default: p.default,
-          required: Boolean(p.required),
-          enum: Array.isArray(p.enum) ? p.enum : undefined,
-          min: typeof p.min === 'number' ? p.min : undefined,
-          max: typeof p.max === 'number' ? p.max : undefined
-        }))
-      } else if (typeof params === 'object') {
-        paramList = Object.entries(params).map(([name, def]) => {
-          const d = def as Record<string, unknown>
-          return {
-            name,
-            type: String(d.type || 'string'),
-            description: d.description ? String(d.description) : undefined,
-            default: d.default,
-            required: Boolean(d.required),
-            enum: Array.isArray(d.enum) ? d.enum : undefined,
-            min: typeof d.min === 'number' ? d.min : undefined,
-            max: typeof d.max === 'number' ? d.max : undefined
+      if (parsed.frontmatter) {
+        for (const sectionName of sectionNames) {
+          const value = parsed.frontmatter[sectionName]
+          if (value !== undefined) {
+            // Convert to array format if not already (paths are relative to .prmd file)
+            if (Array.isArray(value)) {
+              sections[sectionName] = value
+            } else if (typeof value === 'string') {
+              sections[sectionName] = [value]
+            }
           }
-        })
+        }
       }
 
-      return { parsedParams: paramList, contentType: detectedContentType }
+      // Parse parameters
+      let paramList: PrompdParameter[] = []
+      if (parsed.frontmatter?.parameters) {
+        const params = parsed.frontmatter.parameters
+
+        if (Array.isArray(params)) {
+          paramList = params.map((p: Record<string, unknown>) => ({
+            name: String(p.name || ''),
+            type: String(p.type || 'string'),
+            description: p.description ? String(p.description) : undefined,
+            default: p.default,
+            required: Boolean(p.required),
+            enum: Array.isArray(p.enum) ? p.enum : undefined,
+            min: typeof p.min === 'number' ? p.min : undefined,
+            max: typeof p.max === 'number' ? p.max : undefined
+          }))
+        } else if (typeof params === 'object') {
+          paramList = Object.entries(params).map(([name, def]) => {
+            const d = def as Record<string, unknown>
+            return {
+              name,
+              type: String(d.type || 'string'),
+              description: d.description ? String(d.description) : undefined,
+              default: d.default,
+              required: Boolean(d.required),
+              enum: Array.isArray(d.enum) ? d.enum : undefined,
+              min: typeof d.min === 'number' ? d.min : undefined,
+              max: typeof d.max === 'number' ? d.max : undefined
+            }
+          })
+        }
+      }
+
+      return { parsedParams: paramList, contentType: detectedContentType, parsedSections: sections }
     } catch {
-      return { parsedParams: [], contentType: 'md' }
+      return { parsedParams: [], contentType: 'md', parsedSections: {} }
     }
   }, [content])
 
   // For XML content-type, transforms don't apply
   const isXmlContent = contentType === 'xml'
+
+  // Build file sections configuration for PrompdContextArea
+  const fileSections: PrompdFileSection[] = useMemo(() => {
+    if (!showContextSections) return []
+
+    // Section configurations with labels and constraints
+    const sectionConfigs: Record<string, Omit<PrompdFileSection, 'files' | 'name'>> = {
+      system: {
+        label: 'System',
+        allowMultiple: false,
+        accept: '.prmd,.txt,.md',
+        description: 'System instructions and configuration'
+      },
+      user: {
+        label: 'User',
+        allowMultiple: false,
+        accept: '*/*',
+        description: 'User prompt or primary input'
+      },
+      task: {
+        label: 'Task',
+        allowMultiple: false,
+        accept: '.prmd,.txt,.md',
+        description: 'Task-specific instructions'
+      },
+      output: {
+        label: 'Output',
+        allowMultiple: false,
+        accept: '.prmd,.txt,.md',
+        description: 'Output format specifications'
+      },
+      response: {
+        label: 'Response',
+        allowMultiple: false,
+        accept: '.prmd,.txt,.md',
+        description: 'Response format and structure'
+      },
+      context: {
+        label: 'Context',
+        allowMultiple: true,
+        accept: '*/*',
+        description: 'Background information and reference files'
+      },
+      assistant: {
+        label: 'Assistant',
+        allowMultiple: false,
+        accept: '.prmd,.txt,.md',
+        description: 'Assistant behavior overrides'
+      }
+    }
+
+    // Determine which sections to show (prioritize sections with files, ensure minimum of 3)
+    const sectionsWithFiles: string[] = []
+    const allSectionNames = ['system', 'user', 'context', 'assistant', 'task', 'output', 'response']
+
+    // Check which sections have files from frontmatter
+    for (const sectionName of allSectionNames) {
+      if (sectionName === 'context') {
+        if (Array.isArray(parsedSections.context) && parsedSections.context.length > 0) {
+          sectionsWithFiles.push('context')
+        }
+      } else if (parsedSections[sectionName]) {
+        sectionsWithFiles.push(sectionName)
+      }
+    }
+
+    // Start with sections that have files
+    const visibleSections = [...sectionsWithFiles]
+
+    // If fewer than 3 sections, add more to reach 3 total
+    const defaultSections = ['system', 'user', 'context']
+    for (const section of defaultSections) {
+      if (visibleSections.length >= 3) break
+      if (!visibleSections.includes(section)) {
+        visibleSections.push(section)
+      }
+    }
+
+    // If still fewer than 3, add remaining sections
+    if (visibleSections.length < 3) {
+      for (const section of allSectionNames) {
+        if (visibleSections.length >= 3) break
+        if (!visibleSections.includes(section)) {
+          visibleSections.push(section)
+        }
+      }
+    }
+
+    // Build PrompdFileSection[] for visible sections
+    return visibleSections.map(sectionName => {
+      const sectionConfig = sectionConfigs[sectionName]
+
+      // Extract files from parsed sections
+      let files: string[] = []
+      if (sectionName === 'context') {
+        const contextArray = parsedSections.context
+        if (Array.isArray(contextArray)) {
+          files = contextArray.map((item: string | Record<string, unknown>) =>
+            typeof item === 'string' ? item : String(item)
+          )
+        }
+      } else {
+        const sectionValue = parsedSections[sectionName]
+        if (sectionValue) {
+          files = [typeof sectionValue === 'string' ? sectionValue : String(sectionValue)]
+        }
+      }
+
+      return {
+        name: sectionName,
+        files,
+        ...sectionConfig
+      }
+    })
+  }, [showContextSections, parsedSections])
+
+  // Build PrompdFileSections Map from fileSections
+  const fileSectionsValue: PrompdFileSections = useMemo(() => {
+    const map = new Map<string, string[]>()
+    fileSections.forEach(section => {
+      if (section.files.length > 0) {
+        map.set(section.name, section.files)
+      }
+    })
+    return map
+  }, [fileSections])
+
+  // Helper to update frontmatter with sections
+  const updateFrontmatterWithSections = useCallback((newSections: PrompdFileSections): string => {
+    // Parse frontmatter
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
+
+    // Build sections YAML (top-level fields, not nested under sections:)
+    const buildSectionsYaml = (): string => {
+      if (newSections.size === 0) return ''
+
+      const lines: string[] = []
+
+      // Single-value sections (only first file)
+      const singleSections = ['system', 'user', 'assistant', 'task', 'output', 'response']
+      for (const sectionName of singleSections) {
+        const files = newSections.get(sectionName)
+        if (files && files.length > 0) {
+          lines.push(`${sectionName}: "${files[0]}"`)
+        }
+      }
+
+      // Context (array - paths relative to .prmd file)
+      const contextFiles = newSections.get('context')
+      if (contextFiles && contextFiles.length > 0) {
+        lines.push('context:')
+        contextFiles.forEach(filePath => {
+          lines.push(`  - "${filePath}"`)
+        })
+      }
+
+      return lines.join('\n')
+    }
+
+    if (!frontmatterMatch) {
+      // No frontmatter, add one
+      const sectionsYaml = buildSectionsYaml()
+      if (sectionsYaml) {
+        return `---\n${sectionsYaml}\n---\n${content}`
+      }
+      // Even if no sections, add empty frontmatter
+      return `---\n---\n${content}`
+    }
+
+    const [, frontmatterContent, markdownContent] = frontmatterMatch
+
+    // Remove existing section fields (context, system, user, etc.)
+    const lines = frontmatterContent.split('\n')
+    const newLines: string[] = []
+    let inSectionBlock = false
+    let indentLevel = 0
+
+    // Section field names to remove
+    const sectionFieldNames = ['context', 'system', 'user', 'assistant', 'task', 'output', 'response']
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+
+      // Detect section field (top-level context:, system:, etc.)
+      const sectionMatch = line.match(/^(context|system|user|assistant|task|output|response):/)
+      if (sectionMatch) {
+        inSectionBlock = true
+        // Calculate indent of next line to know when block ends
+        const nextLine = lines[i + 1]
+        if (nextLine) {
+          const match = nextLine.match(/^(\s+)/)
+          indentLevel = match ? match[1].length : 0
+        }
+        continue
+      }
+
+      // Skip lines that are part of section block
+      if (inSectionBlock) {
+        const match = line.match(/^(\s+)/)
+        const currentIndent = match ? match[1].length : 0
+
+        // If line has less or equal indent than expected OR is a top-level field, block ended
+        if (line.trim() && (currentIndent < indentLevel || line.match(/^[a-zA-Z]/))) {
+          inSectionBlock = false
+          // Check if this line is itself a section field
+          if (sectionFieldNames.some(name => line.match(new RegExp(`^${name}:`)))) {
+            inSectionBlock = true
+            const nextLine = lines[i + 1]
+            if (nextLine) {
+              const m = nextLine.match(/^(\s+)/)
+              indentLevel = m ? m[1].length : 0
+            }
+            continue
+          }
+          newLines.push(line)
+        }
+        // Otherwise skip this line (it's part of section block)
+        continue
+      }
+
+      newLines.push(line)
+    }
+
+    // Add section fields at the end (if any)
+    const sectionsYaml = buildSectionsYaml()
+    if (sectionsYaml) {
+      newLines.push(sectionsYaml)
+    }
+
+    // Handle empty frontmatter case
+    const frontmatterBody = newLines.filter(line => line.trim()).join('\n')
+    if (frontmatterBody) {
+      return `---\n${frontmatterBody}\n---\n${markdownContent}`
+    } else {
+      // Empty frontmatter
+      return `---\n---\n${markdownContent}`
+    }
+  }, [content])
+
+  // Handle file sections change from PrompdContextArea
+  const handleFileSectionsChange = useCallback((newSections: PrompdFileSections) => {
+    if (!onContextSectionsChange) return
+
+    // Update frontmatter with new sections
+    const updatedContent = updateFrontmatterWithSections(newSections)
+    onContextSectionsChange(updatedContent)
+  }, [onContextSectionsChange, updateFrontmatterWithSections])
+
+  // Handle file upload - wraps external callback and updates frontmatter
+  const handleFileUploadInternal = useCallback(async (sectionName: string, files: File[]): Promise<string[]> => {
+    if (!onFileUpload) return []
+
+    // Call external handler
+    const filePaths = await onFileUpload(sectionName, files)
+
+    // Update frontmatter with new file paths
+    const newSections = new Map(fileSectionsValue)
+    const currentFiles = newSections.get(sectionName) || []
+
+    // For context (multi-file), append; for others, replace
+    const section = fileSections.find(s => s.name === sectionName)
+    if (section?.allowMultiple) {
+      newSections.set(sectionName, [...currentFiles, ...filePaths])
+    } else {
+      newSections.set(sectionName, filePaths)
+    }
+
+    // Update frontmatter
+    if (onContextSectionsChange) {
+      const updatedContent = updateFrontmatterWithSections(newSections)
+      onContextSectionsChange(updatedContent)
+    }
+
+    return filePaths
+  }, [onFileUpload, fileSectionsValue, fileSections, onContextSectionsChange, updateFrontmatterWithSections])
+
+  // Handle select from browser - wraps external callback and updates frontmatter
+  const handleSelectFromBrowserInternal = useCallback(async (sectionName: string): Promise<string | null> => {
+    if (!onSelectFromBrowser) return null
+
+    // Call external handler
+    const filePath = await onSelectFromBrowser(sectionName)
+    if (!filePath) return null
+
+    // Update frontmatter with new file path
+    const newSections = new Map(fileSectionsValue)
+    const currentFiles = newSections.get(sectionName) || []
+
+    // For context (multi-file), append; for others, replace
+    const section = fileSections.find(s => s.name === sectionName)
+    if (section?.allowMultiple) {
+      newSections.set(sectionName, [...currentFiles, filePath])
+    } else {
+      newSections.set(sectionName, [filePath])
+    }
+
+    // Update frontmatter
+    if (onContextSectionsChange) {
+      const updatedContent = updateFrontmatterWithSections(newSections)
+      onContextSectionsChange(updatedContent)
+    }
+
+    return filePath
+  }, [onSelectFromBrowser, fileSectionsValue, fileSections, onContextSectionsChange, updateFrontmatterWithSections])
 
   // Handle parameter value changes - update parent state directly
   const handleParameterChange = useCallback((name: string, value: unknown) => {
@@ -345,6 +743,19 @@ export function CompiledPreview({
   const savingsPercent = !isXmlContent && outputFormat !== 'markdown' && markdownTokens > 0
     ? Math.round((1 - currentTokens / markdownTokens) * 100)
     : 0
+
+  // Calculate Monaco editor height when parent uses height="auto"
+  const monacoHeight = useMemo(() => {
+    if (height === 'auto' || height === '100%') {
+      // When auto height, calculate based on content lines (min 600px)
+      if (!displayContent) return '600px'
+      const lines = displayContent.split('\n').length
+      // Approximately 19px per line + 24px padding
+      const calculatedHeight = Math.max(600, lines * 19 + 24)
+      return `${calculatedHeight}px`
+    }
+    return '100%' // Use 100% when parent has fixed height
+  }, [height, displayContent])
 
   // Build minimap sections from parameters and content
   const minimapSections = useMemo((): MinimapSection[] => {
@@ -879,7 +1290,7 @@ export function CompiledPreview({
                 onMouseEnter={(e) => e.currentTarget.style.color = showMinimap ? '#3b82f6' : (theme === 'dark' ? 'var(--text)' : '#374151')}
                 onMouseLeave={(e) => e.currentTarget.style.color = showMinimap ? '#3b82f6' : (theme === 'dark' ? 'var(--text-muted)' : '#64748b')}
               >
-                <Map size={13} />
+                <MapIcon size={13} />
               </button>
               <button
                 onClick={handleRecompile}
@@ -974,6 +1385,92 @@ export function CompiledPreview({
             paddingRight: showMinimap && minimapSections.length > 0 ? '130px' : '0'
           }}
         >
+          {/* Execution Controls Section */}
+          {showExecution && onExecute && executionProviders && executionProviders.length > 0 && (
+            <div style={{ margin: '12px', flexShrink: 0 }}>
+              <ExecutionControls
+                provider={executionProvider}
+                model={executionModel}
+                providers={executionProviders}
+                onProviderChange={onExecutionProviderChange || (() => {})}
+                onModelChange={onExecutionModelChange || (() => {})}
+                maxTokens={executionMaxTokens}
+                temperature={executionTemperature}
+                mode={executionMode}
+                onMaxTokensChange={onExecutionMaxTokensChange || (() => {})}
+                onTemperatureChange={onExecutionTemperatureChange || (() => {})}
+                onModeChange={onExecutionModeChange || (() => {})}
+                isExecuting={isExecuting}
+                canExecute={canExecute}
+                disabledReason={executionDisabledReason}
+                onExecute={onExecute}
+                theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                compact={true}
+                showProviderSelector={false}
+              />
+            </div>
+          )}
+
+          {/* Context Sections */}
+          {showContextSections && fileSections.length > 0 && (
+            <div
+              style={{
+                padding: '16px',
+                background: 'var(--panel-2)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                margin: '12px',
+                flexShrink: 0
+              }}
+            >
+              <div
+                onClick={() => setContextCollapsed(!contextCollapsed)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: contextCollapsed ? '0' : '12px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: 'var(--text)',
+                  cursor: 'pointer',
+                  userSelect: 'none'
+                }}
+              >
+                {contextCollapsed ? (
+                  <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
+                ) : (
+                  <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />
+                )}
+                <FileText size={14} style={{ color: 'var(--accent)' }} />
+                <span>Context Files</span>
+                <span style={{
+                  fontSize: '11px',
+                  color: 'var(--text-secondary)',
+                  fontWeight: 400,
+                  fontStyle: 'italic',
+                  marginLeft: '4px'
+                }}>
+                  {fileSectionsValue.size === 0
+                    ? '(drag files or click to add)'
+                    : `(${Array.from(fileSectionsValue.values()).reduce((sum, files) => sum + files.length, 0)} file${Array.from(fileSectionsValue.values()).reduce((sum, files) => sum + files.length, 0) !== 1 ? 's' : ''})`
+                  }
+                </span>
+              </div>
+              {!contextCollapsed && (
+                <PrompdContextArea
+                  sections={fileSections}
+                  value={fileSectionsValue}
+                  onChange={handleFileSectionsChange}
+                  onFileUpload={handleFileUploadInternal}
+                  onSelectFromBrowser={onSelectFromBrowser ? handleSelectFromBrowserInternal : undefined}
+                  hasFolderOpen={hasFolderOpen}
+                  variant="compact"
+                />
+              )}
+            </div>
+          )}
+
           {/* Parameters Section - only show when parameters exist */}
           {showParameters && parsedParams.length > 0 && (
             <div
@@ -1066,7 +1563,7 @@ export function CompiledPreview({
               </div>
             ) : (
               <Editor
-                height="100%"
+                height={monacoHeight}
                 value={displayContent}
                 language="xml"
                 theme={getMonacoTheme(theme === 'dark')}
@@ -1094,7 +1591,7 @@ export function CompiledPreview({
             />
           ) : (
             <Editor
-              height="100%"
+              height={monacoHeight}
               value={displayContent}
               language={outputFormat === 'markdown' ? 'markdown' : 'plaintext'}
               theme={getMonacoTheme(theme === 'dark')}

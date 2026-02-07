@@ -1,0 +1,6 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="3" y="2" width="26" height="28" rx="2" fill="#0f172a" stroke="#6d5acd" stroke-width="1.2"/>
+  <path d="M22 2 L29 9 L22 9 Z" fill="#1e293b" stroke="#6d5acd" stroke-width="0.5"/>
+  <text x="16" y="16.5" font-family="'Segoe UI', Arial, sans-serif" font-size="9" font-weight="bold" fill="#4FC1FF" text-anchor="middle">PD</text>
+  <text x="16" y="24.5" font-family="'Segoe UI', Arial, sans-serif" font-size="6.5" font-weight="600" fill="#a78bfa" text-anchor="middle">FLOW</text>
+</svg>

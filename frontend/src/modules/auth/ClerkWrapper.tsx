@@ -464,7 +464,7 @@ function ElectronAuthWrapper({ children }: AuthWrapperProps) {
       <ElectronAuthContext.Provider value={authState}>
         <LoginScreen
           title="Welcome to Prompd"
-          subtitle="Build, share, and execute AI prompts with package-based inheritance and a powerful visual editor."
+          subtitle="A professional desktop IDE for building AI workflows. Create composable prompts, design visual workflows, and execute them locally with full Monaco editor support."
           buttonText="Sign In to Get Started"
           onSignIn={signIn}
           authError={authError}
@@ -559,7 +559,7 @@ function WebAuthWrapper({ children }: AuthWrapperProps) {
       <SignedOut>
         <LoginScreen
           title="Welcome to Prompd"
-          subtitle="Build, share, and execute AI prompts with package-based inheritance and a powerful visual editor."
+          subtitle="A professional desktop IDE for building AI workflows. Create composable prompts, design visual workflows, and execute them locally with full Monaco editor support."
           buttonText="Sign In to Get Started"
           showFeatures={true}
         >
@@ -636,29 +636,27 @@ function PrompdLogo({ size = 64, showText = false }: { size?: number; showText?:
 }
 
 // Feature icons as SVG components
-function WizardIcon() {
+function WorkflowIcon() {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M15 4V2"/>
-      <path d="M15 16v-2"/>
-      <path d="M8 9h2"/>
-      <path d="M20 9h2"/>
-      <path d="M17.8 11.8L19 13"/>
-      <path d="M15 9h.01"/>
-      <path d="M17.8 6.2L19 5"/>
-      <path d="m3 21 9-9"/>
-      <path d="M12.2 6.2L11 5"/>
+      <rect x="3" y="3" width="7" height="7" rx="1"/>
+      <rect x="14" y="3" width="7" height="7" rx="1"/>
+      <rect x="14" y="14" width="7" height="7" rx="1"/>
+      <rect x="3" y="14" width="7" height="7" rx="1"/>
+      <path d="M10 6.5h4"/>
+      <path d="M10 17.5h4"/>
+      <path d="M17.5 10v4"/>
+      <path d="M6.5 10v4"/>
     </svg>
   )
 }
 
-function PackageIcon() {
+function EditorIcon() {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M16.5 9.4l-9-5.19"/>
-      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-      <polyline points="3.29 7 12 12 20.71 7"/>
-      <line x1="12" y1="22" x2="12" y2="12"/>
+      <path d="M12 20h9"/>
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+      <path d="m15 5 3 3"/>
     </svg>
   )
 }
@@ -879,21 +877,21 @@ function LoginScreen({ title, subtitle, buttonText, onSignIn, authError, showFea
             marginTop: '16px'
           }}>
             <FeatureCard
-              icon={<WizardIcon />}
-              title="Guided Wizard"
-              description="Step-by-step prompt creation with AI assistance"
+              icon={<WorkflowIcon />}
+              title="Visual Workflows"
+              description="Build complex AI workflows with 20+ node types and drag-and-drop"
               gradient="linear-gradient(135deg, #1e293b 0%, #0f172a 100%)"
             />
             <FeatureCard
-              icon={<PackageIcon />}
-              title="Package System"
-              description="Reusable templates with inheritance"
+              icon={<EditorIcon />}
+              title="Monaco Editor"
+              description="Professional code editor with IntelliSense and live preview"
               gradient="linear-gradient(135deg, #1e293b 0%, #0f172a 100%)"
             />
             <FeatureCard
               icon={<RegistryIcon />}
-              title="Registry"
-              description="Discover and share community prompts"
+              title="PrompdHub"
+              description="Discover and share community prompts and workflows"
               gradient="linear-gradient(135deg, #1e293b 0%, #0f172a 100%)"
             />
           </div>

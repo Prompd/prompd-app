@@ -29,6 +29,7 @@ import {
   Trash2,
   GripVertical,
   Settings2,
+  Package,
 } from 'lucide-react'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
@@ -44,6 +45,8 @@ interface UnifiedWorkflowToolbarProps {
   onStop?: () => void
   onResume?: () => void
   isPaused?: boolean
+  onDeploy?: () => void
+  onExport?: () => void
 }
 
 type DockPosition = 'top' | 'bottom' | 'left' | 'right'
@@ -93,6 +96,7 @@ export function UnifiedWorkflowToolbar({
   onStop,
   onResume,
   isPaused = false,
+  onDeploy,
 }: UnifiedWorkflowToolbarProps) {
   const reactFlow = useReactFlow()
   const [showModeMenu, setShowModeMenu] = useState(false)
@@ -553,6 +557,26 @@ export function UnifiedWorkflowToolbar({
                 document.body
               )}
             </div>
+
+            {/* Deploy button */}
+            {onDeploy && (
+              <button
+                onClick={onDeploy}
+                disabled={isExecuting}
+                style={{
+                  ...buttonBaseStyle,
+                  padding: '6px 10px',
+                  gap: '4px',
+                  opacity: isExecuting ? 0.5 : 1,
+                  background: 'color-mix(in srgb, var(--node-purple) 15%, transparent)',
+                  color: isExecuting ? 'var(--muted)' : 'var(--node-purple)',
+                }}
+                title="Deploy workflow"
+              >
+                <Package style={{ width: 14, height: 14 }} />
+                <span style={{ fontSize: '11px', fontWeight: 500 }}>Deploy</span>
+              </button>
+            )}
 
             <div style={{ width: '1px', height: '20px', background: 'var(--border)' }} />
           </>

@@ -1,19 +1,23 @@
 /**
  * BottomPanelTabs - Unified tabbed interface for bottom panels
  * Similar to VSCode's bottom panel with Output, Terminal, etc.
- * Houses BuildOutputPanel and WorkflowExecutionPanel
+ * 4 tabs: Errors (compilation), Prompds (execution history), Workflows (workflow results), Packages (build output)
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { X, FileWarning, Zap, Pin, PinOff, ChevronUp, ChevronDown } from 'lucide-react'
+import { X, AlertCircle, FileText, Zap, Package, Pin, PinOff, ChevronUp, ChevronDown } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import BuildOutputPanel from './BuildOutputPanel'
 import { WorkflowExecutionPanel } from './workflow/WorkflowExecutionPanel'
+import { PrompdSessionHistory, type PrompdExecutionRecord } from './PrompdSessionHistory'
 import type { WorkflowResult } from '@prompd/cli'
 import type { CheckpointEvent, ExecutionTrace } from '@prompd/cli'
 
 interface BottomPanelTabsProps {
   onOpenFile?: (filePath: string, line?: number) => void
+  // Prompd execution history (session only)
+  prompdExecutions?: PrompdExecutionRecord[]
+  onViewExecution?: (index: number) => void
   // Workflow execution data
   workflowResult?: (WorkflowResult & { trace?: ExecutionTrace }) | null
   checkpoints?: CheckpointEvent[]
@@ -35,6 +39,8 @@ const DEFAULT_HEIGHT = 200
 
 export function BottomPanelTabs({
   onOpenFile,
+  prompdExecutions = [],
+  onViewExecution,
   workflowResult,
   checkpoints,
   promptsSent,
@@ -131,6 +137,9 @@ export function BottomPanelTabs({
   // Calculate left position based on sidebar state
   const leftPosition = showSidebar ? 48 + sidebarWidth : 48
 
+  // Calculate bottom position based on sidebar state
+  const bottomPosition = 29
+
   // Tab row is always visible (VS Code style)
   // Only hide completely if user explicitly closed the panel
   if (!showBottomPanel) return null
@@ -138,7 +147,7 @@ export function BottomPanelTabs({
   return (
     <div
       className={`bottom-panel-tabs ${isResizing ? 'resizing' : ''} ${bottomPanelMinimized ? 'minimized' : ''}`}
-      style={{ left: leftPosition, height: bottomPanelMinimized ? 'auto' : bottomPanelHeight, paddingTop: 0 }}
+      style={{ bottom: bottomPosition, left: leftPosition, height: bottomPanelMinimized ? 'auto' : bottomPanelHeight, paddingTop: 0 }}
     >
       {/* Resize handle on top edge (only when expanded) */}
       {!bottomPanelMinimized && (
@@ -152,31 +161,53 @@ export function BottomPanelTabs({
       <div className="bottom-panel-header">
         <div className="bottom-panel-tabs-container">
           <button
-            className={`bottom-panel-tab ${activeBottomTab === 'output' ? 'active' : ''}`}
+            className={`bottom-panel-tab ${activeBottomTab === 'errors' ? 'active' : ''}`}
             onClick={() => {
-              setActiveBottomTab('output')
+              setActiveBottomTab('errors')
               if (bottomPanelMinimized) setBottomPanelMinimized(false)
             }}
           >
-            <FileWarning size={14} />
-            <span>Output</span>
+            <AlertCircle size={14} />
+            <span>Errors</span>
             {hasErrors && (
               <span className="bottom-panel-tab-badge">{errorCount}</span>
             )}
           </button>
 
           <button
-            className={`bottom-panel-tab ${activeBottomTab === 'execution' ? 'active' : ''}`}
+            className={`bottom-panel-tab ${activeBottomTab === 'prompds' ? 'active' : ''}`}
             onClick={() => {
-              setActiveBottomTab('execution')
+              setActiveBottomTab('prompds')
+              if (bottomPanelMinimized) setBottomPanelMinimized(false)
+            }}
+          >
+            <FileText size={14} />
+            <span>Prompds</span>
+          </button>
+
+          <button
+            className={`bottom-panel-tab ${activeBottomTab === 'workflows' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveBottomTab('workflows')
               if (bottomPanelMinimized) setBottomPanelMinimized(false)
             }}
           >
             <Zap size={14} />
-            <span>Execution</span>
+            <span>Workflows</span>
             {hasWorkflowExecution && (
               <span className="bottom-panel-tab-indicator" />
             )}
+          </button>
+
+          <button
+            className={`bottom-panel-tab ${activeBottomTab === 'packages' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveBottomTab('packages')
+              if (bottomPanelMinimized) setBottomPanelMinimized(false)
+            }}
+          >
+            <Package size={14} />
+            <span>Packages</span>
           </button>
         </div>
 
@@ -208,13 +239,23 @@ export function BottomPanelTabs({
       {/* Panel content (only when expanded) */}
       {!bottomPanelMinimized && (
         <div className="bottom-panel-content">
-            {activeBottomTab === 'output' && (
+            {activeBottomTab === 'errors' && (
               <div className="bottom-panel-tab-content">
                 <BuildOutputPanel onOpenFile={onOpenFile} embedded={true} />
               </div>
             )}
 
-            {activeBottomTab === 'execution' && (
+            {activeBottomTab === 'prompds' && (
+              <div className="bottom-panel-tab-content">
+                <PrompdSessionHistory
+                  executions={prompdExecutions}
+                  embedded={true}
+                  onViewExecution={onViewExecution ? (_exec, index) => onViewExecution(index) : undefined}
+                />
+              </div>
+            )}
+
+            {activeBottomTab === 'workflows' && (
               <div className="bottom-panel-tab-content">
                 <WorkflowExecutionPanel
                   onClose={() => setShowBottomPanel(false)}
@@ -223,6 +264,12 @@ export function BottomPanelTabs({
                   promptsSent={promptsSent}
                   embedded={true}
                 />
+              </div>
+            )}
+
+            {activeBottomTab === 'packages' && (
+              <div className="bottom-panel-tab-content">
+                <BuildOutputPanel onOpenFile={onOpenFile} embedded={true} />
               </div>
             )}
         </div>

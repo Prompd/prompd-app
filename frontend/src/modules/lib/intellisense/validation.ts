@@ -157,14 +157,19 @@ function validateYamlContent(
     // Skip if already quoted or empty
     if (!value || value.startsWith('"') || value.startsWith("'") || value.startsWith('|') || value.startsWith('>')) continue
 
+    // Check if value is a valid inline JSON object/array (YAML flow syntax)
+    const isValidFlowSyntax =
+      (value.startsWith('{') && value.endsWith('}')) ||  // JSON object: {"key": "value"}
+      (value.startsWith('[') && value.endsWith(']'))     // JSON array: ["item1", "item2"]
+
     // Check for values that might need quoting
     const needsQuoting = [
       // Values starting with special characters
       /^[@!&*#%`]/.test(value),
-      // Values containing colons (except in URLs)
-      value.includes(':') && !value.match(/^https?:/),
+      // Values containing colons (except in URLs or inside flow syntax)
+      value.includes(':') && !value.match(/^https?:/) && !isValidFlowSyntax,
       // Values with braces or brackets that aren't valid flow syntax
-      /^[\[{].*[^\]}]$/.test(value) || /^[^\[{].*[\]}]$/.test(value),
+      (/[\[{}\]]/.test(value) && !isValidFlowSyntax),
       // Values that look like booleans but might not be intended as such
       /^(yes|no|on|off|y|n)$/i.test(value)
     ].some(Boolean)

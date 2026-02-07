@@ -12,10 +12,9 @@
  */
 
 import { useState, useEffect } from 'react'
-import { Plus, Play, Pause, Trash2, Edit, Clock, CheckCircle, XCircle, AlertCircle, RefreshCw, Wifi, Server, X } from 'lucide-react'
+import { Plus, Play, Pause, Trash2, Edit, Clock, CheckCircle, XCircle, AlertCircle, RefreshCw, Wifi, X } from 'lucide-react'
 import { ScheduleDialog } from './ScheduleDialog'
 import { WebhookSettings } from '../settings/WebhookSettings'
-import { ServiceSettings } from '../settings/ServiceSettings'
 import type { ScheduleInfo, ScheduleExecution } from '../../../electron'
 import './SchedulerPanel.css'
 
@@ -34,7 +33,7 @@ export function SchedulerModal({ open, onClose }: SchedulerModalProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null)
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'schedules' | 'history' | 'webhooks' | 'service'>('schedules')
+  const [activeTab, setActiveTab] = useState<'schedules' | 'history' | 'webhooks'>('schedules')
 
   // Load schedules on mount
   useEffect(() => {
@@ -248,13 +247,6 @@ export function SchedulerModal({ open, onClose }: SchedulerModalProps) {
             <Wifi size={16} />
             Webhooks
           </button>
-          <button
-            className={`tab ${activeTab === 'service' ? 'active' : ''}`}
-            onClick={() => setActiveTab('service')}
-          >
-            <Server size={16} />
-            Service
-          </button>
         </div>
 
         <div className="scheduler-content">
@@ -380,8 +372,6 @@ export function SchedulerModal({ open, onClose }: SchedulerModalProps) {
           </div>
         ) : activeTab === 'webhooks' ? (
           <WebhookSettings />
-        ) : activeTab === 'service' ? (
-          <ServiceSettings />
         ) : null}
         </div>
 

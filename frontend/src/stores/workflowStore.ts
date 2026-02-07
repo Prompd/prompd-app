@@ -28,9 +28,10 @@ import type {
   WorkflowConnection,
   WorkflowConnectionStatus,
   CustomCommandConfig,
+  WorkflowResult,
 } from '../modules/services/workflowTypes'
 import { DOCKABLE_NODE_TYPES, DOCKABLE_HANDLES } from '../modules/services/workflowTypes'
-import { useUIStore } from './uiStore'
+import type { CheckpointEvent, ExecutionTrace } from '../modules/services/workflowExecutor'
 
 // Use generic Node/Edge types for React Flow compatibility
 type WorkflowCanvasNode = Node<BaseNodeData>
@@ -41,7 +42,7 @@ import {
   createEmptyWorkflow,
   createWorkflowNode,
 } from '../modules/services/workflowParser'
-import { validateWorkflow, validateWorkflowQuick } from '../modules/services/workflowValidator'
+import { validateWorkflow } from '../modules/services/workflowValidator'
 
 // ============================================================================
 // Undo/Redo History Management
@@ -344,6 +345,30 @@ function findDockTargetAtPosition(
   return null
 }
 
+/** Captured prompt info for debugging */
+export interface PromptSentInfo {
+  nodeId: string
+  source: string
+  resolvedPath?: string
+  compiledPrompt: string
+  params: Record<string, unknown>
+  provider?: string
+  model?: string
+  timestamp: number
+}
+
+/** Execution history entry */
+export interface ExecutionHistoryEntry {
+  id: string
+  workflowName: string
+  status: 'success' | 'error' | 'cancelled'
+  timestamp: number
+  duration: number
+  result: WorkflowResult & { trace?: ExecutionTrace }
+  checkpoints: CheckpointEvent[]
+  promptsSent: PromptSentInfo[]
+}
+
 interface WorkflowStoreState {
   // Workflow file data
   workflowFile: WorkflowFile | null
@@ -368,42 +393,10 @@ interface WorkflowStoreState {
 
   // Execution state
   executionState: WorkflowExecutionState | null
-
-  // Execution panel state (persists across tab switches)
-  executionResult: (import('../modules/services/workflowTypes').WorkflowResult & { trace?: import('../modules/services/workflowExecutor').ExecutionTrace }) | null
-  checkpoints: import('../modules/services/workflowExecutor').CheckpointEvent[]
-  promptsSent: Array<{
-    nodeId: string
-    source: string
-    resolvedPath?: string
-    compiledPrompt: string
-    params: Record<string, unknown>
-    provider?: string
-    model?: string
-    timestamp: number
-  }>
-
-  // Execution history (last 20 executions)
-  executionHistory: Array<{
-    id: string
-    workflowId: string
-    workflowName: string
-    timestamp: number
-    duration: number
-    status: 'success' | 'error' | 'cancelled'
-    result: (import('../modules/services/workflowTypes').WorkflowResult & { trace?: import('../modules/services/workflowExecutor').ExecutionTrace })
-    checkpoints: import('../modules/services/workflowExecutor').CheckpointEvent[]
-    promptsSent: Array<{
-      nodeId: string
-      source: string
-      resolvedPath?: string
-      compiledPrompt: string
-      params: Record<string, unknown>
-      provider?: string
-      model?: string
-      timestamp: number
-    }>
-  }>
+  executionResult: (WorkflowResult & { trace?: ExecutionTrace }) | null
+  checkpoints: CheckpointEvent[]
+  promptsSent: PromptSentInfo[]
+  executionHistory: ExecutionHistoryEntry[]
 
   // UI state
   isDirty: boolean
@@ -442,7 +435,7 @@ interface WorkflowStoreState {
   serializeToJson: () => string
   clearWorkflow: () => void
   updateWorkflowParameters: (parameters: import('../modules/services/workflowTypes').WorkflowParameter[]) => void
-  runValidation: () => void
+  revalidate: () => void
 
   // Clipboard for copy/paste
   clipboard: { node: WorkflowCanvasNode; edges: WorkflowCanvasEdge[] } | null
@@ -491,22 +484,11 @@ interface WorkflowStoreState {
   // Execution
   setExecutionState: (state: WorkflowExecutionState | null) => void
   updateNodeExecutionStatus: (nodeId: string, status: NodeExecutionStatus, output?: unknown) => void
-
-  // Execution panel
-  setExecutionResult: (result: (import('../modules/services/workflowTypes').WorkflowResult & { trace?: import('../modules/services/workflowExecutor').ExecutionTrace }) | null) => void
-  setCheckpoints: (checkpoints: import('../modules/services/workflowExecutor').CheckpointEvent[]) => void
-  setPromptsSent: (prompts: Array<{
-    nodeId: string
-    source: string
-    resolvedPath?: string
-    compiledPrompt: string
-    params: Record<string, unknown>
-    provider?: string
-    model?: string
-    timestamp: number
-  }>) => void
+  setExecutionResult: (result: (WorkflowResult & { trace?: ExecutionTrace }) | null) => void
+  setCheckpoints: (checkpoints: CheckpointEvent[]) => void
+  setPromptsSent: (prompts: PromptSentInfo[]) => void
   clearExecutionState: () => void
-  loadExecutionFromHistory: (historyId: string) => void
+  loadExecutionFromHistory: (id: string) => void
   clearExecutionHistory: () => void
 
   // UI
@@ -566,15 +548,30 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
 
     // Load workflow from JSON
     loadWorkflow: (json: string) => {
+      // Parse the workflow (returns empty workflow with errors if JSON is invalid/empty)
       const parsed = parseWorkflow(json)
+
       set(state => {
+        // CRITICAL: Always replace state completely to avoid stale data from previous workflows
+        // This ensures switching between workflows properly clears old content
         state.workflowFile = parsed.file
         state.nodes = parsed.nodes
         state.edges = parsed.edges
         state.errors = parsed.errors
         state.warnings = parsed.warnings
-        state.isDirty = false,
-        
+        state.isDirty = false
+
+        // Reset ALL execution and UI state
+        state.selectedNodeId = null
+        state.selectedEdgeId = null
+        state.executionState = null
+        state.executionResult = null
+        state.executionHistory = []
+        state.checkpoints = []
+        state.promptsSent = []
+        state.contextMenu = null
+        state.clipboard = null
+
         // Reset history on load
         state.history = [{
           workflowFile: cloneWorkflowFile(parsed.file),
@@ -584,9 +581,6 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         }]
         state.historyIndex = 0
         state.lastHistoryTimestamp = Date.now()
-        state.selectedNodeId = null
-        state.selectedEdgeId = null
-        state.executionState = null
 
         // First pass: Ensure edge animation is consistent and apply locked state
         state.edges = state.edges.map(edge => {
@@ -635,13 +629,6 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
             })
           }
         }
-
-        // Run validation on the loaded workflow
-        if (state.workflowFile) {
-          const validationResult = validateWorkflow(state.workflowFile)
-          state.errors = validationResult.errors
-          state.warnings = validationResult.warnings
-        }
       })
     },
 
@@ -675,17 +662,6 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         if (state.workflowFile) {
           state.workflowFile.parameters = parameters
           state.isDirty = true
-        }
-      })
-    },
-
-    // Run validation on the current workflow
-    runValidation: () => {
-      set(state => {
-        if (state.workflowFile) {
-          const result = validateWorkflow(state.workflowFile)
-          state.errors = result.errors
-          state.warnings = result.warnings
         }
       })
     },
@@ -828,12 +804,9 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         const rfNode = state.nodes[nodeIndex]
         const fileNode = state.workflowFile?.nodes.find(n => n.id === nodeId)
 
-        console.log('[onNodeDragStop] Node:', nodeId, 'Type:', rfNode.type, 'Docking state:', state.dockingState)
-
         // Check if we should dock this node
         if (state.dockingState?.draggingNodeId === nodeId && state.dockingState.hoveredDockTarget) {
           const { nodeId: hostNodeId, handleId } = state.dockingState.hoveredDockTarget
-          console.log('[Docking] ⚓ DOCKING node', nodeId, 'to', hostNodeId, 'handle:', handleId)
 
           const hostNode = state.nodes.find(n => n.id === hostNodeId)
           if (!hostNode) {
@@ -1390,6 +1363,9 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         })
         state.isDirty = true
       })
+
+      // Revalidate workflow after updating node data
+      get().revalidate()
     },
 
     // Delete a node
@@ -2106,38 +2082,9 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
       })
     },
 
-    // Execution panel actions
     setExecutionResult: (result) => {
       set(state => {
         state.executionResult = result
-        if (result) {
-          // Add to execution history (max 20 entries)
-          const historyEntry = {
-            id: `exec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-            workflowId: state.workflowFile.metadata.id,
-            workflowName: state.workflowFile.metadata.name,
-            timestamp: Date.now(),
-            duration: result.endTime - result.startTime,
-            status: (result.success ? 'success' : 'error') as 'success' | 'error' | 'cancelled',
-            result,
-            checkpoints: state.checkpoints,
-            promptsSent: state.promptsSent,
-          }
-
-          // Add to front of array (newest first)
-          state.executionHistory.unshift(historyEntry)
-
-          // Keep only last 20 executions
-          if (state.executionHistory.length > 20) {
-            state.executionHistory = state.executionHistory.slice(0, 20)
-          }
-
-          // Trigger bottom panel to show execution tab and expand
-          const uiStore = useUIStore.getState()
-          uiStore.setShowBottomPanel(true)
-          uiStore.setActiveBottomTab('execution')
-          uiStore.setBottomPanelMinimized(false)
-        }
       })
     },
 
@@ -2158,18 +2105,20 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         state.executionResult = null
         state.checkpoints = []
         state.promptsSent = []
+        state.executionState = null
       })
     },
 
-    loadExecutionFromHistory: (historyId: string) => {
-      set(state => {
-        const entry = state.executionHistory.find(h => h.id === historyId)
-        if (entry) {
-          state.executionResult = entry.result
-          state.checkpoints = entry.checkpoints
-          state.promptsSent = entry.promptsSent
-        }
-      })
+    loadExecutionFromHistory: (id) => {
+      const state = get()
+      const entry = state.executionHistory.find(e => e.id === id)
+      if (entry) {
+        set(draft => {
+          draft.executionResult = entry.result
+          draft.checkpoints = entry.checkpoints
+          draft.promptsSent = entry.promptsSent
+        })
+      }
     },
 
     clearExecutionHistory: () => {
@@ -2429,6 +2378,20 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
     canRedo: () => {
       const state = get()
       return state.historyIndex < state.history.length - 1
+    },
+
+    /**
+     * Revalidate the current workflow and update errors/warnings
+     */
+    revalidate: () => {
+      const state = get()
+      if (!state.workflowFile) return
+
+      const validationResult = validateWorkflow(state.workflowFile)
+      set(draft => {
+        draft.errors = validationResult.errors
+        draft.warnings = validationResult.warnings
+      })
     },
   }))
 )

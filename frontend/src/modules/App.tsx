@@ -18,8 +18,11 @@ import { LocalStorageModal } from './components/LocalStorageModal'
 import { PublishModal } from './components/PublishModal'
 import { SettingsModal } from './components/SettingsModal'
 import { AboutModal } from './components/AboutModal'
+import { DeploymentModal } from './components/deployment/DeploymentModal'
+import { DeployWorkflowModal } from './components/deployment/DeployWorkflowModal'
 import { PrompdPreviewModal } from './components/PrompdPreviewModal'
 import LocalPackageModal from './editor/LocalPackageModal'
+import { ExecutionResultModal, type ExecutionResult } from './editor/ExecutionResultModal'
 import PrompdJsonDesignView from './components/PrompdJsonDesignView'
 import { WorkflowCanvas } from './editor/WorkflowCanvas'
 import PackageDetailsModal from './editor/PackageDetailsModal'
@@ -32,7 +35,8 @@ import { CommandPalette } from './components/CommandPalette'
 import { FirstTimeSetupWizard, isOnboardingComplete, isWizardDismissed } from './components/FirstTimeSetupWizard'
 import { InlineHints } from './components/InlineHints'
 import { markHintSeen } from './services/onboardingService'
-import { DiffDemo } from './components/DiffDemo'
+// DISABLED: DiffDemo imports monacoDiff which breaks Monaco Code Actions
+// import { DiffDemo } from './components/DiffDemo'
 import type { FileNode } from './services/packageCache'
 import type { RegistryPackage } from './services/registryApi'
 import { parsePrompd } from './lib/prompdParser'
@@ -48,6 +52,7 @@ import { localProjectStorage, LocalProject } from './services/localProjectStorag
 import { hotkeyManager } from './services/hotkeyManager'
 import { setWorkspaceFiles, clearWorkspaceFiles } from './services/workspaceService'
 import { buildPrompdFile, executePrompdConfig } from './services/executionService'
+import { parseWorkflow } from './services/workflowParser'
 import { usageTracker } from './services/usageTracker'
 import { initializeRegistrySync, cleanupRegistrySync } from './lib/intellisense/registrySync'
 import { useMonaco } from '@monaco-editor/react'
@@ -78,63 +83,51 @@ function MonacoMarkerListener({
     const updateMarkers = () => {
       const rawMarkers = monaco.editor.getModelMarkers({})
 
-      // Build a map of tab IDs to tab names for resolving temp models
-      const tabMap = new Map<string, string>()
-      for (const tab of tabs) {
-        tabMap.set(tab.id, tab.name)
-        const fileName = tab.name.split(/[/\\]/).pop() || tab.name
-        tabMap.set(fileName, tab.name)
+      // Build a map of URIs to tab names for filtering
+      const uriToTabName = new Map<string, string>()
+      const currentModels = monaco.editor.getModels()
+
+      // Map each currently open model to its tab
+      for (const model of currentModels) {
+        const modelUri = model.uri.toString()
+
+        // Find matching tab by comparing model URI or content
+        for (const tab of tabs) {
+          // Check if URI matches tab's file path
+          if (tab.filePath && modelUri.includes(tab.filePath.replace(/\\/g, '/'))) {
+            uriToTabName.set(modelUri, tab.name)
+            break
+          }
+
+          // Check if model ID matches tab ID (for temp models)
+          const modelId = modelUri.split('/').pop() || ''
+          if (tab.id === modelId || tab.id.includes(modelId)) {
+            uriToTabName.set(modelUri, tab.name)
+            break
+          }
+
+          // Check if model content matches tab content (fallback)
+          if (model.getValue() === tab.text) {
+            uriToTabName.set(modelUri, tab.name)
+            break
+          }
+        }
       }
 
-      // Convert to BuildError format and deduplicate
+      // Convert to BuildError format - only include markers from currently open tabs
       const seen = new Set<string>()
       const buildErrors: BuildError[] = []
 
       for (const m of rawMarkers) {
         const uri = m.resource.toString()
-        let filePath = uri
 
-        if (uri.startsWith('file:///')) {
-          filePath = decodeURIComponent(uri.replace('file:///', ''))
-          if (filePath.match(/^[a-zA-Z]:\//)) {
-            filePath = filePath.replace(/\//g, '\\')
-          }
+        // Skip markers from models that aren't in currently open tabs
+        const displayFile = uriToTabName.get(uri)
+        if (!displayFile) {
+          continue // Model not associated with any open tab, skip it
         }
 
-        const fileName = filePath.split(/[/\\]/).pop() || filePath
-        const isTempModel = /^t-\d+-[a-z0-9]+$/i.test(fileName)
-
-        let displayFile = filePath
-
-        if (isTempModel) {
-          let matchedTab: string | undefined
-
-          for (const tab of tabs) {
-            if (tab.id.includes(fileName) || tab.id === fileName) {
-              matchedTab = tab.name
-              break
-            }
-          }
-
-          if (!matchedTab) {
-            const models = monaco.editor.getModels()
-            for (const model of models) {
-              if (model.uri.toString() === uri || model.uri.toString().endsWith(fileName)) {
-                const modelValue = model.getValue()
-                for (const tab of tabs) {
-                  if (tab.text === modelValue) {
-                    matchedTab = tab.name
-                    break
-                  }
-                }
-                break
-              }
-            }
-          }
-
-          displayFile = matchedTab || fileName
-        }
-
+        // Deduplicate by file:line:column:message
         const key = `${displayFile}:${m.startLineNumber}:${m.startColumn}:${m.message}`
         if (seen.has(key)) continue
         seen.add(key)
@@ -301,12 +294,6 @@ export default function App() {
   const checkpoints = useWorkflowStore(state => state.checkpoints)
   const promptsSent = useWorkflowStore(state => state.promptsSent)
 
-  // Demo mode (show diff examples via ?demo=diff query param)
-  const [showDiffDemo, setShowDiffDemo] = useState(() => {
-    const params = new URLSearchParams(window.location.search)
-    return params.get('demo') === 'diff'
-  })
-
   // Workspace state management
   const saveWorkspaceState = useEditorStore(state => state.saveWorkspaceState)
 
@@ -389,6 +376,30 @@ export default function App() {
 
   // Pending edit state for inline diff view (shared between AiChatPanel and PrompdEditor)
   const [editorPendingEdit, setEditorPendingEdit] = useState<EditorPendingEdit | null>(null)
+
+  // Prompd execution session history (cleared on app close, shown in bottom panel)
+  const [prompdSessionHistory, setPrompdSessionHistory] = useState<Array<{
+    id: string
+    timestamp: number
+    provider: string
+    model: string
+    compiledPrompt: string
+    response?: string
+    error?: string
+    success: boolean
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+    duration: number
+    context?: string
+  }>>([])
+
+  // Execution state tracking
+  const [isExecutingPreview, setIsExecutingPreview] = useState(false)
+
+  // Execution result modal state
+  const [showExecutionModal, setShowExecutionModal] = useState(false)
+  const [selectedExecutionIndex, setSelectedExecutionIndex] = useState(0)
 
   // Local package modal state
   const [localPackageInfo, setLocalPackageInfo] = useState<{
@@ -771,12 +782,15 @@ export default function App() {
     if (!electronAPI?.updateMenuState) return
 
     const activeTab = tabs.find(t => t.id === activeTabId)
-    const isPrompdFile = activeTab?.name?.toLowerCase().endsWith('.prmd') || false
+    const activeFileName = activeTab?.name?.toLowerCase() || ''
+    const isPrompdFile = activeFileName.endsWith('.prmd')
+    const isWorkflowFile = activeFileName.endsWith('.pdflow')
 
     electronAPI.updateMenuState({
       hasWorkspace: !!explorerDirHandle,
       hasActiveTab: !!activeTabId && tabs.length > 0,
       isPrompdFile,
+      isWorkflowFile,
       canExecute: isPrompdFile && !!activeTab
     })
   }, [explorerDirHandle, activeTabId, tabs])
@@ -861,13 +875,16 @@ export default function App() {
 
         // Update the execution tab with new content and parameters
         updateTab(execTab.id, {
+          filePath: sourceTab.filePath,
           executionConfig: {
             ...execTab.executionConfig,
             prompdSource: {
               ...execTab.executionConfig.prompdSource,
               content: sourceTab.text,
-              originalParams: newOriginalParams
-            }
+              originalParams: newOriginalParams,
+              filePath: sourceTab.filePath
+            },
+            workspacePath: explorerDirPath || execTab.executionConfig.workspacePath
           }
         })
       }
@@ -2105,6 +2122,70 @@ version: 1.0.0
     aiShowNotification('Changes declined', 'info')
   }, [aiShowNotification])
 
+  // Shared file reader for workspace files (used by execution handlers)
+  const readFileFromWorkspace = useCallback(async (filePath: string): Promise<string | null> => {
+    const electronAPI = (window as { electronAPI?: { readFile: (path: string) => Promise<{ success: boolean; content?: string; error?: string }>, getWorkspacePath: () => Promise<string | null> } }).electronAPI
+
+    // Electron mode: use IPC bridge
+    if (electronAPI?.readFile) {
+      try {
+        // Check if path is already absolute
+        const isAbsolutePath = /^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('/')
+        let fullPath: string
+
+        if (isAbsolutePath) {
+          fullPath = filePath.replace(/\\/g, '/')
+        } else {
+          // Get workspace path
+          let workspacePath = await electronAPI.getWorkspacePath()
+          if (!workspacePath && explorerDirHandle && (explorerDirHandle as any)._electronPath) {
+            workspacePath = (explorerDirHandle as any)._electronPath
+          }
+          if (!workspacePath) {
+            return null
+          }
+
+          const normalizedPath = filePath.replace(/^\.\//, '')
+          fullPath = `${workspacePath}/${normalizedPath}`.replace(/\\/g, '/')
+        }
+
+        const result = await electronAPI.readFile(fullPath)
+        if (result.success && result.content !== undefined) {
+          return result.content
+        }
+        return null
+      } catch (error) {
+        console.warn(`Failed to read ${filePath}:`, error)
+        return null
+      }
+    }
+
+    // Web mode: use File System Access API
+    if (!explorerDirHandle) {
+      return null
+    }
+
+    try {
+      const normalizedPath = filePath.replace(/^\.\//, '').replace(/\\/g, '/')
+      const pathParts = normalizedPath.split('/').filter(p => p && p !== '.')
+
+      let dirHandle: FileSystemDirectoryHandle = explorerDirHandle
+      for (let i = 0; i < pathParts.length - 1; i++) {
+        dirHandle = await dirHandle.getDirectoryHandle(pathParts[i])
+      }
+
+      const fileName = pathParts[pathParts.length - 1]
+      const fileHandle = await dirHandle.getFileHandle(fileName)
+      const file = await fileHandle.getFile()
+      const content = await file.text()
+
+      return content
+    } catch (error) {
+      console.warn(`Failed to load file ${filePath}:`, error)
+      return null
+    }
+  }, [explorerDirHandle])
+
   // Handle executing a .prmd file - creates execution tab
   const handleExecutePrompd = useCallback(async () => {
     const activeTab = getActiveTab()
@@ -2239,19 +2320,25 @@ version: 1.0.0
       text: '',
       type: 'execution',
       handle: activeTab.handle,
+      filePath: activeTab.filePath,
       executionConfig: {
         sourceTabId: activeTab.id,
         prompdSource: {
           type: 'file',
           content: activeTab.text,
-          originalParams
+          originalParams,
+          filePath: activeTab.filePath
         },
         parameters: activeTab.previewParams || {},
         customParameters: [],
         sections: extractedSections,
         provider: llmProvider.provider,
         model: llmProvider.model,
-        executionHistory: []
+        maxTokens: llmProvider.maxTokens,
+        temperature: llmProvider.temperature,
+        mode: llmProvider.generationMode,
+        executionHistory: [],
+        workspacePath: explorerDirPath || undefined
       }
     }
 
@@ -2264,7 +2351,177 @@ version: 1.0.0
     } else {
       aiShowNotification(`Created execution workspace for ${activeTab.name}`, 'info')
     }
-  }, [getActiveTab, explorerDirHandle, llmProvider.provider, llmProvider.model, addTab, aiShowNotification, autoSaveEnabled])
+  }, [getActiveTab, explorerDirHandle, explorerDirPath, llmProvider.provider, llmProvider.model, llmProvider.maxTokens, llmProvider.temperature, llmProvider.generationMode, addTab, aiShowNotification, autoSaveEnabled])
+
+  // Handle direct execution from preview (without creating execution tab)
+  const handleExecuteFromPreview = useCallback(async () => {
+    const activeTab = getActiveTab()
+    if (!activeTab || activeTab.type === 'execution') return
+
+    // Open bottom panel minimized to Prompds tab if closed
+    const currentPanelState = useUIStore.getState()
+    if (!currentPanelState.showBottomPanel) {
+      setShowBottomPanel(true)
+      setActiveBottomTab('prompds')
+      setBottomPanelMinimized(true)
+    }
+
+    // Set executing state
+    setIsExecutingPreview(true)
+
+    // Build execution config
+    const executionConfig = {
+      prompdSource: {
+        type: 'file' as const,
+        content: activeTab.text,
+        originalParams: [],
+        filePath: activeTab.filePath
+      },
+      parameters: activeTab.previewParams || {},
+      customParameters: [],
+      sections: {},
+      provider: llmProvider.provider,
+      model: llmProvider.model,
+      maxTokens: llmProvider.maxTokens,
+      temperature: llmProvider.temperature,
+      mode: llmProvider.generationMode,
+      executionHistory: [],
+      workspacePath: explorerDirPath || undefined
+    }
+
+    try {
+      // Execute the prompd
+      const result = await executePrompdConfig(
+        executionConfig,
+        async () => {
+          const token = await getToken()
+          return token
+        },
+        readFileFromWorkspace,
+        activeTab.filePath || undefined,
+        {
+          workspacePath: explorerDirPath,
+          selectedEnvFile
+        }
+      )
+
+      if (result.status === 'success') {
+        aiShowNotification('Execution completed successfully', 'info')
+
+        // Extract compiled prompt text
+        const compiledPromptText = typeof result.compiledPrompt === 'string'
+          ? result.compiledPrompt
+          : result.compiledPrompt?.finalPrompt || ''
+
+        // Add to session history
+        setPrompdSessionHistory(prev => [...prev, {
+          id: `exec-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          timestamp: Date.now(),
+          provider: result.metadata?.provider || executionConfig.provider,
+          model: result.metadata?.model || executionConfig.model,
+          compiledPrompt: compiledPromptText,
+          response: result.content,
+          success: true,
+          promptTokens: result.metadata?.tokensUsed?.input || 0,
+          completionTokens: result.metadata?.tokensUsed?.output || 0,
+          totalTokens: result.metadata?.tokensUsed?.total || 0,
+          duration: result.metadata?.duration || 0,
+          context: activeTab.name || 'preview'
+        }])
+
+        // Record to IndexedDB
+        usageTracker.recordExecution({
+          provider: result.metadata?.provider || executionConfig.provider,
+          model: result.metadata?.model || executionConfig.model,
+          promptTokens: result.metadata?.tokensUsed?.input || 0,
+          completionTokens: result.metadata?.tokensUsed?.output || 0,
+          totalTokens: result.metadata?.tokensUsed?.total || 0,
+          duration: result.metadata?.duration || 0,
+          success: true,
+          executionMode: result.metadata?.executionMode || 'local',
+          compiledPrompt: compiledPromptText,
+          response: result.content,
+          context: activeTab.name || 'preview'
+        }).catch(err => {
+          console.warn('[App.tsx] Failed to record execution to IndexedDB:', err)
+        })
+
+        // Show bottom panel with Prompds tab, expand if minimized
+        setShowBottomPanel(true)
+        setActiveBottomTab('prompds')
+        setBottomPanelMinimized(false)
+        setIsExecutingPreview(false)
+      } else {
+        const isAuthError = result.content.includes('Unauthorized') || result.content.includes('Authentication required')
+
+        if (isAuthError) {
+          aiShowNotification(
+            'Backend authentication required. Please start the backend server (port 3010) with MongoDB and API keys configured.',
+            'error'
+          )
+        } else {
+          aiShowNotification(
+            `Execution failed: ${result.content}`,
+            'error'
+          )
+        }
+
+        // Add failed execution to session history
+        const compiledPromptForError = typeof result.compiledPrompt === 'string'
+          ? result.compiledPrompt
+          : result.compiledPrompt?.finalPrompt || ''
+        setPrompdSessionHistory(prev => [...prev, {
+          id: `exec-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          timestamp: Date.now(),
+          provider: result.metadata?.provider || executionConfig.provider,
+          model: result.metadata?.model || executionConfig.model,
+          compiledPrompt: compiledPromptForError,
+          error: result.content,
+          success: false,
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          duration: result.metadata?.duration || 0,
+          context: activeTab.name || 'preview'
+        }])
+
+        // Record failed execution to IndexedDB
+        usageTracker.recordExecution({
+          provider: result.metadata?.provider || executionConfig.provider,
+          model: result.metadata?.model || executionConfig.model,
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          duration: result.metadata?.duration || 0,
+          success: false,
+          error: result.content,
+          executionMode: result.metadata?.executionMode || 'local',
+          context: activeTab.name || 'preview'
+        }).catch(err => {
+          console.warn('[App.tsx] Failed to record failed execution to IndexedDB:', err)
+        })
+
+        // Show bottom panel with Prompds tab, expand if minimized
+        setShowBottomPanel(true)
+        setActiveBottomTab('prompds')
+        setBottomPanelMinimized(false)
+        setIsExecutingPreview(false)
+      }
+    } catch (error) {
+      console.error('Unexpected execution error:', error)
+      aiShowNotification(
+        `Unexpected error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'error'
+      )
+      setIsExecutingPreview(false)
+    }
+  }, [getActiveTab, llmProvider.provider, llmProvider.model, llmProvider.maxTokens, llmProvider.temperature, llmProvider.generationMode, explorerDirPath, selectedEnvFile, setShowBottomPanel, setActiveBottomTab, setBottomPanelMinimized, aiShowNotification, setPrompdSessionHistory, getToken, readFileFromWorkspace])
+
+  // Handle viewing execution in modal
+  const handleViewExecution = useCallback((index: number) => {
+    setSelectedExecutionIndex(index)
+    setShowExecutionModal(true)
+  }, [])
 
   // Update ref when active tab changes or handleExecutePrompd changes
   // Must include activeTabId to re-run when switching tabs or opening files
@@ -2915,6 +3172,20 @@ Write your prompt here...
     })
     if (unsubPackagePublish) cleanups.push(unsubPackagePublish)
 
+    // Menu: Deploy Workflow (current workflow)
+    const unsubPackageDeploy = electronAPI.onMenuPackageDeploy?.(() => {
+      console.log('[App.tsx] Menu package deploy')
+      openModal('deploy-workflow')
+    })
+    if (unsubPackageDeploy) cleanups.push(unsubPackageDeploy)
+
+    // Menu: Manage Deployments (view all)
+    const unsubDeploymentManage = electronAPI.onMenuDeploymentManage?.(() => {
+      console.log('[App.tsx] Menu deployment manage')
+      openModal('deployment')
+    })
+    if (unsubDeploymentManage) cleanups.push(unsubDeploymentManage)
+
     // Menu: Install Package
     const unsubPackageInstall = electronAPI.onMenuPackageInstall?.(() => {
       console.log('[App.tsx] Menu package install')
@@ -3059,6 +3330,82 @@ Write your prompt here...
       setShowCommandPalette(true)
     })
     if (unsubCommandPalette) cleanups.push(unsubCommandPalette)
+
+    // Workflow: Handle scheduled/deployed workflow execution requests
+    const unsubWorkflowExecute = electronAPI.workflow?.onExecuteRequest?.(async (data: { workflowPath: string; parameters?: Record<string, unknown>; trigger?: string; scheduleId?: string }) => {
+      console.log('[App.tsx] Scheduled workflow execution requested:', data)
+      const startTime = Date.now()
+
+      try {
+        // Load workflow file
+        console.log('[App.tsx] Reading workflow file:', data.workflowPath)
+        const workflowContent = await electronAPI.readFile(data.workflowPath)
+        if (!workflowContent.success) {
+          throw new Error(workflowContent.error || 'Failed to read workflow file')
+        }
+
+        // Parse workflow
+        console.log('[App.tsx] Parsing workflow...')
+        const workflow = parseWorkflow(workflowContent.content)
+        if (!workflow) {
+          throw new Error('Failed to parse workflow')
+        }
+        console.log('[App.tsx] Workflow parsed successfully, executing...')
+
+        // Execute workflow (returns executionId immediately)
+        // Pass workflowFilePath so prompt node source paths resolve relative to the deployed workflow
+        const executeResult = await electronAPI.workflow?.execute(workflow, data.parameters || {}, {
+          executionMode: 'automated',
+          workflowFilePath: data.workflowPath
+        })
+
+        if (!executeResult) {
+          throw new Error('Workflow execution failed to start')
+        }
+
+        console.log('[App.tsx] Workflow execution started:', executeResult.executionId)
+
+        // Listen for workflow completion events
+        const cleanup = electronAPI.workflow?.onEvent?.((event: any) => {
+          if (event.executionId !== executeResult.executionId) return
+
+          if (event.type === 'complete') {
+            console.log('[App.tsx] Workflow execution completed, sending result...')
+
+            electronAPI.workflow?.sendExecutionResult({
+              success: true,
+              status: 'success',
+              result: event.data,
+              duration: Date.now() - startTime
+            })
+
+            console.log('[App.tsx] Execution result sent successfully')
+            if (cleanup) cleanup()
+          } else if (event.type === 'error') {
+            console.error('[App.tsx] Workflow execution error:', event.data)
+
+            electronAPI.workflow?.sendExecutionResult({
+              success: false,
+              status: 'error',
+              error: event.data?.message || 'Workflow execution failed',
+              duration: Date.now() - startTime
+            })
+
+            if (cleanup) cleanup()
+          }
+        })
+      } catch (error) {
+        console.error('[App.tsx] Scheduled workflow execution failed:', error)
+        // Send error result
+        electronAPI.workflow?.sendExecutionResult({
+          success: false,
+          status: 'error',
+          error: (error as Error).message,
+          duration: Date.now() - startTime
+        })
+      }
+    })
+    if (unsubWorkflowExecute) cleanups.push(unsubWorkflowExecute)
 
     // Cleanup on unmount or dependency change
     return () => {
@@ -3315,17 +3662,6 @@ Write your prompt here...
       }
     }
   }, [onOpenFile])
-
-  // Show diff demo if requested via query param
-  if (showDiffDemo) {
-    return <DiffDemo onClose={() => {
-      setShowDiffDemo(false)
-      // Remove query param from URL
-      const url = new URL(window.location.href)
-      url.searchParams.delete('demo')
-      window.history.replaceState({}, '', url.toString())
-    }} />
-  }
 
   return (
     <div
@@ -3769,6 +4105,15 @@ Write your prompt here...
 
                       setExecutingTab(activeTabId, true)
 
+                      // Open bottom panel minimized to Prompds tab if closed
+                      // If already open, keep current state (animation will show when execution completes)
+                      const currentPanelState = useUIStore.getState()
+                      if (!currentPanelState.showBottomPanel) {
+                        setShowBottomPanel(true)
+                        setActiveBottomTab('prompds')
+                        setBottomPanelMinimized(true)
+                      }
+
                       try {
                         // Get FRESH config from current tab state (not from closure)
                         // This ensures we use the latest sections after user modifications
@@ -4001,6 +4346,27 @@ Write your prompt here...
                           }).catch(err => {
                             console.warn('[App.tsx] Failed to record execution to IndexedDB:', err)
                           })
+
+                          // Add to session history (cleared on app close, shown in bottom panel)
+                          setPrompdSessionHistory(prev => [...prev, {
+                            id: `exec-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                            timestamp: Date.now(),
+                            provider: result.metadata?.provider || executionConfig.provider,
+                            model: result.metadata?.model || executionConfig.model,
+                            compiledPrompt: compiledPromptText,
+                            response: result.content,
+                            success: true,
+                            promptTokens: result.metadata?.tokensUsed?.input || 0,
+                            completionTokens: result.metadata?.tokensUsed?.output || 0,
+                            totalTokens: result.metadata?.tokensUsed?.total || 0,
+                            duration: result.metadata?.duration || 0,
+                            context: executionConfig.prompdSource.packageRef || activeTab?.name || 'local'
+                          }])
+
+                          // Show bottom panel with Prompds tab, expand if minimized
+                          setShowBottomPanel(true)
+                          setActiveBottomTab('prompds')
+                          setBottomPanelMinimized(false)
                         } else {
                           const isAuthError = result.content.includes('Unauthorized') || result.content.includes('Authentication required')
 
@@ -4031,6 +4397,30 @@ Write your prompt here...
                           }).catch(err => {
                             console.warn('[App.tsx] Failed to record failed execution to IndexedDB:', err)
                           })
+
+                          // Add failed execution to session history
+                          const compiledPromptForError = typeof result.compiledPrompt === 'string'
+                            ? result.compiledPrompt
+                            : result.compiledPrompt?.finalPrompt || ''
+                          setPrompdSessionHistory(prev => [...prev, {
+                            id: `exec-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                            timestamp: Date.now(),
+                            provider: result.metadata?.provider || executionConfig.provider,
+                            model: result.metadata?.model || executionConfig.model,
+                            compiledPrompt: compiledPromptForError,
+                            error: result.content,
+                            success: false,
+                            promptTokens: 0,
+                            completionTokens: 0,
+                            totalTokens: 0,
+                            duration: result.metadata?.duration || 0,
+                            context: executionConfig.prompdSource.packageRef || activeTab?.name || 'local'
+                          }])
+
+                          // Show bottom panel with Prompds tab, expand if minimized
+                          setShowBottomPanel(true)
+                          setActiveBottomTab('prompds')
+                          setBottomPanelMinimized(false)
                         }
                       } catch (error) {
                         console.error('Unexpected execution error:', error)
@@ -4293,6 +4683,7 @@ Write your prompt here...
                       activeTabId={activeTabId}
                       onChange={setText}
                       readOnly={activeTab?.readOnly}
+                      onDeploy={() => openModal('deploy-workflow')}
                     />
                   )
                 }
@@ -4361,7 +4752,48 @@ Write your prompt here...
                           return null
                         }
 
-                        return resolvedPath.startsWith('./') ? resolvedPath : `./${resolvedPath}`
+                        // Convert workspace path to source-relative path for the compiler
+                        // The @prompd/cli compiler resolves ALL paths relative to the source file
+                        // So "contexts/data.csv" from "prompts/file.prmd" needs to be "../contexts/data.csv"
+                        const sourceFilePath = activeTab?.name?.replace(/\\/g, '/') || ''
+                        const sourceDir = sourceFilePath.includes('/')
+                          ? sourceFilePath.substring(0, sourceFilePath.lastIndexOf('/') + 1)
+                          : ''
+
+                        let relativeFilePath = resolvedPath
+                        if (sourceDir) {
+                          // Calculate relative path from source directory to target file
+                          const sourceParts = sourceDir.split('/').filter(p => p)
+                          const targetParts = resolvedPath.replace(/\\/g, '/').split('/').filter(p => p)
+
+                          // Find common prefix
+                          let commonLength = 0
+                          while (commonLength < sourceParts.length &&
+                                 commonLength < targetParts.length &&
+                                 sourceParts[commonLength] === targetParts[commonLength]) {
+                            commonLength++
+                          }
+
+                          // Build relative path: ../ for each remaining source dir, then target path
+                          const upCount = sourceParts.length - commonLength
+                          const remainingTarget = targetParts.slice(commonLength)
+
+                          if (upCount > 0 || remainingTarget.length > 0) {
+                            relativeFilePath = '../'.repeat(upCount) + remainingTarget.join('/')
+                          }
+
+                          // Ensure it starts with ./ or ../ for explicit relative path
+                          if (!relativeFilePath.startsWith('../')) {
+                            relativeFilePath = './' + relativeFilePath
+                          }
+
+                          console.log(`[App.tsx] DesignView: Converted path: ${resolvedPath} → ${relativeFilePath} (relative to ${sourceDir})`)
+                        } else {
+                          // No source directory, ensure workspace-relative path starts with ./
+                          relativeFilePath = resolvedPath.startsWith('./') ? resolvedPath : `./${resolvedPath}`
+                        }
+
+                        return relativeFilePath
                       } catch (error) {
                         if (error instanceof Error && error.name === 'AbortError') {
                           return null
@@ -4408,6 +4840,64 @@ Write your prompt here...
                         if (activeTabId) {
                           updateTab(activeTabId, { previewParams: params })
                         }
+                      }}
+                      showContextSections={true}
+                      hasFolderOpen={!!explorerDirPath}
+                      onFileUpload={async (sectionName: string, files: File[]) => {
+                        // Read file contents and return file paths
+                        const filePaths: string[] = []
+                        for (const file of files) {
+                          filePaths.push(file.name)
+                        }
+                        return filePaths
+                      }}
+                      onSelectFromBrowser={async (sectionName: string) => {
+                        // Open file picker for workspace files
+                        const files = await window.electronAPI?.showOpenDialog({
+                          title: `Select file for ${sectionName} section`,
+                          filters: [{ name: 'All Files', extensions: ['*'] }],
+                          properties: ['openFile']
+                        })
+                        if (files && files.length > 0) {
+                          return files[0]
+                        }
+                        return null
+                      }}
+                      showExecution={true}
+                      onExecute={handleExecuteFromPreview}
+                      isExecuting={isExecutingPreview}
+                      canExecute={true}
+                      executionProvider={llmProvider.provider}
+                      executionModel={llmProvider.model}
+                      executionProviders={
+                        llmProvider.providersWithPricing?.map(p => ({
+                          id: p.providerId,
+                          name: p.displayName,
+                          models: p.models.map(m => ({
+                            id: m.model,
+                            name: m.displayName
+                          }))
+                        })) || []
+                      }
+                      onExecutionProviderChange={(provider) => {
+                        const setLLMProvider = useUIStore.getState().setLLMProvider
+                        setLLMProvider(provider)
+                      }}
+                      onExecutionModelChange={(model) => {
+                        const setLLMModel = useUIStore.getState().setLLMModel
+                        setLLMModel(model)
+                      }}
+                      executionMaxTokens={llmProvider.maxTokens}
+                      executionTemperature={llmProvider.temperature}
+                      executionMode={llmProvider.generationMode}
+                      onExecutionMaxTokensChange={(value) => {
+                        useUIStore.getState().setLLMMaxTokens(value)
+                      }}
+                      onExecutionTemperatureChange={(value) => {
+                        useUIStore.getState().setLLMTemperature(value)
+                      }}
+                      onExecutionModeChange={(mode) => {
+                        useUIStore.getState().setLLMGenerationMode(mode)
                       }}
                     />
                   )
@@ -4680,6 +5170,39 @@ Write your prompt here...
         theme={theme}
       />
 
+      <DeployWorkflowModal
+        open={activeModal === 'deploy-workflow'}
+        onClose={closeModal}
+        workflow={(() => {
+          const activeTab = tabs.find(t => t.id === activeTabId)
+          if (!activeTab || !activeTab.name.toLowerCase().endsWith('.pdflow')) return null
+          try {
+            const parsed = JSON.parse(activeTab.text || '{}')
+            console.log('[App.tsx] Parsed workflow for deployment:', {
+              hasMetadata: !!parsed.metadata,
+              metadataName: parsed.metadata?.name,
+              metadataVersion: parsed.metadata?.version,
+              name: parsed.name,
+              workflowPath: activeTab?.filePath
+            })
+            return parsed
+          } catch (err) {
+            console.error('[App.tsx] Failed to parse workflow:', err)
+            return null
+          }
+        })()}
+        workflowPath={(() => {
+          const activeTab = tabs.find(t => t.id === activeTabId)
+          // Use absolute filePath if available, fallback to name
+          return activeTab?.filePath || activeTab?.name || null
+        })()}
+      />
+
+      <DeploymentModal
+        open={activeModal === 'deployment'}
+        onClose={closeModal}
+      />
+
       {/* First-Time Setup Wizard */}
       <FirstTimeSetupWizard
         isOpen={showFirstTimeWizard}
@@ -4749,12 +5272,60 @@ Write your prompt here...
         />
       )}
 
+      {/* Execution Result Modal */}
+      {showExecutionModal && prompdSessionHistory.length > 0 && (
+        <ExecutionResultModal
+          result={{
+            content: prompdSessionHistory[selectedExecutionIndex]?.response || prompdSessionHistory[selectedExecutionIndex]?.error || '',
+            status: prompdSessionHistory[selectedExecutionIndex]?.success ? 'success' : 'error',
+            timestamp: new Date(prompdSessionHistory[selectedExecutionIndex]?.timestamp).toISOString(),
+            compiledPrompt: prompdSessionHistory[selectedExecutionIndex]?.compiledPrompt || '',
+            metadata: {
+              provider: prompdSessionHistory[selectedExecutionIndex]?.provider || '',
+              model: prompdSessionHistory[selectedExecutionIndex]?.model || '',
+              duration: prompdSessionHistory[selectedExecutionIndex]?.duration || 0,
+              tokensUsed: {
+                input: prompdSessionHistory[selectedExecutionIndex]?.promptTokens || 0,
+                output: prompdSessionHistory[selectedExecutionIndex]?.completionTokens || 0,
+                total: prompdSessionHistory[selectedExecutionIndex]?.totalTokens || 0
+              }
+            }
+          }}
+          executionHistory={prompdSessionHistory.map(exec => ({
+            content: exec.response || exec.error || '',
+            status: exec.success ? 'success' : 'error',
+            timestamp: new Date(exec.timestamp).toISOString(),
+            compiledPrompt: exec.compiledPrompt,
+            metadata: {
+              provider: exec.provider,
+              model: exec.model,
+              duration: exec.duration,
+              tokensUsed: {
+                input: exec.promptTokens,
+                output: exec.completionTokens,
+                total: exec.totalTokens
+              }
+            }
+          }))}
+          selectedIndex={selectedExecutionIndex}
+          onSelectIndex={setSelectedExecutionIndex}
+          theme={theme === 'dark' ? 'vs-dark' : 'light'}
+          onClose={() => setShowExecutionModal(false)}
+          onRunAgain={() => {
+            setShowExecutionModal(false)
+            handleExecuteFromPreview()
+          }}
+        />
+      )}
+
       {/* Toast Notifications */}
       <ToastContainer />
 
       {/* Bottom Panel Tabs (Output + Execution) */}
       <BottomPanelTabs
         onOpenFile={handleOpenBuildErrorFile}
+        prompdExecutions={prompdSessionHistory}
+        onViewExecution={handleViewExecution}
         workflowResult={executionResult}
         checkpoints={checkpoints}
         promptsSent={promptsSent}

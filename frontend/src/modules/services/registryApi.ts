@@ -9,6 +9,7 @@ export interface RegistryPackage {
   version: string
   description: string
   author?: string
+  license?: string
   keywords?: string[]
   main?: string
   exports?: Record<string, string>

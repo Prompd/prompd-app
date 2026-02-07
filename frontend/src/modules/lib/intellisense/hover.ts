@@ -9,6 +9,34 @@ import { createFilterHover } from './filters'
 import { getEnvVarsCache } from './envCache'
 
 /**
+ * Nunjucks/Jinja2 syntax help - shown when hovering over template tags
+ */
+const nunjucksHelp: Record<string, { description: string; example?: string; link?: string }> = {
+  // Control flow
+  'if': { description: 'Conditional statement - executes block if condition is true', example: '{% if user %}Hello {{ user }}!{% endif %}', link: 'https://mozilla.github.io/nunjucks/templating.html#if' },
+  'elif': { description: 'Else-if condition - tests another condition if previous was false', example: '{% elif count > 0 %}Has items{% endif %}' },
+  'else': { description: 'Else block - executes when all previous conditions are false', example: '{% else %}No results{% endif %}' },
+  'for': { description: 'Loop over arrays or objects', example: '{% for item in items %}{{ item }}{% endfor %}', link: 'https://mozilla.github.io/nunjucks/templating.html#for' },
+  'set': { description: 'Define or update a variable', example: '{% set total = items | length %}' },
+
+  // Built-in variables
+  'loop': { description: 'Loop metadata object with index, first, last, length properties', example: '{{ loop.index }} - {{ loop.first }} - {{ loop.last }}' },
+  'env': { description: 'Environment variables from .env files', example: '{{ env.API_KEY }} - {{ env.DATABASE_URL }}' },
+  'renderBase': { description: 'Render parent template block content (template inheritance)', example: '{{ renderBase("block_name") }} or {{ renderBase() }}', link: 'https://docs.prompdhub.ai/templates/inheritance' },
+
+  // Operators
+  'in': { description: 'Test if item is in array/object', example: '{% if "admin" in user.roles %}' },
+  'not': { description: 'Logical NOT - negates expression', example: '{% if not user %}No user{% endif %}' },
+  'and': { description: 'Logical AND - both conditions must be true', example: '{% if user and user.active %}' },
+  'or': { description: 'Logical OR - at least one condition must be true', example: '{% if admin or moderator %}' },
+  'is': { description: 'Test operator for checking conditions', example: '{% if value is defined %}' },
+
+  // Tests
+  'defined': { description: 'Returns true if variable is defined', example: '{% if email is defined %}' },
+  'undefined': { description: 'Returns true if variable is not defined', example: '{% if optional is undefined %}' }
+}
+
+/**
  * Register command to open package details modal
  */
 function registerOpenPackageCommand(monaco: typeof monacoEditor): void {
@@ -47,6 +75,12 @@ export function registerHoverProvider(
       if (!word) return null
 
       const line = model.getLineContent(position.lineNumber)
+      const wordText = model.getValueInRange({
+        startLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endLineNumber: position.lineNumber,
+        endColumn: word.endColumn
+      })
       const context = detectHoverContext(line, word)
       const range = new monaco.Range(
         position.lineNumber,
@@ -54,6 +88,26 @@ export function registerHoverProvider(
         position.lineNumber,
         word.endColumn
       )
+
+      // Nunjucks/Jinja2 syntax help - check if hovering over keywords
+      if (wordText && nunjucksHelp[wordText]) {
+        const help = nunjucksHelp[wordText]
+        const contents: monacoEditor.IMarkdownString[] = []
+
+        contents.push({ value: `**Nunjucks: \`${wordText}\`**` })
+        contents.push({ value: help.description })
+
+        if (help.example) {
+          contents.push({ value: '**Example:**' })
+          contents.push({ value: `\`\`\`jinja\n${help.example}\n\`\`\`` })
+        }
+
+        if (help.link) {
+          contents.push({ value: `[📖 View Documentation](${help.link})` })
+        }
+
+        return { range, contents }
+      }
 
       // Filter hover
       if (context.type === 'filter') {
@@ -246,13 +300,103 @@ export function registerHoverProvider(
 
           if (frontmatter) {
             const yamlContent = frontmatter[1]
-            // Look for parameter definition
-            const paramMatch = yamlContent.match(new RegExp(`${paramName}:\\s*\\{([^}]+)\\}`))
-            if (paramMatch) {
+
+            // Try object format first: tech_stack: { type: string, description: "..." }
+            const objectMatch = yamlContent.match(new RegExp(`${paramName}:\\s*\\{([^}]+)\\}`))
+            if (objectMatch) {
               try {
-                paramInfo = JSON.parse(`{${paramMatch[1]}}`)
+                paramInfo = JSON.parse(`{${objectMatch[1]}}`)
               } catch {
                 // Ignore parse errors
+              }
+            } else {
+              // Try array format: - name: tech_stack
+              //                      type: object
+              //                      description: "..."
+              // Match lines with proper indentation handling
+              const lines = yamlContent.split(/\r?\n/)
+              let inParamBlock = false
+              let paramLines: string[] = []
+              let baseIndent = -1
+
+              for (const line of lines) {
+                const trimmed = line.trim()
+
+                // Check if this is the start of our parameter
+                if (trimmed.startsWith('- name:') && trimmed.includes(paramName)) {
+                  inParamBlock = true
+                  baseIndent = line.match(/^\s*/)![0].length
+                  continue
+                }
+
+                if (inParamBlock) {
+                  const currentIndent = line.match(/^\s*/)![0].length
+
+                  // If we hit another parameter or dedented line, stop
+                  if (trimmed.startsWith('-') && currentIndent <= baseIndent) {
+                    break
+                  }
+                  if (currentIndent <= baseIndent && trimmed.length > 0) {
+                    break
+                  }
+
+                  // Collect property lines
+                  if (trimmed.length > 0) {
+                    paramLines.push(line)
+                  }
+                }
+              }
+
+              if (paramLines.length > 0) {
+                paramInfo = {}
+                const paramBlock = paramLines.join('\n')
+
+                // Parse type
+                const typeMatch = paramBlock.match(/^\s*type:\s*(.+?)\s*$/m)
+                if (typeMatch) paramInfo.type = typeMatch[1].trim()
+
+                // Parse description (handle quotes)
+                const descMatch = paramBlock.match(/^\s*description:\s*["'](.+?)["']\s*$/m)
+                if (descMatch) {
+                  paramInfo.description = descMatch[1]
+                } else {
+                  const descPlainMatch = paramBlock.match(/^\s*description:\s*(.+?)\s*$/m)
+                  if (descPlainMatch) paramInfo.description = descPlainMatch[1].trim()
+                }
+
+                // Parse default (handle JSON objects/arrays)
+                const defaultMatch = paramBlock.match(/^\s*default:\s*(.+?)\s*$/m)
+                if (defaultMatch) {
+                  const defaultValue = defaultMatch[1].trim()
+                  // Try to parse as JSON if it looks like an object/array
+                  if (defaultValue.startsWith('{') || defaultValue.startsWith('[')) {
+                    try {
+                      paramInfo.default = JSON.parse(defaultValue)
+                    } catch {
+                      paramInfo.default = defaultValue
+                    }
+                  } else if (defaultValue === 'true') {
+                    paramInfo.default = true
+                  } else if (defaultValue === 'false') {
+                    paramInfo.default = false
+                  } else {
+                    paramInfo.default = defaultValue
+                  }
+                }
+
+                // Parse required
+                const requiredMatch = paramBlock.match(/^\s*required:\s*(true|false)\s*$/m)
+                if (requiredMatch) paramInfo.required = requiredMatch[1] === 'true'
+
+                // Parse enum
+                const enumMatch = paramBlock.match(/^\s*enum:\s*\[(.+?)\]\s*$/m)
+                if (enumMatch) {
+                  try {
+                    paramInfo.enum = JSON.parse(`[${enumMatch[1]}]`)
+                  } catch {
+                    paramInfo.enum = enumMatch[1].split(',').map(s => s.trim().replace(/["']/g, ''))
+                  }
+                }
               }
             }
           }
@@ -260,7 +404,8 @@ export function registerHoverProvider(
           const contents: monacoEditor.IMarkdownString[] = []
           contents.push({ value: `**Parameter: ${paramName}**` })
 
-          if (paramInfo) {
+          if (paramInfo && Object.keys(paramInfo).length > 0) {
+            // Show all parameter properties in a structured way
             if (paramInfo.type) {
               contents.push({ value: `**Type:** \`${paramInfo.type}\`` })
             }
@@ -268,11 +413,32 @@ export function registerHoverProvider(
               contents.push({ value: `**Description:** ${paramInfo.description}` })
             }
             if (paramInfo.default !== undefined) {
-              contents.push({ value: `**Default:** \`${paramInfo.default}\`` })
+              contents.push({ value: `**Default:** \`${JSON.stringify(paramInfo.default)}\`` })
             }
             if (paramInfo.required !== undefined) {
               contents.push({
                 value: `**Required:** ${paramInfo.required ? 'Yes' : 'No'}`
+              })
+            }
+
+            // Show enum values if present
+            if (paramInfo.enum) {
+              const enumValues = Array.isArray(paramInfo.enum)
+                ? paramInfo.enum.map(v => `\`${v}\``).join(', ')
+                : `\`${JSON.stringify(paramInfo.enum)}\``
+              contents.push({ value: `**Allowed Values:** ${enumValues}` })
+            }
+
+            // Show any additional properties not already displayed
+            const displayedKeys = ['type', 'description', 'default', 'required', 'enum']
+            const additionalKeys = Object.keys(paramInfo).filter(k => !displayedKeys.includes(k))
+            if (additionalKeys.length > 0) {
+              contents.push({ value: '**Additional Properties:**' })
+              additionalKeys.forEach(key => {
+                const value = paramInfo[key]
+                contents.push({
+                  value: `- **${key}:** \`${JSON.stringify(value)}\``
+                })
               })
             }
           } else {

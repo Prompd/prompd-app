@@ -244,15 +244,21 @@ function PaletteItem({ item, isFavorite, onToggleFavorite }: PaletteItemProps) {
     event.dataTransfer.effectAllowed = 'move'
   }
 
+  const handleDragEnd = () => {
+    // Drag operation completed
+  }
+
   const handleFavoriteClick = (e: React.MouseEvent) => {
     e.stopPropagation()
+    e.preventDefault()
     onToggleFavorite(item.type)
   }
 
   return (
     <div
-      draggable
+      draggable={true}
       onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       className="palette-node"
       data-node-type={item.colorVar}
       style={{
@@ -263,7 +269,6 @@ function PaletteItem({ item, isFavorite, onToggleFavorite }: PaletteItemProps) {
         cursor: 'grab',
         transition: 'box-shadow 0.2s, transform 0.1s',
         position: 'relative',
-        WebkitUserDrag: 'element',
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'
@@ -274,7 +279,7 @@ function PaletteItem({ item, isFavorite, onToggleFavorite }: PaletteItemProps) {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
         <Icon style={{ width: '16px', height: '16px', color: `var(--node-${item.colorVar}, var(--accent))` }} />
-        <span style={{ fontWeight: 500, fontSize: '13px', color: 'var(--text)', flex: 1, userSelect: 'none' }}>
+        <span style={{ fontWeight: 500, fontSize: '13px', color: 'var(--text)', flex: 1 }}>
           {item.label}
         </span>
         <button
@@ -298,7 +303,7 @@ function PaletteItem({ item, isFavorite, onToggleFavorite }: PaletteItemProps) {
           <Star style={{ width: 12, height: 12, fill: isFavorite ? 'currentColor' : 'none' }} />
         </button>
       </div>
-      <p style={{ fontSize: '11px', color: 'var(--muted)', margin: 0, userSelect: 'none' }}>
+      <p style={{ fontSize: '11px', color: 'var(--muted)', margin: 0 }}>
         {item.description}
       </p>
     </div>

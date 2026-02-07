@@ -8,7 +8,7 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-COPY scheduler-shared ../scheduler-shared
+COPY packages/scheduler ../packages/scheduler
 
 # Install dependencies
 RUN npm ci --production

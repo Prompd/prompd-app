@@ -1,10 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
   // Use relative base for Electron compatibility
   base: process.env.ELECTRON_START_URL ? '/' : './',
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src')
+    }
+  },
   // Serve static assets from local public folder
   publicDir: 'public',
   server: {
@@ -33,7 +39,8 @@ export default defineConfig({
     include: [
       'monaco-editor/esm/vs/editor/editor.api',
       'monaco-editor/esm/vs/basic-languages/yaml/yaml',
-      'monaco-editor/esm/vs/basic-languages/markdown/markdown'
+      'monaco-editor/esm/vs/basic-languages/markdown/markdown',
+      'monaco-editor/esm/vs/base/browser/ui/list/listWidget'
     ],
     exclude: [
       '@prompd/cli'  // Exclude main export (executor requires Node.js, goes via IPC in Electron)

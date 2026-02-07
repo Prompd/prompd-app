@@ -45,8 +45,9 @@ export default function PackageSelector({
       clearTimeout(searchTimeoutRef.current)
     }
 
-    // Check if searching for local files (starts with ".")
-    const isLocal = searchQuery.trim().startsWith('.')
+    // Check if searching for local files (starts with "." or "..")
+    const trimmedQuery = searchQuery.trim()
+    const isLocal = trimmedQuery.startsWith('.') || trimmedQuery.startsWith('..')
     setIsLocalSearch(isLocal)
 
     if (searchQuery.trim().length === 0) {
@@ -302,7 +303,7 @@ export default function PackageSelector({
                   setShowDropdown(false)
                 }
               }}
-              placeholder={`Search packages (or type . for local ${fileExtensions.join(', ')} files)...`}
+              placeholder={`Search packages (or type ./.. for local ${fileExtensions.join(', ')} files)...`}
               style={{
                 width: '100%',
                 padding: '8px 12px 8px 32px',

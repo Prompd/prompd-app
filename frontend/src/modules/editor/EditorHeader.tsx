@@ -7,6 +7,144 @@ import { useUIStore } from '../../stores/uiStore'
 import { ProviderModelSelector } from '../components/ProviderModelSelector'
 import { EnvFileSelector } from '../components/EnvFileSelector'
 
+// Help dropdown with links to syntax documentation
+function HelpDropdown({ theme, isVeryCompact }: { theme: 'light' | 'dark'; isVeryCompact?: boolean }) {
+  const [showMenu, setShowMenu] = useState(false)
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+
+  const openMenu = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      setMenuPos({
+        top: rect.bottom + 8,
+        right: window.innerWidth - rect.right
+      })
+    }
+    setShowMenu(true)
+  }
+
+  const closeMenu = () => {
+    setShowMenu(false)
+    setMenuPos(null)
+  }
+
+  const openLink = (url: string) => {
+    const electronAPI = (window as Window & { electronAPI?: { openExternal?: (url: string) => Promise<void> } }).electronAPI
+    if (electronAPI?.openExternal) {
+      electronAPI.openExternal(url)
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
+    closeMenu()
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        ref={buttonRef}
+        className="btn"
+        onClick={() => {
+          if (showMenu) {
+            closeMenu()
+          } else {
+            openMenu()
+          }
+        }}
+        title="Syntax Help"
+        style={{
+          padding: isVeryCompact ? '4px' : '6px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: isVeryCompact ? '28px' : '32px',
+          height: isVeryCompact ? '28px' : '32px',
+          borderRadius: '6px',
+          flexShrink: 0
+        }}
+      >
+        <HelpCircle size={isVeryCompact ? 14 : 16} />
+      </button>
+
+      {showMenu && menuPos && (
+        <>
+          <div
+            onClick={closeMenu}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 998
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: menuPos.top,
+              right: menuPos.right,
+              background: theme === 'dark' ? '#1e293b' : '#ffffff',
+              border: theme === 'dark' ? '1px solid rgba(71, 85, 105, 0.3)' : '1px solid #e2e8f0',
+              borderRadius: '8px',
+              boxShadow: theme === 'dark'
+                ? '0 10px 40px rgba(0, 0, 0, 0.5)'
+                : '0 10px 40px rgba(0, 0, 0, 0.1)',
+              overflow: 'hidden',
+              zIndex: 999,
+              minWidth: '220px'
+            }}
+          >
+            <div style={{ padding: '8px 0' }}>
+              <button
+                onClick={() => openLink('https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax')}
+                style={{
+                  width: '100%',
+                  padding: '10px 16px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: theme === 'dark' ? '#f1f5f9' : '#0f172a',
+                  fontSize: '14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.background = theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}
+                onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                📝 Markdown Syntax
+              </button>
+
+              <button
+                onClick={() => openLink('https://mozilla.github.io/nunjucks/templating.html')}
+                style={{
+                  width: '100%',
+                  padding: '10px 16px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: theme === 'dark' ? '#f1f5f9' : '#0f172a',
+                  fontSize: '14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.background = theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}
+                onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                🔧 Nunjucks/Jinja2 Syntax
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // Custom user button for Electron (since Clerk's UserButton doesn't work with OAuth flow)
 function ElectronUserButton({ email, theme, onSignOut, onOpenSettings }: { email?: string; theme: 'light' | 'dark'; onSignOut: () => void; onOpenSettings: () => void }) {
   const [showMenu, setShowMenu] = useState(false)
@@ -510,32 +648,8 @@ export default function EditorHeader({
           </div>
         )}
 
-        {/* Help Button - Opens Markdown cheatsheet */}
-        <button
-          className="btn"
-          onClick={() => {
-            const url = 'https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax'
-            const electronAPI = (window as Window & { electronAPI?: { openExternal?: (url: string) => Promise<void> } }).electronAPI
-            if (electronAPI?.openExternal) {
-              electronAPI.openExternal(url)
-            } else {
-              window.open(url, '_blank', 'noopener,noreferrer')
-            }
-          }}
-          title="Markdown Cheatsheet"
-          style={{
-            padding: isVeryCompact ? '4px' : '6px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: isVeryCompact ? '28px' : '32px',
-            height: isVeryCompact ? '28px' : '32px',
-            borderRadius: '6px',
-            flexShrink: 0
-          }}
-        >
-          <HelpCircle size={isVeryCompact ? 14 : 16} />
-        </button>
+        {/* Help Button - Dropdown with syntax references */}
+        <HelpDropdown theme={theme} isVeryCompact={isVeryCompact} />
 
         {/* Theme Toggle - Sleek Single Icon */}
         <button

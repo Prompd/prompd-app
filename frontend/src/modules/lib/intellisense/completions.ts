@@ -695,6 +695,43 @@ export function registerCompletionProvider(
           }
         })
 
+        // Built-in template functions
+        const builtInFunctions = [
+          {
+            name: 'renderBase',
+            signatures: ['renderBase()', 'renderBase("block_name")'],
+            detail: 'Render parent block content',
+            documentation: '**Template Inheritance Function**\n\nRenders the parent template\'s block content when using `inherits:`.\n\n**Usage:**\n- `{{ renderBase() }}` - Renders current block from parent\n- `{{ renderBase("block_name") }}` - Renders specific parent block\n\n**Example:**\n```yaml\n---\ninherits: "@namespace/base@^1.0.0"\n---\n\n{% block output_format %}\n{{ renderBase() }}\n\nAdditional formatting:\n- Include line numbers\n- Highlight syntax\n{% endblock %}\n```'
+          },
+          {
+            name: 'env',
+            signatures: ['env.VARIABLE_NAME'],
+            detail: 'Environment variables',
+            documentation: '**Environment Variables**\n\nAccess .env file variables.\n\n**Usage:**\n- `{{ env.API_KEY }}`\n- `{{ env.DATABASE_URL }}`\n\nType `.` after `env` to see available variables.'
+          }
+        ]
+
+        builtInFunctions.forEach(func => {
+          if (func.name.toLowerCase().includes(query.toLowerCase())) {
+            // Add all signatures as separate completions
+            func.signatures.forEach((signature, idx) => {
+              const insertText = isHandlebars
+                ? `{{ ${signature} }}`
+                : signature
+
+              suggestions.push({
+                label: isHandlebars ? `{{ ${signature} }}` : signature,
+                kind: monaco.languages.CompletionItemKind.Function,
+                insertText,
+                detail: func.detail,
+                documentation: func.documentation,
+                range: variableRange,
+                sortText: `2_builtin_${idx}_${func.name}`
+              })
+            })
+          }
+        })
+
         // Suggest common parameter patterns if no parameters defined
         if (parameters.length === 0) {
           const commonParams = [

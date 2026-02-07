@@ -85,7 +85,7 @@ const store = useEditorStore()
 ```
 
 ### State Management (Zustand)
-- **Three stores**: `editorStore`, `uiStore`, `wizardStore`
+- **Four stores**: `editorStore`, `uiStore`, `wizardStore`, `workflowStore`
 - **Immer middleware**: Use for immutable updates
 - **Persist middleware**: Use for persistence (except wizardStore)
 - **Shared types**: All store types in `stores/types.ts`

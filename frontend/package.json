@@ -1,12 +1,14 @@
 {
   "name": "@prompd/app",
   "version": "0.1.0",
+  "productName": "Prompd",
   "description": "AI prompt editor with package-based inheritance",
   "author": "Prompd LLC",
   "private": true,
   "main": "electron/main.js",
   "homepage": "./",
   "scripts": {
+    "postinstall": "electron-builder install-app-deps",
     "dev": "vite",
     "build": "npm run generate-licenses && tsc -b && vite build",
     "generate-licenses": "npx license-checker --json --production --out public/licenses.json",
@@ -20,10 +22,10 @@
     "electron:build:linux": "npm run clean && npm run generate-icons && npm run build && electron-builder --linux"
   },
   "build": {
-    "appId": "io.prompd.app",
+    "appId": "app.prompd",
     "productName": "Prompd",
-    "electronVersion": "38.7.2",
-    "npmRebuild": false,
+    "electronVersion": "40.2.1",
+    "npmRebuild": true,
     "afterPack": "./scripts/afterPack.cjs",
     "directories": {
       "output": "dist-electron"
@@ -58,12 +60,22 @@
       {
         "from": "public/logo.png",
         "to": "logo.png"
+      },
+      {
+        "from": "../prompd-service",
+        "to": "prompd-service",
+        "filter": [
+          "**/*",
+          "!node_modules/**/*",
+          "!.git/**/*"
+        ]
       }
     ],
     "publish": {
       "provider": "github",
-      "owner": "Logikbug",
-      "repo": "prompd.app"
+      "owner": "Prompd",
+      "repo": "prompd.app",
+      "releaseType": "release"
     },
     "win": {
       "target": [
@@ -93,6 +105,7 @@
       "category": "Development"
     },
     "nsis": {
+      "guid": "app.prompd",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
@@ -100,7 +113,8 @@
       "shortcutName": "Prompd",
       "installerIcon": "public/logo.ico",
       "uninstallerIcon": "public/logo.ico",
-      "installerHeaderIcon": "public/logo.ico"
+      "installerHeaderIcon": "public/logo.ico",
+      "deleteAppDataOnUninstall": false
     },
     "protocols": [
       {
@@ -117,7 +131,15 @@
         "description": "Prompt Definition File",
         "mimeType": "application/x-prompd",
         "role": "Editor",
-        "icon": "public/logo.ico"
+        "icon": "public/prmd.ico"
+      },
+      {
+        "ext": "pdflow",
+        "name": "Prompd Workflow",
+        "description": "Prompd Workflow File",
+        "mimeType": "application/x-prompd-workflow",
+        "role": "Editor",
+        "icon": "public/pdflow.ico"
       },
       {
         "ext": "pdpkg",
@@ -132,14 +154,18 @@
   "dependencies": {
     "@clerk/clerk-react": "^5.58.1",
     "@monaco-editor/react": "^4.6.0",
-    "@prompd/cli": "^0.4.5",
+    "@prompd/cli": "^0.4.7",
     "@prompd/react": "file:../packages/react",
+    "@prompd/scheduler": "file:../packages/scheduler",
     "@xyflow/react": "^12.10.0",
+    "adm-zip": "^0.5.10",
+    "better-sqlite3": "^12.6.2",
     "chokidar": "^3.6.0",
-    "diff": "^8.0.3",
+    "cron-parser": "^4.9.0",
     "dotenv": "^17.2.3",
     "electron-updater": "^6.6.2",
     "elkjs": "^0.11.0",
+    "fs-extra": "^10.1.0",
     "highlight.js": "^11.11.1",
     "idb": "^8.0.3",
     "immer": "^10.2.0",
@@ -168,7 +194,7 @@
     "@vitejs/plugin-react": "^4.3.0",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
-    "electron": "^38.3.0",
+    "electron": "^40.2.1",
     "electron-builder": "^26.0.12",
     "electron-squirrel-startup": "^1.0.1",
     "png-to-ico": "^3.0.1",

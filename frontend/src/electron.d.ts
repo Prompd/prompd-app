@@ -98,6 +98,8 @@ export interface ElectronAPI {
   // Package menu
   onMenuPackageCreate: (callback: () => void) => () => void
   onMenuPackagePublish: (callback: () => void) => () => void
+  onMenuPackageDeploy: (callback: () => void) => () => void
+  onMenuDeploymentManage: (callback: () => void) => () => void
   onMenuPackageInstall: (callback: () => void) => () => void
   // Run menu
   onMenuRunExecute: (callback: () => void) => () => void
@@ -263,7 +265,14 @@ export interface ElectronAPI {
 
   // Trigger event listeners
   onTriggerExecutionStart?: (callback: (data: { workflowId: string; executionId: string }) => void) => () => void
-  onTriggerExecutionComplete?: (callback: (data: { workflowId: string; executionId: string; status: string }) => void) => () => void
+  onTriggerExecutionComplete?: (callback: (data: {
+    deploymentId: string
+    executionId?: string | null
+    triggerId?: string
+    status: string
+    error?: string
+    timestamp: number
+  }) => void) => () => void
   onTriggerStatusChange?: (callback: (data: { workflowId: string; enabled: boolean }) => void) => () => void
 
   // Service management (for standalone scheduler service)
@@ -292,6 +301,137 @@ export interface ElectronAPI {
     getNextRunTimes: (scheduleId: string, count: number) => Promise<{ success: boolean; times?: number[]; error?: string }>
   }
 
+  // Deployment API (package-based workflow deployment with multi-trigger support)
+  deployment?: {
+    // Deploy a package (.pdpkg file or workflow directory)
+    deploy: (packagePath: string, options?: { name?: string; version?: string; redeploy?: boolean; workspacePath?: string }) => Promise<{ success: boolean; deploymentId?: string; error?: string }>
+
+    // Undeploy a deployment
+    undeploy: (deploymentId: string, options?: { deleteFiles?: boolean }) => Promise<{ success: boolean; error?: string }>
+
+    // List all deployments with optional filters
+    list: (filters?: { status?: string; workflowId?: string }) => Promise<{ success: boolean; deployments?: DeploymentInfo[]; error?: string }>
+
+    // Get deployment status with triggers and recent executions
+    getStatus: (deploymentId: string) => Promise<{
+      success: boolean
+      deployment?: DeploymentInfo
+      triggers?: TriggerInfo[]
+      recentExecutions?: DeploymentExecution[]
+      error?: string
+    }>
+
+    // Toggle individual trigger
+    toggleTrigger: (triggerId: string, enabled: boolean) => Promise<{ success: boolean; error?: string }>
+
+    // Execute deployment manually
+    execute: (deploymentId: string, parameters?: Record<string, unknown>) => Promise<{ success: boolean; executionId?: string; error?: string }>
+
+    // Get execution history for deployment
+    getHistory: (deploymentId: string, options?: { limit?: number; offset?: number; triggerId?: string }) => Promise<{
+      success: boolean
+      history?: DeploymentExecution[]
+      error?: string
+    }>
+
+    // Get all execution history (across all deployments) with pagination
+    getAllExecutions: (options?: {
+      limit?: number
+      offset?: number
+      filters?: {
+        status?: string
+        triggerType?: string
+        workflowId?: string
+      }
+    }) => Promise<{
+      success: boolean
+      executions?: DeploymentExecution[]
+      total?: number
+      page?: number
+      pageSize?: number
+      totalPages?: number
+      error?: string
+    }>
+
+    getParameters: (deploymentId: string) => Promise<{
+      success: boolean
+      parameters?: Array<{
+        name: string
+        type: string
+        required?: boolean
+        description?: string
+        default?: unknown
+        enum?: string[]
+      }>
+      workflowName?: string
+      error?: string
+    }>
+
+    // Clear all execution history
+    clearAllHistory: () => Promise<{
+      success: boolean
+      deletedCount?: number
+      error?: string
+    }>
+
+    // Toggle deployment status (enable/disable)
+    toggleStatus: (deploymentId: string) => Promise<{
+      success: boolean
+      deployment?: {
+        id: string
+        status: string
+        name: string
+      }
+      error?: string
+    }>
+
+    // Purge all deleted deployments
+    purgeDeleted: () => Promise<{
+      success: boolean
+      purgedCount?: number
+      error?: string
+    }>
+  }
+
+  // Service Management API (user-level service install/uninstall)
+  service?: {
+    // Get service installation and runtime status
+    getStatus: () => Promise<{
+      installed: boolean
+      running: boolean
+      mode: 'electron' | 'system-service'
+      autoStart: boolean
+    }>
+
+    // Install service (user-level systemd/LaunchAgent/Windows Service)
+    install: () => Promise<{
+      success: boolean
+      message?: string
+      error?: string
+    }>
+
+    // Uninstall service
+    uninstall: () => Promise<{
+      success: boolean
+      message?: string
+      error?: string
+    }>
+
+    // Start service
+    start: () => Promise<{
+      success: boolean
+      message?: string
+      error?: string
+    }>
+
+    // Stop service
+    stop: () => Promise<{
+      success: boolean
+      message?: string
+      error?: string
+    }>
+  }
+
   // Memory service API (for persistent memory storage via IPC)
   memory?: {
     get: (scope: string, namespace: string, key: string) => Promise<unknown>
@@ -315,11 +455,50 @@ export interface ElectronAPI {
     // Download trace (shows save dialog and writes to disk)
     downloadTrace: (trace: unknown, filename?: string) => Promise<{ success: boolean; filePath?: string; cancelled?: boolean }>
 
+    // Export workflow to various formats (Docker, Kubernetes, etc.)
+    exportToPath: (
+      workflow: unknown,
+      workflowPath: string,
+      outputDir: string,
+      prompdjson: unknown,
+      options?: {
+        exportType?: 'docker' | 'kubernetes'
+        imageName?: string
+        imageTag?: string
+        kubernetesOptions?: unknown
+        workspacePath?: string
+      }
+    ) => Promise<{ success: boolean; outputPath?: string; error?: string }>
+
     // Respond to user input request (bidirectional IPC)
     respondToUserInput: (requestId: string, response: unknown) => Promise<void>
 
     // Respond to checkpoint request (bidirectional IPC)
     respondToCheckpoint: (requestId: string, shouldContinue: boolean) => Promise<void>
+
+    // Listen for scheduled/deployed workflow execution requests from main process
+    onExecuteRequest: (callback: (data: {
+      workflowPath: string
+      parameters: Record<string, unknown>
+      trigger: string
+      deploymentId?: string
+      triggerId?: string
+      scheduleId?: string
+    }) => void) => () => void
+
+    // Send workflow execution result back to main process
+    sendExecutionResult: (result: {
+      success?: boolean
+      status?: string
+      result?: unknown
+      error?: string
+      duration?: number
+    }) => void
+  }
+
+  // Registry API (for package management)
+  registry?: {
+    getConfig: () => Promise<{ success: boolean; config?: RegistryConfig; error?: string }>
   }
 }
 
@@ -570,6 +749,60 @@ export interface ScheduleExecution {
   error?: string
   startedAt: number
   completedAt?: number
+}
+
+// Deployment types (package-based workflow deployment)
+export interface DeploymentInfo {
+  id: string
+  name: string
+  workflowId: string
+  packagePath: string
+  packageHash: string
+  version?: string
+  status: 'enabled' | 'disabled' | 'deleted' | 'failed'
+  deployedAt: number
+  deletedAt?: number
+  lastExecutionAt?: number
+  lastExecutionStatus?: 'success' | 'error'
+  metadata?: Record<string, unknown>
+  createdBy?: string
+  updatedAt: number
+}
+
+export interface TriggerInfo {
+  id: string
+  deploymentId: string
+  nodeId: string
+  triggerType: 'manual' | 'webhook' | 'schedule' | 'file-watch' | 'event'
+  enabled: boolean
+  config: Record<string, unknown>
+  // Denormalized fields for UI display
+  scheduleCron?: string
+  scheduleTimezone?: string
+  nextRunAt?: number
+  webhookPath?: string
+  fileWatchPaths?: string
+  eventName?: string
+  lastTriggeredAt?: number
+  lastTriggerStatus?: 'success' | 'error'
+  triggerCount?: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface DeploymentExecution {
+  id: string
+  deploymentId: string
+  triggerId?: string
+  workflowId: string
+  triggerType: 'manual' | 'webhook' | 'schedule' | 'file-watch' | 'event'
+  status: 'success' | 'error' | 'cancelled'
+  result?: unknown
+  error?: string
+  startedAt: number
+  completedAt?: number
+  durationMs?: number
+  parameters?: Record<string, unknown>
 }
 
 // Config types matching ~/.prompd/config.yaml schema

@@ -84,7 +84,8 @@ export function GenerationControls({
     container: {
       display: 'flex',
       alignItems: 'center',
-      gap: '12px'
+      gap: '8px',
+      flexWrap: 'wrap' as const
     },
     controlGroup: {
       display: 'flex',

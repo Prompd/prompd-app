@@ -1,0 +1,146 @@
+.deployment-settings {
+  padding: 20px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stat-icon {
+  flex-shrink: 0;
+}
+
+.stat-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.recent-deployments h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+}
+
+.deployments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.deployment-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: 6px;
+  border: 1px solid;
+  transition: background 0.2s;
+}
+
+.deployment-item:hover {
+  background: var(--panel-2) !important;
+}
+
+.deployment-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.deployment-name {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.deployment-meta {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.status-badge.status-enabled {
+  background: color-mix(in srgb, #10b981 15%, transparent);
+  color: #10b981;
+}
+
+.status-badge.status-disabled {
+  background: color-mix(in srgb, #f59e0b 15%, transparent);
+  color: #f59e0b;
+}
+
+.status-badge.status-failed {
+  background: color-mix(in srgb, #ef4444 15%, transparent);
+  color: #ef4444;
+}
+
+.btn-primary,
+.btn-secondary {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+.btn-secondary {
+  background: transparent;
+  border-color: var(--border);
+}
+
+.btn-secondary:hover {
+  background: var(--panel-2);
+}

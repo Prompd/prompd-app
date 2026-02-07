@@ -160,6 +160,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu-package-publish', handler)
     return () => ipcRenderer.removeListener('menu-package-publish', handler)
   },
+  onMenuPackageDeploy: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-package-deploy', handler)
+    return () => ipcRenderer.removeListener('menu-package-deploy', handler)
+  },
+  onMenuDeploymentManage: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-deployment-manage', handler)
+    return () => ipcRenderer.removeListener('menu-deployment-manage', handler)
+  },
   onMenuPackageInstall: (callback) => {
     const handler = () => callback()
     ipcRenderer.on('menu-package-install', handler)
@@ -406,6 +416,91 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getNextRunTimes: (scheduleId, count) => ipcRenderer.invoke('scheduler:getNextRunTimes', scheduleId, count)
   },
 
+  // Deployment service - package-based workflow deployment with multi-trigger support
+  // Deploys .pdpkg packages to ~/.prompd/workflows/{id}/ and extracts triggers from workflow files
+  deployment: {
+    // Deploy a package
+    // packagePath: Path to .pdpkg file or workflow directory
+    // options: { name?, redeploy? }
+    // Returns: { success, deploymentId?, error? }
+    deploy: (packagePath, options) => ipcRenderer.invoke('deployment:deploy', packagePath, options),
+
+    // Undeploy a deployment
+    // deploymentId: Deployment ID
+    // options: { deleteFiles? }
+    // Returns: { success, error? }
+    undeploy: (deploymentId, options) => ipcRenderer.invoke('deployment:undeploy', deploymentId, options),
+
+    // List all deployments with optional filters
+    // filters: { status?, workflowId? }
+    // Returns: { success, deployments?, error? }
+    list: (filters) => ipcRenderer.invoke('deployment:list', filters),
+
+    // Get deployment status with triggers and recent executions
+    // Returns: { success, deployment?, triggers?, recentExecutions?, error? }
+    getStatus: (deploymentId) => ipcRenderer.invoke('deployment:getStatus', deploymentId),
+
+    // Toggle individual trigger
+    // Returns: { success, error? }
+    toggleTrigger: (triggerId, enabled) => ipcRenderer.invoke('deployment:toggleTrigger', triggerId, enabled),
+
+    // Execute deployment manually
+    // Returns: { success, executionId?, error? }
+    execute: (deploymentId, parameters) => ipcRenderer.invoke('deployment:execute', deploymentId, parameters),
+
+    // Get execution history for deployment
+    // options: { limit?, offset?, triggerId? }
+    // Returns: { success, history?, error? }
+    getHistory: (deploymentId, options) => ipcRenderer.invoke('deployment:getHistory', deploymentId, options),
+
+    // Get all execution history (across all deployments) with pagination
+    // options: { limit?, offset?, filters?: { status?, triggerType?, workflowId? } }
+    // Returns: { success, executions?, total?, page?, pageSize?, totalPages?, error? }
+    getAllExecutions: (options) => ipcRenderer.invoke('deployment:getAllExecutions', options),
+
+    // Get workflow parameters from a deployment
+    // deploymentId: Deployment ID
+    // Returns: { success, parameters?, workflowName?, error? }
+    getParameters: (deploymentId) => ipcRenderer.invoke('deployment:getParameters', deploymentId),
+
+    // Clear all execution history
+    // Returns: { success, deletedCount?, error? }
+    clearAllHistory: () => ipcRenderer.invoke('deployment:clearAllHistory'),
+
+    // Toggle deployment status (enable/disable)
+    // deploymentId: Deployment ID
+    // Returns: { success, deployment?, error? }
+    toggleStatus: (deploymentId) => ipcRenderer.invoke('deployment:toggleStatus', deploymentId),
+
+    // Purge all deleted deployments
+    // Returns: { success, purgedCount?, error? }
+    purgeDeleted: () => ipcRenderer.invoke('deployment:purgeDeleted')
+  },
+
+  // Service Management API
+  // User-level service install/uninstall for 24/7 background execution
+  service: {
+    // Get service installation status
+    // Returns: { installed, running, mode, autoStart }
+    getStatus: () => ipcRenderer.invoke('service:getStatus'),
+
+    // Install service (user-level systemd/LaunchAgent/Windows Service)
+    // Returns: { success, message?, error? }
+    install: () => ipcRenderer.invoke('service:install'),
+
+    // Uninstall service
+    // Returns: { success, message?, error? }
+    uninstall: () => ipcRenderer.invoke('service:uninstall'),
+
+    // Start service
+    // Returns: { success, message?, error? }
+    start: () => ipcRenderer.invoke('service:start'),
+
+    // Stop service
+    // Returns: { success, message?, error? }
+    stop: () => ipcRenderer.invoke('service:stop')
+  },
+
   // Trigger service events (from main process to renderer)
   onTriggerExecutionStart: (callback) => {
     const handler = (event, data) => callback(data)
@@ -479,6 +574,43 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Respond to checkpoint request (bidirectional IPC)
     // requestId: ID from checkpoint-request event
     // shouldContinue: boolean - whether to continue execution
-    respondToCheckpoint: (requestId, shouldContinue) => ipcRenderer.invoke('workflow:checkpoint-response', requestId, shouldContinue)
+    respondToCheckpoint: (requestId, shouldContinue) => ipcRenderer.invoke('workflow:checkpoint-response', requestId, shouldContinue),
+
+    // Listen for scheduled/deployed workflow execution requests from main process
+    // callback: (data: { workflowPath, parameters, trigger, deploymentId?, triggerId? }) => void
+    // Returns: cleanup function to remove listener
+    onExecuteRequest: (callback) => {
+      const handler = (_event, data) => callback(data)
+      ipcRenderer.on('execute-workflow', handler)
+      return () => ipcRenderer.removeListener('execute-workflow', handler)
+    },
+
+    // Send workflow execution result back to main process
+    // result: { success: boolean, result?: any, error?: string }
+    sendExecutionResult: (result) => ipcRenderer.send('workflow-execution-result', result),
+
+    // Export workflow as Docker deployment (with dialog)
+    // workflow: Workflow object
+    // workflowPath: Path to the .pdflow file
+    // prompdjson: Optional prompd.json manifest
+    // Returns: Promise<{ success: boolean, outputDir?: string, files?: string[], error?: string, cancelled?: boolean }>
+    exportDocker: (workflow, workflowPath, prompdjson) => ipcRenderer.invoke('workflow:exportDocker', workflow, workflowPath, prompdjson),
+
+    // Export workflow to specific directory (no dialog)
+    // workflow: Workflow object
+    // workflowPath: Path to the .pdflow file
+    // outputDir: Directory to export to
+    // prompdjson: Optional prompd.json manifest
+    // Returns: Promise<{ success: boolean, outputDir?: string, files?: string[], error?: string }>
+    exportDockerToPath: (workflow, workflowPath, outputDir, prompdjson) => ipcRenderer.invoke('workflow:exportDockerToPath', workflow, workflowPath, outputDir, prompdjson),
+
+    // Export workflow to specific directory with export type (Docker or Kubernetes)
+    // workflow: Workflow object
+    // workflowPath: Path to the .pdflow file
+    // outputDir: Directory to export to
+    // prompdjson: Optional prompd.json manifest
+    // options: { exportType: 'docker' | 'kubernetes', kubernetesOptions?: {...} }
+    // Returns: Promise<{ success: boolean, outputDir?: string, files?: string[], error?: string }>
+    exportToPath: (workflow, workflowPath, outputDir, prompdjson, options) => ipcRenderer.invoke('workflow:exportToPath', workflow, workflowPath, outputDir, prompdjson, options)
   }
 })

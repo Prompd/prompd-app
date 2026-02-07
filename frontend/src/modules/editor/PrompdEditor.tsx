@@ -6,7 +6,8 @@ import { parsePrompd } from '../lib/prompdParser'
 import { triggerValidation, setCurrentFilePath } from '../lib/intellisense'
 import { editorConfigManager, type MonacoEditorOptions } from '../lib/editorconfig'
 import { hotkeyManager } from '../services/hotkeyManager'
-import { enableChangeTracking } from '../lib/monacoDiff'
+// DISABLED: monacoDiff breaks Code Actions - see issue investigation
+// import { enableChangeTracking } from '../lib/monacoDiff'
 
 // Monaco command disposables - stored globally to allow re-registration
 let monacoCommandDisposables: { dispose: () => void }[] = []
@@ -183,8 +184,8 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
   // EditorConfig settings
   const [editorConfigOptions, setEditorConfigOptions] = useState<MonacoEditorOptions>({})
 
-  // Change tracking for unsaved edits
-  const changeTrackerRef = useRef<ReturnType<typeof enableChangeTracking> | null>(null)
+  // DISABLED: Change tracking for unsaved edits - breaks Code Actions
+  // const changeTrackerRef = useRef<ReturnType<typeof enableChangeTracking> | null>(null)
 
 
   // Update the IntelliSense current file path for compiler diagnostics
@@ -398,30 +399,30 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
     // These are dynamically updated when settings change
     registerMonacoHotkeys(editor, monaco)
 
-    // Enable change tracking for unsaved edits (gutter markers)
-    const editorModel = editor.getModel()
-    if (editorModel) {
-      const initialText = editorModel.getValue()
-      console.log('[PrompdEditor] Enabling change tracking with initial text:', initialText.substring(0, 100) + '...')
-      changeTrackerRef.current = enableChangeTracking(editor, monaco, initialText)
-      console.log('[PrompdEditor] Change tracker created:', changeTrackerRef.current)
-
-      // Listen for content changes and update gutter markers
-      editor.onDidChangeModelContent(() => {
-        console.log('[PrompdEditor] Content changed, checking for changes...')
-        if (changeTrackerRef.current) {
-          const hasChanges = changeTrackerRef.current.hasChanges()
-          console.log('[PrompdEditor] hasChanges:', hasChanges)
-          if (hasChanges) {
-            console.log('[PrompdEditor] Applying gutter markers...')
-            changeTrackerRef.current.applyGutterMarkers()
-          } else {
-            console.log('[PrompdEditor] No changes, clearing gutter markers...')
-            changeTrackerRef.current.clearGutterMarkers()
-          }
-        }
-      })
-    }
+    // DISABLED: Enable change tracking for unsaved edits (gutter markers) - breaks Code Actions
+    // const editorModel = editor.getModel()
+    // if (editorModel) {
+    //   const initialText = editorModel.getValue()
+    //   console.log('[PrompdEditor] Enabling change tracking with initial text:', initialText.substring(0, 100) + '...')
+    //   changeTrackerRef.current = enableChangeTracking(editor, monaco, initialText)
+    //   console.log('[PrompdEditor] Change tracker created:', changeTrackerRef.current)
+    //
+    //   // Listen for content changes and update gutter markers
+    //   editor.onDidChangeModelContent(() => {
+    //     console.log('[PrompdEditor] Content changed, checking for changes...')
+    //     if (changeTrackerRef.current) {
+    //       const hasChanges = changeTrackerRef.current.hasChanges()
+    //       console.log('[PrompdEditor] hasChanges:', hasChanges)
+    //       if (hasChanges) {
+    //         console.log('[PrompdEditor] Applying gutter markers...')
+    //         changeTrackerRef.current.applyGutterMarkers()
+    //       } else {
+    //         console.log('[PrompdEditor] No changes, clearing gutter markers...')
+    //         changeTrackerRef.current.clearGutterMarkers()
+    //       }
+    //     }
+    //   })
+    // }
 
     // Auto-collapse build panel when editor gains focus (if not pinned)
     // We collapse the panel content (minimize) but keep it visible via a custom event
@@ -430,21 +431,17 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
     })
 
     // Fix Monaco find widget tooltip grey line issue
-    // Watch for Monaco creating tooltip elements with .left class and remove border
+    // Only target hover tooltips, NOT code action widgets
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
           if (node instanceof HTMLElement) {
-            // Target elements with both monaco-component/context AND left classes
-            if ((node.classList.contains('monaco-component') || node.classList.contains('context')) &&
-                node.classList.contains('left')) {
-              // Force remove all borders via inline style (highest specificity)
-              node.style.border = 'none'
+            // Only hide border on hover tooltips (they have .workbench-hover-container child)
+            // Do NOT touch code action widgets (they have .action-widget or .actionList)
+            if (node.classList.contains('context-view') &&
+                node.classList.contains('left') &&
+                node.querySelector('.workbench-hover-container')) {
               node.style.borderRight = 'none'
-              node.style.borderLeft = 'none'
-              node.style.width = '0'
-              node.style.height = '0'
-              node.style.display = 'none'
             }
           }
         })
@@ -622,18 +619,18 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
     }
   }, [onCursorChange, language])
 
-  // Listen for file save event and reset change tracking baseline
-  useEffect(() => {
-    const handleFileSaved = () => {
-      if (changeTrackerRef.current) {
-        console.log('[PrompdEditor] File saved, resetting change tracker baseline')
-        changeTrackerRef.current.reset()
-      }
-    }
-
-    window.addEventListener('prompd-file-saved', handleFileSaved)
-    return () => window.removeEventListener('prompd-file-saved', handleFileSaved)
-  }, [])
+  // DISABLED: Listen for file save event and reset change tracking baseline - breaks Code Actions
+  // useEffect(() => {
+  //   const handleFileSaved = () => {
+  //     if (changeTrackerRef.current) {
+  //       console.log('[PrompdEditor] File saved, resetting change tracker baseline')
+  //       changeTrackerRef.current.reset()
+  //     }
+  //   }
+  //
+  //   window.addEventListener('prompd-file-saved', handleFileSaved)
+  //   return () => window.removeEventListener('prompd-file-saved', handleFileSaved)
+  // }, [])
 
   // Subscribe to hotkey changes and re-register Monaco keybindings
   useEffect(() => {

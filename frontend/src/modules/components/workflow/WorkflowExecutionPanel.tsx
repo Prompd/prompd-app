@@ -23,10 +23,11 @@ import {
   History,
   Trash2
 } from 'lucide-react'
-import { useWorkflowStore } from '../../../stores/workflowStore'
+import { useWorkflowStore, type ExecutionHistoryEntry } from '../../../stores/workflowStore'
+import { useEditorStore } from '../../../stores/editorStore'
 import type { WorkflowResult } from '../../services/workflowTypes'
 import type { CheckpointEvent, ExecutionTrace, TraceEntry } from '../../services/workflowExecutor'
-import { downloadTrace, getTraceSummary } from '../../services/workflowExecutor'
+import { getTraceSummary } from '../../services/workflowExecutor'
 
 /** Captured prompt info for debugging */
 export interface PromptSentInfo {
@@ -78,6 +79,9 @@ export function WorkflowExecutionPanel({
   const executionHistory = useWorkflowStore(state => state.executionHistory)
   const loadExecutionFromHistory = useWorkflowStore(state => state.loadExecutionFromHistory)
   const clearExecutionHistory = useWorkflowStore(state => state.clearExecutionHistory)
+
+  // Editor store for opening trace in editor
+  const addTab = useEditorStore(state => state.addTab)
 
   // Auto-switch to output tab when complete (must be in useEffect, not during render)
   useEffect(() => {
@@ -265,8 +269,6 @@ export function WorkflowExecutionPanel({
                     borderRadius: '6px',
                     fontSize: '11px',
                     lineHeight: 1.5,
-                    overflow: 'auto',
-                    maxHeight: '300px',
                     color: 'var(--text-secondary)',
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word'
@@ -394,25 +396,36 @@ export function WorkflowExecutionPanel({
                     </div>
                     <button
                       className="workflow-action-button"
-                      onClick={async () => {
+                      onClick={() => {
                         try {
-                          const result = await downloadTrace(trace)
-                          if (result.success && result.filePath) {
-                            console.log('[WorkflowExecutionPanel] Trace saved to:', result.filePath)
-                            // Could show a toast notification here if we have a toast system
-                          } else if (result.cancelled) {
-                            console.log('[WorkflowExecutionPanel] Download cancelled by user')
-                          }
+                          // Generate trace JSON
+                          const traceJson = JSON.stringify(trace, null, 2)
+
+                          // Generate filename with timestamp
+                          const timestamp = new Date(trace.startTime).toISOString().replace(/[:.]/g, '-').slice(0, -5)
+                          const filename = `trace-${timestamp}.json`
+
+                          // Create new tab with trace JSON
+                          addTab({
+                            id: `trace-${Date.now()}`,
+                            name: filename,
+                            text: traceJson,
+                            savedText: traceJson,
+                            type: 'file',
+                            viewMode: 'code',
+                            readOnly: false,
+                            dirty: false
+                          })
                         } catch (err) {
-                          console.error('[WorkflowExecutionPanel] Failed to download trace:', err)
-                          alert('Failed to download trace: ' + (err instanceof Error ? err.message : String(err)))
+                          console.error('[WorkflowExecutionPanel] Failed to open trace:', err)
+                          alert('Failed to open trace: ' + (err instanceof Error ? err.message : String(err)))
                         }
                       }}
-                      title="Download trace as JSON"
+                      title="Open trace as JSON file in editor"
                       style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', fontSize: '11px' }}
                     >
-                      <Download size={12} />
-                      Download Trace
+                      <FileText size={12} />
+                      Open Trace
                     </button>
                   </div>
 
@@ -529,9 +542,6 @@ export function WorkflowExecutionPanel({
                                 borderRadius: '4px',
                                 fontSize: '11px',
                                 color: 'var(--text)',
-                                overflowX: 'auto',
-                                maxHeight: '300px',
-                                overflowY: 'auto',
                                 fontFamily: 'monospace',
                                 lineHeight: '1.5',
                               }}>
@@ -580,7 +590,7 @@ export function WorkflowExecutionPanel({
 
                   {/* History list */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {executionHistory.map((entry) => (
+                    {executionHistory.map((entry: ExecutionHistoryEntry) => (
                       <div
                         key={entry.id}
                         className="workflow-history-entry"
@@ -783,8 +793,6 @@ function CheckpointCard({ checkpoint }: CheckpointCardProps) {
             background: 'var(--panel)',
             borderRadius: '8px',
             fontSize: '10px',
-            overflow: 'auto',
-            maxHeight: '120px',
             color: 'var(--text-secondary)'
           }}>
             {typeof checkpoint.previousOutput === 'string'
