@@ -23,7 +23,6 @@ A local-first Electron application for creating and executing AI workflows with 
 - **Local Execution**: Direct HTTPS calls to LLM providers - no proxy, no latency
 - **Registry Integration**: Search and install packages from prompdhub.ai
 - **Offline Support**: Full functionality without internet (after initial provider list cache)
-- **Project System**: `.pdproj` files with workspace organization
 - **File Formats**: `.prmd` (prompts), `.pdflow` (workflows), `.pdpkg` (packages)
 
 ## Tech Stack
@@ -57,7 +56,6 @@ cd backend && npm install && npm run dev
 
 - `.prmd` - Prompt files (YAML frontmatter + Markdown)
 - `.pdflow` - Workflow definitions (YAML-compatible with React Flow nodes/edges)
-- `.pdproj` - Project files (workspace configuration)
 - `.pdpkg` - Package bundles (ZIP archives with manifest.json)
 
 ## Development
