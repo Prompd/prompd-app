@@ -391,7 +391,7 @@ function ToolExecutionMessage({
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word'
               }}>
-                {error || result}
+                {error || (typeof result === 'string' ? result : JSON.stringify(result, null, 2))}
               </pre>
             </div>
           )}

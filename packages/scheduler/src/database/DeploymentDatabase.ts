@@ -18,6 +18,8 @@ import type {
   TriggerData,
   ExecutionRecord,
   ExecutionData,
+  DeploymentVersionRecord,
+  DeploymentVersionData,
   DeploymentFilters,
   TriggerFilters,
   ExecutionFilters,
@@ -121,6 +123,24 @@ export function initializeDeploymentDatabase(dbPath: string): Database.Database 
     CREATE INDEX IF NOT EXISTS idx_dep_exec_trigger ON deployment_executions(triggerId);
     CREATE INDEX IF NOT EXISTS idx_dep_exec_completed ON deployment_executions(completedAt);
     CREATE INDEX IF NOT EXISTS idx_dep_exec_status ON deployment_executions(status);
+  `)
+
+  // Create deployment versions table (version history for re-deploys)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS deployment_versions (
+      id TEXT PRIMARY KEY,
+      deploymentId TEXT NOT NULL,
+      version TEXT,
+      packageHash TEXT NOT NULL,
+      triggerSnapshot TEXT,
+      metadata TEXT,
+      deployedAt INTEGER NOT NULL,
+      deployedBy TEXT,
+      note TEXT,
+      FOREIGN KEY (deploymentId) REFERENCES deployments(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_dep_versions_deployment ON deployment_versions(deploymentId, deployedAt DESC);
   `)
 
   // Run status terminology migration
@@ -726,12 +746,92 @@ export class DeploymentExecutionDB {
 }
 
 /**
+ * Deployment Version History CRUD Operations
+ */
+export class DeploymentVersionDB {
+  constructor(private db: Database.Database) {}
+
+  /**
+   * Create a version history entry
+   */
+  create(version: DeploymentVersionData): string {
+    const id = version.id || randomUUID()
+
+    const stmt = this.db.prepare(`
+      INSERT INTO deployment_versions (
+        id, deploymentId, version, packageHash, triggerSnapshot,
+        metadata, deployedAt, deployedBy, note
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    stmt.run(
+      id,
+      version.deploymentId,
+      version.version || null,
+      version.packageHash,
+      version.triggerSnapshot || null,
+      version.metadata || null,
+      version.deployedAt,
+      version.deployedBy || null,
+      version.note || null
+    )
+
+    return id
+  }
+
+  /**
+   * Get a single version by ID
+   */
+  get(id: string): DeploymentVersionRecord | null {
+    const stmt = this.db.prepare('SELECT * FROM deployment_versions WHERE id = ?')
+    const row = stmt.get(id) as DeploymentVersionRecord | undefined
+    return row || null
+  }
+
+  /**
+   * Get version history for a deployment (newest first)
+   */
+  getByDeployment(deploymentId: string, options: { limit?: number; offset?: number } = {}): DeploymentVersionRecord[] {
+    const limit = options.limit || 50
+    const offset = options.offset || 0
+
+    const stmt = this.db.prepare(`
+      SELECT * FROM deployment_versions
+      WHERE deploymentId = ?
+      ORDER BY deployedAt DESC
+      LIMIT ? OFFSET ?
+    `)
+
+    return stmt.all(deploymentId, limit, offset) as DeploymentVersionRecord[]
+  }
+
+  /**
+   * Delete a single version
+   */
+  delete(id: string): boolean {
+    const stmt = this.db.prepare('DELETE FROM deployment_versions WHERE id = ?')
+    const result = stmt.run(id)
+    return result.changes > 0
+  }
+
+  /**
+   * Delete all versions for a deployment
+   */
+  deleteByDeployment(deploymentId: string): number {
+    const stmt = this.db.prepare('DELETE FROM deployment_versions WHERE deploymentId = ?')
+    const result = stmt.run(deploymentId)
+    return result.changes
+  }
+}
+
+/**
  * Deployment Database facade with all operations
  */
 export class DeploymentDatabase {
   public deployments: DeploymentDB
   public triggers: TriggerDB
   public executions: DeploymentExecutionDB
+  public versions: DeploymentVersionDB
   private db: Database.Database
 
   constructor(dbPath?: string) {
@@ -739,6 +839,7 @@ export class DeploymentDatabase {
     this.deployments = new DeploymentDB(this.db)
     this.triggers = new TriggerDB(this.db)
     this.executions = new DeploymentExecutionDB(this.db)
+    this.versions = new DeploymentVersionDB(this.db)
   }
 
   /**

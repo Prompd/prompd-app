@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback } from 'react'
-import { X, Server, Database, Globe, MessageSquare, Link2, RefreshCw, Settings, Check, AlertCircle, Loader2, Trash2 } from 'lucide-react'
+import { X, Server, Database, Globe, MessageSquare, Link2, RefreshCw, Settings, Check, AlertCircle, Loader2, Trash2, Search } from 'lucide-react'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import type {
   WorkflowConnection,
@@ -16,6 +16,7 @@ import type {
   GitHubConnectionConfig,
   McpServerConnectionConfig,
   WebSocketConnectionConfig,
+  WebSearchConnectionConfig,
 } from '../../../services/workflowTypes'
 
 // ============================================================================
@@ -45,6 +46,7 @@ const CONNECTION_TYPE_INFO: Record<WorkflowConnectionType, {
   github: { label: 'GitHub', icon: Globe, color: 'var(--node-gray, #6b7280)' },
   'mcp-server': { label: 'MCP Server', icon: Link2, color: 'var(--node-cyan, #06b6d4)' },
   websocket: { label: 'WebSocket', icon: RefreshCw, color: 'var(--node-orange, #f97316)' },
+  'web-search': { label: 'Web Search', icon: Search, color: 'var(--node-sky, #0ea5e9)' },
   custom: { label: 'Custom', icon: Settings, color: 'var(--muted)' },
 }
 
@@ -238,6 +240,15 @@ async function testConnection(connection: WorkflowConnection): Promise<{ success
         // OAuth-based connections need API key to test
         return { success: false, message: 'Configure API credentials to test this connection' }
 
+      case 'web-search': {
+        const wsConfig = config as WebSearchConnectionConfig
+        const provider = wsConfig.provider || 'langsearch'
+        if (!wsConfig.apiKey) {
+          return { success: false, message: `API key is required for ${provider}` }
+        }
+        return { success: true, message: `${provider} API key configured` }
+      }
+
       case 'custom':
         return { success: true, message: 'Custom connections cannot be automatically tested' }
 
@@ -411,6 +422,39 @@ function HttpApiConfigForm({ config, onChange }: ConfigFormProps<HttpApiConnecti
   )
 }
 
+function WebSearchConfigForm({ config, onChange }: ConfigFormProps<WebSearchConnectionConfig>) {
+  const provider = config.provider || 'langsearch'
+
+  return (
+    <>
+      <div style={{ marginBottom: '12px' }}>
+        <label style={labelStyle}>Search Provider</label>
+        <select
+          value={provider}
+          onChange={(e) => onChange({ ...config, provider: e.target.value as WebSearchConnectionConfig['provider'] })}
+          style={selectStyle}
+        >
+          <option value="langsearch">LangSearch (Free)</option>
+          <option value="brave">Brave Search (API key required)</option>
+          <option value="tavily">Tavily (API key required)</option>
+        </select>
+      </div>
+      {(provider === 'langsearch' || provider === 'brave' || provider === 'tavily') && (
+        <div style={{ marginBottom: '12px' }}>
+          <label style={labelStyle}>API Key</label>
+          <input
+            type="password"
+            value={config.apiKey || ''}
+            onChange={(e) => onChange({ ...config, apiKey: e.target.value })}
+            placeholder={provider === 'langsearch' ? 'LangSearch API key' : provider === 'brave' ? 'Brave Search API key' : 'Tavily API key'}
+            style={inputStyle}
+          />
+        </div>
+      )}
+    </>
+  )
+}
+
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -466,6 +510,8 @@ export function ConnectionSettingsDialog({ connection, onClose }: ConnectionSett
         return <DatabaseConfigForm config={config as DatabaseConnectionConfig} onChange={setConfig as (c: Partial<DatabaseConnectionConfig>) => void} />
       case 'http-api':
         return <HttpApiConfigForm config={config as HttpApiConnectionConfig} onChange={setConfig as (c: Partial<HttpApiConnectionConfig>) => void} />
+      case 'web-search':
+        return <WebSearchConfigForm config={config as WebSearchConnectionConfig} onChange={setConfig as (c: Partial<WebSearchConnectionConfig>) => void} />
       default:
         return (
           <div style={{ color: 'var(--muted)', fontSize: '12px', fontStyle: 'italic' }}>

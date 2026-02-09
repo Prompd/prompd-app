@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, isValidElement, cloneElement, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -25,6 +25,17 @@ export default function MarkdownPreview({ content, height = '300px', theme = 'da
     } catch (err) {
       console.error('Failed to copy code:', err)
     }
+  }, [])
+
+  /** Recursively extract text content from React nodes (for copy button) */
+  const extractText = useCallback((node: ReactNode): string => {
+    if (node == null || typeof node === 'boolean') return ''
+    if (typeof node === 'string' || typeof node === 'number') return String(node)
+    if (Array.isArray(node)) return node.map(extractText).join('')
+    if (isValidElement(node) && node.props) {
+      return extractText((node.props as Record<string, unknown>).children as ReactNode)
+    }
+    return ''
   }, [])
 
   // Generate a slug from heading text for anchor IDs
@@ -57,7 +68,7 @@ export default function MarkdownPreview({ content, height = '300px', theme = 'da
         padding: '20px 24px',
         border: `1px solid ${colors.border}`,
         borderRadius: '8px',
-        background: theme === 'dark' ? 'var(--panel)' : '#ffffff',
+        background: theme === 'dark' ? 'var(--bg)' : '#ffffff',
         color: colors.text,
         lineHeight: 1.7,
         fontSize: '15px',
@@ -266,54 +277,37 @@ export default function MarkdownPreview({ content, height = '300px', theme = 'da
             return <input type={type} {...props} />
           },
 
-          // Code blocks with language label and copy button
+          // Block code: pre handler renders the full chrome (language label, copy button)
+          // The code child element is cloned with block-appropriate styles
           pre: ({ children }) => {
-            return (
-              <pre style={{
-                margin: '0 0 16px 0',
-                padding: 0,
-                background: 'transparent'
-              }}>
-                {children}
-              </pre>
-            )
-          },
-          code: ({ inline, className, children, ...props }: any) => {
-            // Extract language from className (format: language-xxx)
-            const match = /language-(\w+)/.exec(className || '')
+            // Extract language and text from the <code> child element
+            const codeChild = isValidElement(children) ? children : null
+            const codeClassName = (codeChild?.props as Record<string, unknown>)?.className as string || ''
+            const match = /language-(\w+)/.exec(codeClassName)
             const language = match ? match[1] : null
-            const codeString = String(children).replace(/\n$/, '')
+            const codeString = extractText(children).replace(/\n$/, '')
 
-            if (inline) {
-              return (
-                <code
-                  style={{
-                    display: 'inline-block',
-                    background: theme === 'dark'
-                      ? 'rgba(110, 118, 129, 0.25)'
-                      : 'rgba(175, 184, 193, 0.3)',
-                    padding: '2px 6px',
-                    margin: '0 1px',
-                    borderRadius: '6px',
-                    fontSize: '0.85em',
+            // Clone the code child with block-appropriate styles (overrides inline pill if any)
+            const styledCode = codeChild
+              ? cloneElement(codeChild as React.ReactElement<Record<string, unknown>>, {
+                  style: {
+                    display: 'block',
+                    padding: '16px',
+                    fontSize: '13px',
                     fontFamily: '"JetBrains Mono", "Fira Code", Monaco, Consolas, monospace',
+                    overflowX: 'auto',
+                    background: theme === 'dark' ? '#0d1117' : '#f6f8fa',
                     color: theme === 'dark' ? '#e6edf3' : '#24292f',
-                    border: theme === 'dark'
-                      ? '1px solid rgba(110, 118, 129, 0.3)'
-                      : '1px solid rgba(175, 184, 193, 0.4)',
-                    wordBreak: 'break-word',
-                    whiteSpace: 'nowrap',
-                    verticalAlign: 'baseline',
-                    lineHeight: 1.4
-                  }}
-                  {...props}
-                >
-                  {children}
-                </code>
-              )
-            }
+                    lineHeight: 1.5,
+                    tabSize: 2,
+                    margin: 0,
+                    border: 'none',
+                    borderRadius: 0,
+                    whiteSpace: 'pre'
+                  }
+                })
+              : children
 
-            // Code block with syntax highlighting
             return (
               <div style={{
                 position: 'relative',
@@ -378,26 +372,43 @@ export default function MarkdownPreview({ content, height = '300px', theme = 'da
                     )}
                   </button>
                 </div>
-                {/* Code content */}
-                <code
-                  className={className}
-                  style={{
-                    display: 'block',
-                    padding: '16px',
-                    fontSize: '13px',
-                    fontFamily: '"JetBrains Mono", "Fira Code", Monaco, Consolas, monospace',
-                    overflowX: 'auto',
-                    background: theme === 'dark' ? '#0d1117' : '#f6f8fa',
-                    // Explicit color for plaintext/unstyled code blocks
-                    color: theme === 'dark' ? '#e6edf3' : '#24292f',
-                    lineHeight: 1.5,
-                    tabSize: 2
-                  }}
-                  {...props}
-                >
-                  {children}
-                </code>
+                {/* Code content - rendered as cloned code element with block styles */}
+                <pre style={{ margin: 0, padding: 0, background: 'transparent' }}>
+                  {styledCode}
+                </pre>
               </div>
+            )
+          },
+
+          // Inline code: renders as a styled pill
+          // For block code (inside <pre>), the pre handler overrides styling via cloneElement
+          code: ({ className, children, ...props }: any) => {
+            return (
+              <code
+                className={className as string}
+                style={{
+                  display: 'inline-block',
+                  background: theme === 'dark'
+                    ? 'rgba(110, 118, 129, 0.25)'
+                    : 'rgba(175, 184, 193, 0.3)',
+                  padding: '2px 6px',
+                  margin: '0 1px',
+                  borderRadius: '6px',
+                  fontSize: '0.85em',
+                  fontFamily: '"JetBrains Mono", "Fira Code", Monaco, Consolas, monospace',
+                  color: theme === 'dark' ? '#e6edf3' : '#24292f',
+                  border: theme === 'dark'
+                    ? '1px solid rgba(110, 118, 129, 0.3)'
+                    : '1px solid rgba(175, 184, 193, 0.4)',
+                  wordBreak: 'break-word',
+                  whiteSpace: 'nowrap',
+                  verticalAlign: 'baseline',
+                  lineHeight: 1.4
+                }}
+                {...props}
+              >
+                {children as ReactNode}
+              </code>
             )
           },
 

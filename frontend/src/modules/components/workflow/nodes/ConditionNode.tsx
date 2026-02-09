@@ -13,6 +13,7 @@ import type { ConditionNodeData, ConditionBranch, BaseNodeData, WorkflowNodeType
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { DockedNodePreview, useDockedNodes } from './DockedNodePreview'
 import { DOCKABLE_HANDLES } from '../../../services/workflowTypes'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 interface ConditionNodeProps {
   id: string
@@ -216,6 +217,12 @@ export const ConditionNode = memo(({ id, data, selected }: ConditionNodeProps) =
           />
         </div>
       </div>
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+      />
 
       {/* Evaluate event handle (bottom) - for docking Callback nodes */}
       <Handle

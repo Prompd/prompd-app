@@ -12,6 +12,7 @@ import { Wrench, Globe, Server, Code, CheckCircle, XCircle, Loader2, Terminal, F
 import type { ToolNodeData, BaseNodeData } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { getNodeColor } from '../nodeColors'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 interface ToolNodeProps {
   id: string
@@ -280,6 +281,14 @@ export const ToolNode = memo(({ id, data, selected }: ToolNodeProps) => {
           {nodeState.error}
         </div>
       )}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+        showOutput={false}
+        showError={false}
+      />
 
       {/* Output Handle */}
       <Handle

@@ -29,6 +29,7 @@ import {
 } from 'lucide-react'
 import type { CallbackNodeData, WorkflowNodeType } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 interface CallbackNodeProps extends NodeProps {
   data: CallbackNodeData
@@ -454,6 +455,13 @@ export const CallbackNode = memo(({ id, data, selected }: CallbackNodeProps) => 
           )}
         </div>
       )}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+        showOutput={false}
+      />
 
       {/* Output Handle */}
       <Handle

@@ -21,6 +21,7 @@ export {
   triggerValidation,
   triggerValidationForAllModels,
   setCurrentFilePath,
+  setWorkspacePath,
   ALL_FILTERS,
   PROMPD_FILTERS,
   NUNJUCKS_BUILTIN_FILTERS,

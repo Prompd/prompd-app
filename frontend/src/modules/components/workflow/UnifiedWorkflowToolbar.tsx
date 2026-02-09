@@ -20,6 +20,7 @@ import {
   LayoutGrid,
   Map,
   Link2,
+  PanelLeft,
   Undo2,
   Redo2,
   ChevronDown,
@@ -120,11 +121,12 @@ export function UnifiedWorkflowToolbar({
   const toggleMinimap = useWorkflowStore((state) => state.toggleMinimap)
   const toggleGrid = useWorkflowStore((state) => state.toggleGrid)
   const setToolbarDockPosition = useWorkflowStore((state) => state.setToolbarDockPosition)
-  const setExecutionState = useWorkflowStore((state) => state.setExecutionState)
 
   // UI Store - connections panel
   const showConnectionsPanel = useUIStore((state) => state.showConnectionsPanel)
   const toggleConnectionsPanel = useUIStore((state) => state.toggleConnectionsPanel)
+  const showNodePalette = useUIStore((state) => state.showNodePalette)
+  const toggleNodePalette = useUIStore((state) => state.toggleNodePalette)
 
   const parameters = workflowFile?.parameters || []
   const undoAvailable = canUndo()
@@ -215,7 +217,7 @@ export function UnifiedWorkflowToolbar({
   }, [isDragging, setToolbarDockPosition])
 
   const handleStop = () => {
-    setExecutionState(null)
+    // Keep executionState so node debug footers persist after stop
     onStop?.()
   }
 
@@ -601,6 +603,16 @@ export function UnifiedWorkflowToolbar({
         <button onClick={toggleGrid} style={showGrid ? activeButtonStyle : buttonBaseStyle} title="Toggle grid">
           <LayoutGrid style={{ width: 16, height: 16 }} />
         </button>
+
+        {!readOnly && (
+          <button
+            onClick={toggleNodePalette}
+            style={showNodePalette ? activeButtonStyle : buttonBaseStyle}
+            title="Toggle node palette"
+          >
+            <PanelLeft style={{ width: 16, height: 16 }} />
+          </button>
+        )}
 
         {!readOnly && (
           <button

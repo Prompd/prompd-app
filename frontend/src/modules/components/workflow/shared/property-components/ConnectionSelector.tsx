@@ -47,6 +47,7 @@ export function ConnectionSelector({
     github: 'GitHub',
     'mcp-server': 'MCP Server',
     websocket: 'WebSocket',
+    'web-search': 'Web Search',
     custom: 'Custom',
   }
 

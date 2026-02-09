@@ -102,7 +102,7 @@ export class MistralPricingFetcher extends BasePricingFetcher {
   }
 
   getDefaultPricing() {
-    // Pricing as of December 2024 - https://mistral.ai/technology/#pricing
+    // Pricing as of February 2026 - https://mistral.ai/pricing / https://docs.mistral.ai/deployment/ai-studio/pricing
     return [
       {
         model: 'mistral-large-latest',
@@ -112,7 +112,7 @@ export class MistralPricingFetcher extends BasePricingFetcher {
           outputTokens: 6.00
         },
         capabilities: {
-          contextWindow: 128000,
+          contextWindow: 131072,
           maxOutputTokens: 8192,
           supportsVision: false,
           supportsTools: true,
@@ -121,13 +121,13 @@ export class MistralPricingFetcher extends BasePricingFetcher {
       },
       {
         model: 'mistral-medium-latest',
-        displayName: 'Mistral Medium',
+        displayName: 'Mistral Medium 3',
         pricing: {
-          inputTokens: 2.70,
-          outputTokens: 8.10
+          inputTokens: 0.40,      // Updated: $0.40 per 1M input
+          outputTokens: 2.00      // Updated: $2.00 per 1M output
         },
         capabilities: {
-          contextWindow: 32000,
+          contextWindow: 131072,
           maxOutputTokens: 8192,
           supportsVision: false,
           supportsTools: true,
@@ -136,13 +136,13 @@ export class MistralPricingFetcher extends BasePricingFetcher {
       },
       {
         model: 'mistral-small-latest',
-        displayName: 'Mistral Small',
+        displayName: 'Mistral Small 3',
         pricing: {
-          inputTokens: 0.20,
-          outputTokens: 0.60
+          inputTokens: 0.10,      // Updated: $0.10 per 1M input
+          outputTokens: 0.30      // Updated: $0.30 per 1M output
         },
         capabilities: {
-          contextWindow: 32000,
+          contextWindow: 131072,
           maxOutputTokens: 8192,
           supportsVision: false,
           supportsTools: true,
@@ -157,7 +157,7 @@ export class MistralPricingFetcher extends BasePricingFetcher {
           outputTokens: 6.00
         },
         capabilities: {
-          contextWindow: 128000,
+          contextWindow: 131072,
           maxOutputTokens: 8192,
           supportsVision: true,
           supportsTools: true,
@@ -168,11 +168,11 @@ export class MistralPricingFetcher extends BasePricingFetcher {
         model: 'codestral-latest',
         displayName: 'Codestral',
         pricing: {
-          inputTokens: 0.20,
-          outputTokens: 0.60
+          inputTokens: 0.30,      // Updated: $0.30 per 1M input
+          outputTokens: 0.90      // Updated: $0.90 per 1M output
         },
         capabilities: {
-          contextWindow: 32000,
+          contextWindow: 256000,
           maxOutputTokens: 8192,
           supportsVision: false,
           supportsTools: false,
@@ -183,11 +183,11 @@ export class MistralPricingFetcher extends BasePricingFetcher {
         model: 'open-mistral-nemo',
         displayName: 'Mistral Nemo',
         pricing: {
-          inputTokens: 0.15,
-          outputTokens: 0.15
+          inputTokens: 0.02,      // Updated: $0.02 per 1M input
+          outputTokens: 0.04      // Updated: $0.04 per 1M output
         },
         capabilities: {
-          contextWindow: 128000,
+          contextWindow: 131072,
           maxOutputTokens: 8192,
           supportsVision: false,
           supportsTools: true,

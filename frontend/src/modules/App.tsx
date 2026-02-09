@@ -21,6 +21,7 @@ import { AboutModal } from './components/AboutModal'
 import { DeploymentModal } from './components/deployment/DeploymentModal'
 import { DeployWorkflowModal } from './components/deployment/DeployWorkflowModal'
 import { PrompdPreviewModal } from './components/PrompdPreviewModal'
+import { PrompdIcon } from './components/PrompdIcon'
 import LocalPackageModal from './editor/LocalPackageModal'
 import { ExecutionResultModal, type ExecutionResult } from './editor/ExecutionResultModal'
 import PrompdJsonDesignView from './components/PrompdJsonDesignView'
@@ -49,6 +50,7 @@ import { setAiAuthTokenGetter } from './services/aiApi'
 import { namespacesApi } from './services/namespacesApi'
 import { configService } from './services/configService'
 import { localProjectStorage, LocalProject } from './services/localProjectStorage'
+import { conversationStorage } from './services/conversationStorage'
 import { hotkeyManager } from './services/hotkeyManager'
 import { setWorkspaceFiles, clearWorkspaceFiles } from './services/workspaceService'
 import { buildPrompdFile, executePrompdConfig } from './services/executionService'
@@ -421,6 +423,10 @@ export default function App() {
 
   // Ref to store the execute function for menu triggering
   const executePrompdRef = useRef<(() => void) | null>(null)
+  const stopExecutionRef = useRef<(() => void) | null>(null)
+
+  // Track .prmd tab IDs that have had chat opened — these get persistent SplitEditor instances
+  const chatMountedTabsRef = useRef<Set<string>>(new Set())
 
   // Ref to store the save function for auto-save (allows use before declaration)
   const saveRef = useRef<(() => Promise<void>) | null>(null)
@@ -1546,10 +1552,13 @@ version: 1.0.0
         errors: monacoMarkers,
         timestamp: Date.now()
       })
-      // Auto-open and expand output panel when errors appear
-      setShowBottomPanel(true)
-      setActiveBottomTab('output')
-      setBottomPanelMinimized(false)
+      // Auto-open output panel when errors appear (show minimized if not already visible)
+      const panelState = useUIStore.getState()
+      if (!panelState.showBottomPanel) {
+        setShowBottomPanel(true)
+        setBottomPanelMinimized(true)
+      }
+      setActiveBottomTab('errors')
     } else {
       // Clear errors when all markers are resolved
       setBuildOutput({
@@ -2669,6 +2678,35 @@ version: 1.0.0
     return () => window.removeEventListener('prompd-save', handleSaveEvent)
   }, [save])
 
+  // Listen for Monaco context menu "Open Chat" event
+  useEffect(() => {
+    const handleOpenChat = () => {
+      if (activeTabId) {
+        updateTab(activeTabId, { showChat: true, showPreview: false })
+      }
+    }
+    window.addEventListener('prompd-open-chat', handleOpenChat)
+    return () => window.removeEventListener('prompd-open-chat', handleOpenChat)
+  }, [activeTabId, updateTab])
+
+  // Track .prmd tabs that have chat open — these get persistent SplitEditor instances
+  // so chat state survives tab switches. Clean up closed tabs.
+  useEffect(() => {
+    const tabIds = new Set(tabs.map(t => t.id))
+    // Add any tab that currently has chat open
+    for (const t of tabs) {
+      if (t.showChat && t.name?.toLowerCase().endsWith('.prmd')) {
+        chatMountedTabsRef.current.add(t.id)
+      }
+    }
+    // Remove tabs that no longer exist
+    for (const id of chatMountedTabsRef.current) {
+      if (!tabIds.has(id)) {
+        chatMountedTabsRef.current.delete(id)
+      }
+    }
+  }, [tabs])
+
   // Listen for settings open events (from news items, etc.)
   useEffect(() => {
     const handleOpenSettings = (e: Event) => {
@@ -3206,10 +3244,15 @@ Write your prompt here...
     })
     if (unsubRunExecute) cleanups.push(unsubRunExecute)
 
-    // Menu: Stop Execution (Shift+F6)
+    // Menu: Stop Execution (Shift+F5)
     const unsubRunStop = electronAPI.onMenuRunStop?.(() => {
       console.log('[App.tsx] Menu run stop')
-      addToast('Stop execution not yet implemented', 'info')
+      if (stopExecutionRef.current) {
+        stopExecutionRef.current()
+        electronAPI.updateMenuState?.({ isExecutionActive: false })
+      } else {
+        addToast('No execution to stop', 'info')
+      }
     })
     if (unsubRunStop) cleanups.push(unsubRunStop)
 
@@ -3750,7 +3793,23 @@ Write your prompt here...
         showPreview={getActiveTab()?.showPreview || false}
         onTogglePreview={() => {
           if (activeTabId) {
-            updateTab(activeTabId, { showPreview: !getActiveTab()?.showPreview })
+            const tab = getActiveTab()
+            if (tab?.showPreview) {
+              updateTab(activeTabId, { showPreview: false })
+            } else {
+              updateTab(activeTabId, { showPreview: true, showChat: false })
+            }
+          }
+        }}
+        showChat={getActiveTab()?.showChat || false}
+        onToggleChat={() => {
+          if (activeTabId) {
+            const tab = getActiveTab()
+            if (tab?.showChat) {
+              updateTab(activeTabId, { showChat: false })
+            } else {
+              updateTab(activeTabId, { showChat: true, showPreview: false })
+            }
           }
         }}
       />
@@ -3959,6 +4018,7 @@ Write your prompt here...
             showNotification={aiShowNotification}
             cursorPosition={cursor}
             workspacePath={explorerDirPath}
+            onRegisterStop={(fn) => { stopExecutionRef.current = fn }}
             onAutoSave={async () => {
               const activeTab = getActiveTab()
               if (autoSaveEnabled && activeTab?.dirty && activeTab?.handle) {
@@ -4044,8 +4104,130 @@ Write your prompt here...
         {hasOpenTab ? (
           <div style={{
             flex: 1,
-            minHeight: 0
+            minHeight: 0,
+            position: 'relative'
           }}>
+            {/* Persistent SplitEditors for .prmd tabs that have had chat opened.
+                Each stays mounted (hidden when not active) so chat state survives tab switches. */}
+            {tabs.filter(t =>
+              chatMountedTabsRef.current.has(t.id) &&
+              t.name?.toLowerCase().endsWith('.prmd')
+            ).map(tab => {
+              const isActive = tab.id === activeTabId && mode === 'code'
+              const fullFilePath = (tab.handle as unknown as Record<string, unknown>)?._electronPath as string | undefined
+              return (
+                <div
+                  key={`persistent-split-${tab.id}`}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    zIndex: isActive ? 1 : 0,
+                    visibility: isActive ? 'visible' : 'hidden',
+                    pointerEvents: isActive ? 'auto' : 'none'
+                  }}
+                >
+                  {/* Floating Chat Launcher - P icon */}
+                  {isActive && !tab.showChat && !tab.showPreview && (
+                    <button
+                      onClick={() => updateTab(tab.id, { showChat: true, showPreview: false })}
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        left: '8px',
+                        zIndex: 20,
+                        width: '28px',
+                        height: '28px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: 'transparent',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        color: 'var(--muted)'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)' }}
+                      title="Open AI Chat"
+                    >
+                      <PrompdIcon size={18} />
+                    </button>
+                  )}
+                  <SplitEditor
+                    value={tab.text || ''}
+                    onChange={(v) => {
+                      // Use setText for active tab (syncs store.text + tab), updateTab for background
+                      if (tab.id === activeTabId) {
+                        setText(v)
+                      } else {
+                        updateTab(tab.id, { text: v, dirty: true })
+                      }
+                    }}
+                    jumpTo={isActive ? (jumpTo || undefined) : undefined}
+                    theme={theme}
+                    onCursorChange={isActive ? setCursor : undefined}
+                    language="prompd"
+                    readOnly={tab.readOnly}
+                    currentFilePath={fullFilePath}
+                    workspacePath={explorerDirPath}
+                    tabId={tab.id}
+                    pendingEdit={isActive ? editorPendingEdit : undefined}
+                    onAcceptEdit={isActive ? handleAcceptEdit : undefined}
+                    onDeclineEdit={isActive ? handleDeclineEdit : undefined}
+                    showPreview={tab.showPreview || false}
+                    onClosePreview={() => updateTab(tab.id, { showPreview: false })}
+                    parameters={tab.previewParams || {}}
+                    onParametersChange={(params) => updateTab(tab.id, { previewParams: params })}
+                    showContextSections={true}
+                    hasFolderOpen={!!explorerDirPath}
+                    onFileUpload={async (_sectionName: string, files: File[]) => {
+                      const filePaths: string[] = []
+                      for (const file of files) {
+                        filePaths.push(file.name)
+                      }
+                      return filePaths
+                    }}
+                    onSelectFromBrowser={async (sectionName: string) => {
+                      const files = await window.electronAPI?.showOpenDialog({
+                        title: `Select file for ${sectionName} section`,
+                        filters: [{ name: 'All Files', extensions: ['*'] }],
+                        properties: ['openFile']
+                      })
+                      if (files && files.length > 0) {
+                        return files[0]
+                      }
+                      return null
+                    }}
+                    onExecute={isActive ? handleExecuteFromPreview : undefined}
+                    isExecuting={isActive ? isExecutingPreview : false}
+                    showChat={tab.showChat || false}
+                    onCloseChat={() => updateTab(tab.id, { showChat: false })}
+                    chatTab={{
+                      id: `chat-inline-${tab.id}`,
+                      name: 'Chat',
+                      text: '',
+                      type: 'chat' as const,
+                      chatConfig: { mode: 'agent', contextFile: tab.id, conversationId: tab.chatConfig?.conversationId }
+                    }}
+                    chatWorkspacePath={explorerDirPath}
+                    onChatGenerated={onAiGenerated}
+                    onNewChat={() => {
+                      const newConv = conversationStorage.createConversation('confirm')
+                      updateTab(tab.id, {
+                        chatConfig: { mode: 'agent', contextFile: tab.id, conversationId: newConv.id }
+                      })
+                    }}
+                    onSelectConversation={(conversationId: string) => {
+                      updateTab(tab.id, {
+                        chatConfig: { mode: 'agent', contextFile: tab.id, conversationId }
+                      })
+                    }}
+                  />
+                </div>
+              )
+            })}
+
             {(() => {
               // Use tabs.find() instead of getActiveTab() to ensure React tracks the dependency
               const activeTab = tabs.find(t => t.id === activeTabId)
@@ -4071,6 +4253,7 @@ Write your prompt here...
                         await save()
                       }
                     }}
+                    onRegisterStop={(fn) => { stopExecutionRef.current = fn }}
                   />
                 )
               }
@@ -4812,94 +4995,126 @@ Write your prompt here...
                 const fullFilePath = (activeTab?.handle as any)?._electronPath || null
                 const isPrompdLanguage = detectedLanguage === 'prompd'
 
-                // Use SplitEditor for prmpd files when preview is enabled
+                // Use SplitEditor for .prmd files
                 if (isPrompdLanguage) {
+                  // If this tab has a persistent SplitEditor (chat was opened), it's
+                  // already rendered above — skip the IIFE render to avoid duplicates.
+                  if (activeTabId && chatMountedTabsRef.current.has(activeTabId)) {
+                    return null
+                  }
+
                   return (
-                    <SplitEditor
-                      value={activeTab?.text || text}
-                      onChange={setText}
-                      jumpTo={jumpTo || undefined}
-                      theme={theme}
-                      onCursorChange={setCursor}
-                      language={detectedLanguage}
-                      readOnly={activeTab?.readOnly}
-                      currentFilePath={fullFilePath}
-                      workspacePath={explorerDirPath}
-                      tabId={activeTabId || undefined}
-                      pendingEdit={editorPendingEdit}
-                      onAcceptEdit={handleAcceptEdit}
-                      onDeclineEdit={handleDeclineEdit}
-                      showPreview={activeTab?.showPreview || false}
-                      onClosePreview={() => {
-                        if (activeTabId) {
-                          updateTab(activeTabId, { showPreview: false })
-                        }
-                      }}
-                      parameters={activeTab?.previewParams || {}}
-                      onParametersChange={(params) => {
-                        if (activeTabId) {
-                          updateTab(activeTabId, { previewParams: params })
-                        }
-                      }}
-                      showContextSections={true}
-                      hasFolderOpen={!!explorerDirPath}
-                      onFileUpload={async (sectionName: string, files: File[]) => {
-                        // Read file contents and return file paths
-                        const filePaths: string[] = []
-                        for (const file of files) {
-                          filePaths.push(file.name)
-                        }
-                        return filePaths
-                      }}
-                      onSelectFromBrowser={async (sectionName: string) => {
-                        // Open file picker for workspace files
-                        const files = await window.electronAPI?.showOpenDialog({
-                          title: `Select file for ${sectionName} section`,
-                          filters: [{ name: 'All Files', extensions: ['*'] }],
-                          properties: ['openFile']
-                        })
-                        if (files && files.length > 0) {
-                          return files[0]
-                        }
-                        return null
-                      }}
-                      showExecution={true}
-                      onExecute={handleExecuteFromPreview}
-                      isExecuting={isExecutingPreview}
-                      canExecute={true}
-                      executionProvider={llmProvider.provider}
-                      executionModel={llmProvider.model}
-                      executionProviders={
-                        llmProvider.providersWithPricing?.map(p => ({
-                          id: p.providerId,
-                          name: p.displayName,
-                          models: p.models.map(m => ({
-                            id: m.model,
-                            name: m.displayName
-                          }))
-                        })) || []
-                      }
-                      onExecutionProviderChange={(provider) => {
-                        const setLLMProvider = useUIStore.getState().setLLMProvider
-                        setLLMProvider(provider)
-                      }}
-                      onExecutionModelChange={(model) => {
-                        const setLLMModel = useUIStore.getState().setLLMModel
-                        setLLMModel(model)
-                      }}
-                      executionMaxTokens={llmProvider.maxTokens}
-                      executionTemperature={llmProvider.temperature}
-                      executionMode={llmProvider.generationMode}
-                      onExecutionMaxTokensChange={(value) => {
-                        useUIStore.getState().setLLMMaxTokens(value)
-                      }}
-                      onExecutionTemperatureChange={(value) => {
-                        useUIStore.getState().setLLMTemperature(value)
-                      }}
-                      onExecutionModeChange={(mode) => {
-                        useUIStore.getState().setLLMGenerationMode(mode)
-                      }}
-                    />
+                    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                      {/* Floating Chat Launcher - P icon (matches ActivityBar color convention) */}
+                      {!activeTab?.showChat && !activeTab?.showPreview && (
+                        <button
+                          onClick={() => {
+                            if (activeTabId) updateTab(activeTabId, { showChat: true, showPreview: false })
+                          }}
+                          style={{
+                            position: 'absolute',
+                            top: '8px',
+                            left: '8px',
+                            zIndex: 20,
+                            width: '28px',
+                            height: '28px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: 'transparent',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            color: 'var(--muted)'
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)' }}
+                          title="Open AI Chat"
+                        >
+                          <PrompdIcon size={18} />
+                        </button>
+                      )}
+                      <SplitEditor
+                        value={activeTab?.text || text}
+                        onChange={setText}
+                        jumpTo={jumpTo || undefined}
+                        theme={theme}
+                        onCursorChange={setCursor}
+                        language={detectedLanguage}
+                        readOnly={activeTab?.readOnly}
+                        currentFilePath={fullFilePath}
+                        workspacePath={explorerDirPath}
+                        tabId={activeTabId || undefined}
+                        pendingEdit={editorPendingEdit}
+                        onAcceptEdit={handleAcceptEdit}
+                        onDeclineEdit={handleDeclineEdit}
+                        showPreview={activeTab?.showPreview || false}
+                        onClosePreview={() => {
+                          if (activeTabId) {
+                            updateTab(activeTabId, { showPreview: false })
+                          }
+                        }}
+                        parameters={activeTab?.previewParams || {}}
+                        onParametersChange={(params) => {
+                          if (activeTabId) {
+                            updateTab(activeTabId, { previewParams: params })
+                          }
+                        }}
+                        showContextSections={true}
+                        hasFolderOpen={!!explorerDirPath}
+                        onFileUpload={async (sectionName: string, files: File[]) => {
+                          const filePaths: string[] = []
+                          for (const file of files) {
+                            filePaths.push(file.name)
+                          }
+                          return filePaths
+                        }}
+                        onSelectFromBrowser={async (sectionName: string) => {
+                          const files = await window.electronAPI?.showOpenDialog({
+                            title: `Select file for ${sectionName} section`,
+                            filters: [{ name: 'All Files', extensions: ['*'] }],
+                            properties: ['openFile']
+                          })
+                          if (files && files.length > 0) {
+                            return files[0]
+                          }
+                          return null
+                        }}
+                        onExecute={handleExecuteFromPreview}
+                        isExecuting={isExecutingPreview}
+                        showChat={activeTab?.showChat || false}
+                        onCloseChat={() => {
+                          if (activeTabId) {
+                            updateTab(activeTabId, { showChat: false })
+                          }
+                        }}
+                        chatTab={activeTabId ? {
+                          id: `chat-inline-${activeTabId}`,
+                          name: 'Chat',
+                          text: '',
+                          type: 'chat' as const,
+                          chatConfig: { mode: 'agent', contextFile: activeTabId, conversationId: activeTab?.chatConfig?.conversationId }
+                        } : undefined}
+                        chatWorkspacePath={explorerDirPath}
+                        onChatGenerated={onAiGenerated}
+                        onNewChat={() => {
+                          if (activeTabId) {
+                            const newConv = conversationStorage.createConversation('confirm')
+                            updateTab(activeTabId, {
+                              chatConfig: { mode: 'agent', contextFile: activeTabId, conversationId: newConv.id }
+                            })
+                          }
+                        }}
+                        onSelectConversation={(conversationId: string) => {
+                          if (activeTabId) {
+                            updateTab(activeTabId, {
+                              chatConfig: { mode: 'agent', contextFile: activeTabId, conversationId }
+                            })
+                          }
+                        }}
+                      />
+                    </div>
                   )
                 }
 

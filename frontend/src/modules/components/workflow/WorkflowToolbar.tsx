@@ -52,7 +52,6 @@ export function WorkflowToolbar({ readOnly = false, onRun, onStop, onResume, isP
   // Store actions
   const toggleMinimap = useWorkflowStore(state => state.toggleMinimap)
   const toggleGrid = useWorkflowStore(state => state.toggleGrid)
-  const setExecutionState = useWorkflowStore(state => state.setExecutionState)
   const undo = useWorkflowStore(state => state.undo)
   const redo = useWorkflowStore(state => state.redo)
   const canUndo = useWorkflowStore(state => state.canUndo)
@@ -100,7 +99,7 @@ export function WorkflowToolbar({ readOnly = false, onRun, onStop, onResume, isP
   }, [executionMode])
 
   const handleStop = () => {
-    setExecutionState(null)
+    // Keep executionState so node debug footers persist after stop
     onStop?.()
   }
 

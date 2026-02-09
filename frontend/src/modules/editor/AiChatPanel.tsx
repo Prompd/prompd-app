@@ -18,7 +18,7 @@ import { PrompdEditorIntegration } from '../integrations/PrompdEditorIntegration
 import { registryApi } from '../services/registryApi'
 import { conversationStorage, type Conversation, type ConversationMessage, type AgentPermissionLevel } from '../services/conversationStorage'
 import { ConversationSidebar } from '../components/ConversationSidebar'
-import { MessageSquare, ExternalLink, Plus, MoreVertical, ChevronDown, Loader2, Zap, ShieldCheck, ClipboardList, MessageCircle, Undo2, Redo2 } from 'lucide-react'
+import { MessageSquare, ExternalLink, Plus, MoreVertical, ChevronDown, Loader2, Zap, ShieldCheck, ClipboardList, MessageCircle, Undo2, Redo2, Play } from 'lucide-react'
 import { SidebarPanelHeader } from '../components/SidebarPanelHeader'
 import { PrompdIcon } from '../components/PrompdIcon'
 import { fetchChatModes, chatModesToArray, type ChatModeConfig } from '../services/chatModesApi'
@@ -32,6 +32,7 @@ import {
   type Suggestion
 } from '../services/editorService'
 import { PlanApprovalDialog } from '../components/PlanApprovalDialog'
+import PlanReviewModal from '../components/PlanReviewModal'
 import { SlashCommandMenu, useSlashCommands, type SlashCommand } from '../components/SlashCommandMenu'
 import { buildFileContextMessages } from '../services/fileContextBuilder'
 import { executeSlashCommand, SLASH_COMMANDS } from '../services/slashCommands'
@@ -100,6 +101,7 @@ interface AiChatPanelProps {
   workspacePath?: string | null  // Workspace path for tool execution (Electron)
   onFileWritten?: (path: string, content: string) => void  // Callback when agent writes a file (to update tabs)
   onAutoSave?: () => Promise<void>  // Callback to auto-save before tool approval
+  onRegisterStop?: (stopFn: (() => void) | null) => void  // Register stop function for menu integration
 }
 
 export default function AiChatPanel({
@@ -116,7 +118,8 @@ export default function AiChatPanel({
   onSetPendingEdit,
   workspacePath,
   onFileWritten,
-  onAutoSave
+  onAutoSave,
+  onRegisterStop
 }: AiChatPanelProps) {
   const { getToken, isLoaded, isAuthenticated } = useAuthenticatedUser()
   const { trackUsage } = usePrompdUsage()
@@ -146,9 +149,10 @@ export default function AiChatPanel({
   // Cursor position ref to avoid stale closures in useMemo
   const cursorPositionRef = useRef(cursorPosition)
 
-  // Mode and conversation state - now unified agent mode with permission levels
-  const chatMode = 'agent' as const  // Unified agent mode - no longer switchable
+  // Mode and conversation state - permission level drives chatMode
   const [permissionLevel, setPermissionLevel] = useState<AgentPermissionLevel>('confirm')
+  // Plan permission activates planner mode; Auto/Confirm use agent mode
+  const chatMode = permissionLevel === 'plan' ? 'planner' : 'agent'
   const permissionLevelRef = useRef<AgentPermissionLevel>('confirm')
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null)
   const currentConversationRef = useRef<Conversation | null>(null)
@@ -169,11 +173,45 @@ export default function AiChatPanel({
       trackUsage(type, provider, model, promptTokens, completionTokens, metadata)
     },
     showNotification,
-    onFileWritten
+    onFileWritten,
+    onToolMessage: (msg) => {
+      // Persist tool execution messages to conversation storage
+      setCurrentConversation(prev => {
+        if (!prev) return null
+        const toolMsg: ConversationMessage = {
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp,
+          metadata: msg.metadata
+        }
+        // Replace if exists (update), otherwise append
+        const existingIdx = prev.messages.findIndex(m => m.id === msg.id)
+        const updatedMessages = existingIdx >= 0
+          ? prev.messages.map((m, i) => i === existingIdx ? toolMsg : m)
+          : [...prev.messages, toolMsg]
+        const updated = { ...prev, messages: updatedMessages, updatedAt: new Date().toISOString() }
+        conversationStorage.save(updated).catch(err => console.error('[AiChatPanel] Failed to save tool message:', err))
+        return updated
+      })
+    }
   })
 
   const [showConversationSidebar, setShowConversationSidebar] = useState(false)
   const [conversationList, setConversationList] = useState<typeof conversationStorage extends { list: () => infer R } ? R : never>([])
+
+  // Register stop function for menu integration (Shift+F5)
+  useEffect(() => {
+    if (agentState.isAgentLoopActive && onRegisterStop) {
+      onRegisterStop(() => agentActions.stop())
+      const electronAPI = (window as any).electronAPI
+      electronAPI?.updateMenuState?.({ isExecutionActive: true })
+    } else if (!agentState.isAgentLoopActive && onRegisterStop) {
+      onRegisterStop(null)
+      const electronAPI = (window as any).electronAPI
+      electronAPI?.updateMenuState?.({ isExecutionActive: false })
+    }
+  }, [agentState.isAgentLoopActive, onRegisterStop, agentActions])
 
   // Undo/Redo state
   const [canUndo, setCanUndo] = useState(false)
@@ -767,6 +805,16 @@ export default function AiChatPanel({
         />
       )}
 
+      {/* Plan Review Modal (present_plan tool) */}
+      {agentState.pendingPlanReview && (
+        <PlanReviewModal
+          content={agentState.pendingPlanReview.content}
+          onRefine={(feedback) => agentState.pendingPlanReview?.resolve({ action: 'refine', feedback })}
+          onApply={(mode) => agentState.pendingPlanReview?.resolve({ action: 'apply', mode })}
+          onCancel={() => agentActions.cancelPlanReview()}
+        />
+      )}
+
       {/* Agent Running Indicator */}
       {agentState.isAgentLoopActive && (
         <div style={{
@@ -1107,6 +1155,7 @@ export default function AiChatPanel({
             onInputChange={setChatInputValue}
             inputTheme={permissionLevel}
             waitingForUserInput={!!agentState.pendingAskUser}
+            onStop={() => agentActions.stop()}
             onBeforeSubmit={async (inputValue) => {
               // Check if there's a pending ask_user waiting for user response
               if (agentState.pendingAskUser) {
@@ -1259,6 +1308,7 @@ export default function AiChatPanel({
                 </button>
                 <button
                   type="button"
+                  className={permissionLevel === 'plan' && agentState.isAgentLoopActive ? 'plan-executing' : ''}
                   onClick={() => setShowPermissionMenu(!showPermissionMenu)}
                   style={{
                     display: 'flex',
@@ -1283,8 +1333,11 @@ export default function AiChatPanel({
                 >
                   {permissionLevel === 'auto' && <Zap size={14} style={{ color: '#22c55e' }} />}
                   {permissionLevel === 'confirm' && <ShieldCheck size={14} style={{ color: '#eab308' }} />}
-                  {permissionLevel === 'plan' && <ClipboardList size={14} style={{ color: '#6366f1' }} />}
-                  <span style={{ textTransform: 'capitalize', fontSize: '16px' }}>{permissionLevel}</span>
+                  {permissionLevel === 'plan' && !agentState.isAgentLoopActive && <ClipboardList size={14} style={{ color: '#6366f1' }} />}
+                  {permissionLevel === 'plan' && agentState.isAgentLoopActive && <Play size={14} style={{ color: '#f97316' }} />}
+                  <span style={{ textTransform: 'capitalize', fontSize: '16px' }}>
+                    {permissionLevel === 'plan' && agentState.isAgentLoopActive ? 'Executing' : permissionLevel}
+                  </span>
                   <ChevronDown size={12} style={{ color: 'var(--text-muted)', transform: showPermissionMenu ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
                 </button>
 
@@ -1451,6 +1504,59 @@ export default function AiChatPanel({
                     }}>
                       {agentState.pendingAskUser.question}
                     </div>
+                    {/* Option buttons when ask_user provides options */}
+                    {agentState.pendingAskUser.options && agentState.pendingAskUser.options.length > 0 && (
+                      <div style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '8px',
+                        marginTop: '12px'
+                      }}>
+                        {agentState.pendingAskUser.options.map((opt, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => {
+                              if (chatRef.current) {
+                                chatRef.current.addMessage({
+                                  id: `user-response-${Date.now()}`,
+                                  role: 'user',
+                                  content: opt.label,
+                                  timestamp: new Date().toISOString()
+                                })
+                              }
+                              agentState.pendingAskUser?.resolve(opt.label)
+                              setChatInputValue('')
+                            }}
+                            style={{
+                              padding: opt.description ? '10px 16px' : '8px 16px',
+                              background: 'rgba(168, 85, 247, 0.1)',
+                              border: '1px solid rgba(168, 85, 247, 0.3)',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '2px',
+                              transition: 'all 0.15s'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'rgba(168, 85, 247, 0.2)'
+                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.5)'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'rgba(168, 85, 247, 0.1)'
+                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.3)'
+                            }}
+                          >
+                            <span style={{ color: '#a855f7', fontWeight: 600, fontSize: '14px' }}>{opt.label}</span>
+                            {opt.description && (
+                              <span style={{ color: 'var(--prompd-muted)', fontSize: '12px' }}>{opt.description}</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <div style={{
                       fontSize: '12px',
                       color: 'var(--prompd-muted)',
@@ -1467,7 +1573,10 @@ export default function AiChatPanel({
                           fontFamily: 'monospace',
                           fontSize: '11px'
                         }}>Enter</span>
-                        Type your answer below and press Enter to continue
+                        {agentState.pendingAskUser.options && agentState.pendingAskUser.options.length > 0
+                          ? 'Or type a custom answer below'
+                          : 'Type your answer below and press Enter to continue'
+                        }
                       </div>
                       <button
                         type="button"
@@ -1677,6 +1786,27 @@ export default function AiChatPanel({
 
         </PrompdProvider>
       </div>
+
+      {/* Token usage status bar */}
+      {agentState.tokenUsage.totalTokens > 0 && (
+        <div style={{
+          padding: '3px 12px',
+          fontSize: '11px',
+          color: theme === 'dark' ? 'var(--text-muted, #6b7280)' : 'rgba(0,0,0,0.4)',
+          borderTop: `1px solid ${theme === 'dark' ? 'var(--border, #2d2d3d)' : '#e2e8f0'}`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          flexShrink: 0,
+          fontFamily: 'var(--font-mono, monospace)',
+          background: theme === 'dark' ? 'rgba(255,255,255,0.01)' : 'rgba(0,0,0,0.01)'
+        }}>
+          <span>{agentState.tokenUsage.totalTokens.toLocaleString()} tokens</span>
+          <span style={{ opacity: 0.5 }}>
+            ({agentState.tokenUsage.promptTokens.toLocaleString()} in / {agentState.tokenUsage.completionTokens.toLocaleString()} out)
+          </span>
+        </div>
+      )}
     </div>
   )
 }

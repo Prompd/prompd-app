@@ -9,6 +9,7 @@ import type { PromptNodeData, BaseNodeData, WorkflowNodeType } from '../../../se
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { DockedNodePreview, useDockedNodes } from './DockedNodePreview'
 import { DOCKABLE_HANDLES } from '../../../services/workflowTypes'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 interface PromptNodeProps {
   id: string
@@ -159,6 +160,13 @@ export const PromptNode = memo(({ id, data, selected }: PromptNodeProps) => {
           {nodeState.streamingContent.length > 100 && '...'}
         </div>
       )}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+        showOutput={false}
+      />
 
       {/* Output Handle - with dock target highlight */}
       <Handle

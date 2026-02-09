@@ -272,6 +272,30 @@ export interface ExecutionPage {
   totalPages: number
 }
 
+export interface DeploymentVersionRecord {
+  id: string
+  deploymentId: string
+  version: string | null
+  packageHash: string
+  triggerSnapshot: string | null
+  metadata: string | null
+  deployedAt: number
+  deployedBy: string | null
+  note: string | null
+}
+
+export interface DeploymentVersionData {
+  id?: string
+  deploymentId: string
+  version?: string
+  packageHash: string
+  triggerSnapshot?: string
+  metadata?: string
+  deployedAt: number
+  deployedBy?: string
+  note?: string
+}
+
 export interface WorkflowParameters {
   parameters: WorkflowParameter[]
   workflowName: string

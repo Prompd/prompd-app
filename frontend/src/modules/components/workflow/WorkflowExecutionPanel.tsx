@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from 'react'
+import { formatDuration } from '../../lib/executionUtils'
 import {
   CheckCircle,
   AlertCircle,
@@ -94,13 +95,6 @@ export function WorkflowExecutionPanel({
   const getNodeLabel = (nodeId: string) => {
     const node = workflowFile?.nodes.find(n => n.id === nodeId)
     return node?.data.label || nodeId
-  }
-
-  // Format duration
-  const formatDuration = (ms: number) => {
-    if (ms < 1000) return `${ms}ms`
-    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-    return `${(ms / 60000).toFixed(1)}m`
   }
 
   // Get status icon

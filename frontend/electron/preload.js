@@ -474,7 +474,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Purge all deleted deployments
     // Returns: { success, purgedCount?, error? }
-    purgeDeleted: () => ipcRenderer.invoke('deployment:purgeDeleted')
+    purgeDeleted: () => ipcRenderer.invoke('deployment:purgeDeleted'),
+
+    // Get deployment version history
+    // deploymentId: Deployment ID
+    // Returns: { success, versions?, error? }
+    getVersionHistory: (deploymentId) => ipcRenderer.invoke('deployment:getVersionHistory', deploymentId)
   },
 
   // Service Management API

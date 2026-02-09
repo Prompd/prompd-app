@@ -23,6 +23,7 @@ import type {
   TriggerRecord,
   DeploymentServiceOptions,
   DeploymentStatus,
+  DeploymentVersionRecord,
   ParsedWorkflow,
   WorkflowNode,
   ExecutionResult,
@@ -186,6 +187,7 @@ export class DeploymentService {
       let deploymentId: string
       let deploymentDir: string
       let isUpdate = false
+      let outgoingTriggerSnapshot: string | undefined
 
       if (enabledDeployment) {
         // Update existing active/paused deployment
@@ -194,8 +196,16 @@ export class DeploymentService {
         deploymentDir = path.join(this.deploymentsPath, deploymentId)
         isUpdate = true
 
-        // Unregister existing triggers
+        // Capture trigger snapshot BEFORE deleting (for version history)
         const triggers = this.db.triggers.getByDeployment(deploymentId)
+        outgoingTriggerSnapshot = JSON.stringify(triggers.map(t => ({
+          type: t.triggerType,
+          config: t.config,
+          scheduleCron: t.scheduleCron,
+          enabled: t.enabled
+        })))
+
+        // Unregister existing triggers
         for (const trigger of triggers) {
           if (this.triggerManager) {
             await this.triggerManager.unregister(trigger.id)
@@ -216,8 +226,16 @@ export class DeploymentService {
         deploymentDir = path.join(this.deploymentsPath, deploymentId)
         isUpdate = true
 
-        // Unregister existing triggers
+        // Capture trigger snapshot BEFORE deleting (for version history)
         const triggers = this.db.triggers.getByDeployment(deploymentId)
+        outgoingTriggerSnapshot = JSON.stringify(triggers.map(t => ({
+          type: t.triggerType,
+          config: t.config,
+          scheduleCron: t.scheduleCron,
+          enabled: t.enabled
+        })))
+
+        // Unregister existing triggers
         for (const trigger of triggers) {
           if (this.triggerManager) {
             await this.triggerManager.unregister(trigger.id)
@@ -253,7 +271,24 @@ export class DeploymentService {
       // 9. Calculate package hash for integrity
       const packageHash = await this.calculatePackageHash(deploymentDir)
 
-      // 10. Create or update deployment record
+      // 10. Snapshot outgoing version before overwriting (update only)
+      if (isUpdate) {
+        const outgoing = enabledDeployment || deletedDeployment
+        if (outgoing) {
+          this.db.versions.create({
+            deploymentId,
+            version: outgoing.version || '0.0.0',
+            packageHash: outgoing.packageHash,
+            triggerSnapshot: outgoingTriggerSnapshot,
+            metadata: outgoing.metadata || undefined,
+            deployedAt: outgoing.updatedAt || outgoing.deployedAt,
+            deployedBy: outgoing.createdBy || 'user'
+          })
+          console.log(`[DeploymentService] Saved version snapshot: v${outgoing.version || '0.0.0'}`)
+        }
+      }
+
+      // 11. Create or update deployment record
       if (isUpdate) {
         const existingDeployment = enabledDeployment || deletedDeployment
         if (existingDeployment) {
@@ -278,7 +313,7 @@ export class DeploymentService {
         })
       }
 
-      // 11. Extract and register triggers
+      // 12. Extract and register triggers
       await this.extractTriggers(deploymentId, workflow, triggerNode)
 
       console.log(`[DeploymentService] ${isUpdate ? 'Updated' : 'Deployed'}: ${workflow.metadata?.name} (${deploymentId})`)
@@ -1062,6 +1097,13 @@ export class DeploymentService {
    */
   getHistory(deploymentId: string, options: ExecutionQueryOptions = {}): ReturnType<typeof this.db.executions.getByDeployment> {
     return this.db.executions.getByDeployment(deploymentId, options)
+  }
+
+  /**
+   * Get version history for a deployment
+   */
+  getVersionHistory(deploymentId: string): DeploymentVersionRecord[] {
+    return this.db.versions.getByDeployment(deploymentId)
   }
 
   /**

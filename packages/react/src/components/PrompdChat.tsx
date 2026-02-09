@@ -27,7 +27,8 @@ export const PrompdChat = forwardRef<PrompdChatHandle, PrompdChatProps>(function
   onBeforeSubmit,
   aboveInput,
   inputTheme = 'default',
-  waitingForUserInput = false
+  waitingForUserInput = false,
+  onStop
 }, ref) {
   const { llmClient: defaultLLMClient } = usePrompd()
 
@@ -176,7 +177,12 @@ export const PrompdChat = forwardRef<PrompdChatHandle, PrompdChatProps>(function
       }
 
       // Remove thinking message and add real response
-      setMessages(prev => prev.filter(m => m.id !== thinkingMessageId).concat(assistantMessage))
+      // If messageAlreadyRendered, the agent hook already added the message before tool execution
+      if (response.metadata?.messageAlreadyRendered) {
+        setMessages(prev => prev.filter(m => m.id !== thinkingMessageId))
+      } else {
+        setMessages(prev => prev.filter(m => m.id !== thinkingMessageId).concat(assistantMessage))
+      }
 
       // If the agent is waiting for user input (ask_user tool call), stop loading to allow input
       if (response.metadata?.waitingForInput ||
@@ -274,11 +280,11 @@ export const PrompdChat = forwardRef<PrompdChatHandle, PrompdChatProps>(function
   return (
     <div className={clsx('prompd-chat flex flex-col h-full', className)}>
       {/* Messages Container - Centered with max width */}
-      <div className="prompd-messages flex-1 overflow-y-auto px-4 py-6">
-        <div className="prompd-messages-inner mx-auto" style={{ maxWidth: '800px' }}>
+      <div className="prompd-messages flex-1 overflow-y-auto px-4 py-6" style={messages.length === 0 ? { height: '100%' } : undefined}>
+        <div className="prompd-messages-inner mx-auto" style={{ maxWidth: '800px', ...(messages.length === 0 ? { height: '100%' } : {}) }}>
           {messages.length === 0 ? (
             emptyStateContent ? (
-              <div className="prompd-custom-empty-state">{emptyStateContent}</div>
+              <div className="prompd-custom-empty-state" style={{ height: '100%' }}>{emptyStateContent}</div>
             ) : (
               <EmptyState />
             )
@@ -312,6 +318,7 @@ export const PrompdChat = forwardRef<PrompdChatHandle, PrompdChatProps>(function
             onChange={setInput}
             onSubmit={handleSubmit}
             isLoading={isLoading && !waitingForUserInput}
+            onStop={onStop}
             inputRef={inputRef}
             inputTheme={inputTheme}
             history={inputHistory}

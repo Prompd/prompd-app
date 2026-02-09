@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback } from 'react'
-import { X, Server, Database, Globe, MessageSquare, Link2, RefreshCw, Settings } from 'lucide-react'
+import { X, Server, Database, Globe, MessageSquare, Link2, RefreshCw, Settings, Search } from 'lucide-react'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import type {
   WorkflowConnectionType,
@@ -16,6 +16,7 @@ import type {
   McpServerConnectionConfig,
   WebSocketConnectionConfig,
   CustomConnectionConfig,
+  WebSearchConnectionConfig,
 } from '../../../services/workflowTypes'
 
 // ============================================================================
@@ -87,6 +88,13 @@ const CONNECTION_TYPES: Array<{
     icon: RefreshCw,
     color: 'var(--node-orange, #f97316)',
     description: 'WebSocket connections',
+  },
+  {
+    type: 'web-search',
+    label: 'Web Search',
+    icon: Search,
+    color: 'var(--node-sky, #0ea5e9)',
+    description: 'Web search providers (LangSearch, Brave, Tavily)',
   },
   {
     type: 'custom',
@@ -508,6 +516,39 @@ function WebSocketConfigForm({ config, onChange }: ConfigFormProps<WebSocketConn
   )
 }
 
+function WebSearchConfigForm({ config, onChange }: ConfigFormProps<WebSearchConnectionConfig>) {
+  const provider = config.provider || 'langsearch'
+
+  return (
+    <>
+      <div style={{ marginBottom: '12px' }}>
+        <label style={labelStyle}>Search Provider</label>
+        <select
+          value={provider}
+          onChange={(e) => onChange({ ...config, provider: e.target.value as WebSearchConnectionConfig['provider'] })}
+          style={selectStyle}
+        >
+          <option value="langsearch">LangSearch (Free)</option>
+          <option value="brave">Brave Search (API key required)</option>
+          <option value="tavily">Tavily (API key required)</option>
+        </select>
+      </div>
+      {(provider === 'langsearch' || provider === 'brave' || provider === 'tavily') && (
+        <div style={{ marginBottom: '12px' }}>
+          <label style={labelStyle}>API Key</label>
+          <input
+            type="password"
+            value={config.apiKey || ''}
+            onChange={(e) => onChange({ ...config, apiKey: e.target.value })}
+            placeholder={provider === 'langsearch' ? 'LangSearch API key' : provider === 'brave' ? 'Brave Search API key' : 'Tavily API key'}
+            style={inputStyle}
+          />
+        </div>
+      )}
+    </>
+  )
+}
+
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -565,6 +606,8 @@ export function AddConnectionDialog({ onClose, initialType }: AddConnectionDialo
         return <McpServerConfigForm config={config as Partial<McpServerConnectionConfig>} onChange={setConfig} />
       case 'websocket':
         return <WebSocketConfigForm config={config as Partial<WebSocketConnectionConfig>} onChange={setConfig} />
+      case 'web-search':
+        return <WebSearchConfigForm config={config as Partial<WebSearchConnectionConfig>} onChange={setConfig} />
       case 'custom':
         return (
           <div style={{ color: 'var(--muted)', fontSize: '12px', fontStyle: 'italic' }}>

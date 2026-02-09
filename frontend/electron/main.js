@@ -73,7 +73,8 @@ let menuState = {
   hasActiveTab: false,      // Is there an active tab?
   isPrompdFile: false,      // Is the active file a .prmd file?
   isWorkflowFile: false,    // Is the active file a .pdflow workflow?
-  canExecute: false         // Can we execute (has .prmd file open)?
+  canExecute: false,        // Can we execute (has .prmd file open)?
+  isExecutionActive: false  // Is an execution currently running (agent, workflow, etc.)?
 }
 
 // Clerk OAuth configuration
@@ -413,16 +414,8 @@ function createMenu() {
         },
         { type: 'separator' },
         {
-          label: 'API Keys',
+          label: 'Settings...',
           accelerator: 'CmdOrCtrl+,',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu-api-keys')
-            }
-          }
-        },
-        {
-          label: 'Settings',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu-settings')
@@ -430,25 +423,12 @@ function createMenu() {
           }
         },
         {
-          label: 'Scheduler',
-          submenu: [
-            {
-              label: 'Manage Schedules',
-              click: () => {
-                if (mainWindow) {
-                  mainWindow.webContents.send('menu-scheduler-settings')
-                }
-              }
-            },
-            {
-              label: 'Service Settings',
-              click: () => {
-                if (mainWindow) {
-                  mainWindow.webContents.send('menu-scheduler-service')
-                }
-              }
+          label: 'API Keys...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-api-keys')
             }
-          ]
+          }
         },
         { type: 'separator' },
         { role: 'quit' }
@@ -598,13 +578,8 @@ function createMenu() {
               mainWindow.webContents.send('menu-manage-projects')
             }
           }
-        }
-      ]
-    },
-    // Package menu - Package operations
-    {
-      label: 'Package',
-      submenu: [
+        },
+        { type: 'separator' },
         {
           label: 'Build Package',
           accelerator: getAccelerator('compile', 'CmdOrCtrl+Shift+B'),
@@ -616,7 +591,7 @@ function createMenu() {
           }
         },
         {
-          label: 'Publish Package',
+          label: 'Publish Package...',
           enabled: menuState.hasWorkspace,
           click: () => {
             if (mainWindow) {
@@ -624,8 +599,59 @@ function createMenu() {
             }
           }
         },
+        { type: 'separator' },
         {
-          label: 'Deploy Workflow',
+          label: 'Install Dependencies...',
+          enabled: menuState.hasWorkspace,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-run-install')
+            }
+          }
+        },
+        {
+          label: 'Install Package...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-package-install')
+            }
+          }
+        },
+        {
+          label: 'Browse Registry',
+          click: () => {
+            shell.openExternal('https://www.prompdhub.ai')
+          }
+        }
+      ]
+    },
+    // Run menu - Execution, deployment, and scheduling
+    {
+      label: 'Run',
+      submenu: [
+        {
+          label: 'Execute',
+          accelerator: 'F5',
+          enabled: menuState.canExecute,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-run-execute')
+            }
+          }
+        },
+        {
+          label: 'Stop',
+          accelerator: 'Shift+F5',
+          enabled: menuState.isExecutionActive,
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-run-stop')
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Deploy Workflow...',
           enabled: menuState.isWorkflowFile,
           click: () => {
             if (mainWindow) {
@@ -643,55 +669,25 @@ function createMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Install Package...',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu-package-install')
+          label: 'Scheduler',
+          submenu: [
+            {
+              label: 'Manage Schedules...',
+              click: () => {
+                if (mainWindow) {
+                  mainWindow.webContents.send('menu-scheduler-settings')
+                }
+              }
+            },
+            {
+              label: 'Service Settings...',
+              click: () => {
+                if (mainWindow) {
+                  mainWindow.webContents.send('menu-scheduler-service')
+                }
+              }
             }
-          }
-        },
-        {
-          label: 'Browse Registry',
-          click: () => {
-            shell.openExternal('https://www.prompdhub.ai')
-          }
-        }
-      ]
-    },
-    // Run menu - Prompt execution
-    {
-      label: 'Run',
-      submenu: [
-        {
-          label: 'Execute Prompt',
-          accelerator: 'F5',
-          enabled: menuState.canExecute,
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu-run-execute')
-            }
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Prompd Install',
-          enabled: menuState.hasWorkspace,
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu-run-install')
-            }
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Stop Execution',
-          accelerator: 'Shift+F6',
-          enabled: false,  // Not yet implemented
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu-run-stop')
-            }
-          }
+          ]
         }
       ]
     },
@@ -2097,12 +2093,16 @@ ipcMain.handle('agent:runCommand', async (_event, command, cwd) => {
     'eslint', 'prettier',           // Linting/formatting
     'python', 'python3', 'pip',     // Python (for prompd CLI)
     'prompd',                       // Prompd CLI
-    'mkdir', 'rmdir',               // Directory operations
     'dotnet',                       // .NET CLI
-    'echo', 'type', 'dir', 'ls',    // Basic shell commands (safe, read-only)
-    'cat', 'head', 'tail',          // File reading (Unix)
+    'ls', 'dir', 'find', 'tree',    // Directory listing
+    'cat', 'head', 'tail', 'type',  // File reading
+    'grep', 'sed', 'awk',           // Text search/transform
+    'wc', 'sort', 'uniq', 'diff',   // Text analysis
+    'cp', 'mv', 'mkdir', 'rmdir', 'touch', // File operations
+    'echo', 'pwd',                  // Shell basics
     'where', 'which',               // Command location
     'whoami', 'hostname',           // System info (safe)
+    'curl', 'wget',                 // HTTP requests
   ]
 
   if (!allowedExecutables.includes(executable)) {
@@ -3217,7 +3217,10 @@ ipcMain.handle('config:getApiKey', async (_event, provider, workspacePath) => {
       cohere: 'COHERE_API_KEY',
       together: 'TOGETHER_API_KEY',
       perplexity: 'PERPLEXITY_API_KEY',
-      deepseek: 'DEEPSEEK_API_KEY'
+      deepseek: 'DEEPSEEK_API_KEY',
+      langsearch: 'LANGSEARCH_API_KEY',
+      brave: 'BRAVE_API_KEY',
+      tavily: 'TAVILY_API_KEY'
     }
 
     const envVar = envVarMap[provider.toLowerCase()]
@@ -3242,6 +3245,12 @@ ipcMain.handle('config:getApiKey', async (_event, provider, workspacePath) => {
     const apiKey = config.api_keys?.[provider.toLowerCase()]
     if (apiKey) {
       return { success: true, apiKey, source: 'config' }
+    }
+
+    // Check services section (e.g. services.langsearch.api_key)
+    const service = config.services?.[provider.toLowerCase()]
+    if (service?.api_key) {
+      return { success: true, apiKey: service.api_key, source: 'services' }
     }
 
     // Check custom providers
@@ -4154,6 +4163,20 @@ ipcMain.handle('deployment:toggleStatus', async (_event, deploymentId) => {
   }
 })
 
+// Get deployment version history
+ipcMain.handle('deployment:getVersionHistory', async (_event, deploymentId) => {
+  if (!deploymentService) {
+    return { success: false, error: 'Deployment service not initialized' }
+  }
+
+  try {
+    const versions = deploymentService.getVersionHistory(deploymentId)
+    return { success: true, versions }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
 // Purge all deleted deployments
 ipcMain.handle('deployment:purgeDeleted', async (_event) => {
   if (!deploymentService) {
@@ -4548,6 +4571,11 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
       const executorOptions = {
         ...options,
         onNodeStart: (nodeId) => {
+          // Check cancellation before starting each node
+          const execution = runningExecutions.get(executionId)
+          if (execution && execution.cancelled) {
+            throw new Error('Execution cancelled by user')
+          }
           sender.send('workflow:event', {
             type: 'node-start',
             executionId,
@@ -4574,6 +4602,11 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
           })
         },
         onProgress: (state) => {
+          // Check cancellation during progress updates
+          const execution = runningExecutions.get(executionId)
+          if (execution && execution.cancelled) {
+            throw new Error('Execution cancelled by user')
+          }
           sender.send('workflow:event', {
             type: 'progress',
             executionId,
@@ -4871,6 +4904,12 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
         // Tool execution for workflow Tool nodes
         onToolCall: async (request) => {
           try {
+            // Check cancellation before tool execution
+            const execution = runningExecutions.get(executionId)
+            if (execution && execution.cancelled) {
+              return { success: false, error: 'Execution cancelled by user' }
+            }
+
             console.log(`[Workflow Executor] Tool call request: ${request.toolType}`)
 
             // Handle HTTP requests
@@ -4956,11 +4995,222 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               }
             }
 
+            // Handle web search
+            if (request.toolType === 'web-search') {
+              const { query, resultCount, connectionConfig } = request.webSearchConfig || {}
+
+              if (!query) {
+                return { success: false, error: 'Missing search query' }
+              }
+
+              // Resolve connection config from workflow connections if not directly provided
+              // Normalize legacy providers (e.g. 'searxng') to the default
+              const knownProviders = ['langsearch', 'brave', 'tavily']
+              let provider = connectionConfig?.provider || 'langsearch'
+              if (!knownProviders.includes(provider)) {
+                provider = 'langsearch'
+              }
+              let apiKey = connectionConfig?.apiKey || ''
+
+              // If the node has a connectionId, look up the connection from the workflow
+              if (request.nodeId && !connectionConfig) {
+                const workflowFile = workflow.file || workflow
+                const connections = workflowFile.connections || workflow.connections || []
+                const nodes = workflowFile.nodes || []
+                const node = nodes.find(n => n.id === request.nodeId)
+                if (node && node.data && node.data.connectionId) {
+                  const conn = connections.find(c => c.id === node.data.connectionId)
+                  if (conn && conn.config && conn.config.type === 'web-search') {
+                    provider = conn.config.provider || 'langsearch'
+                    apiKey = conn.config.apiKey || ''
+                  }
+                }
+              }
+
+              // If no API key resolved from node data or connections, fall back to config resolution
+              if (!apiKey) {
+                try {
+                  const envVarMap = {
+                    langsearch: 'LANGSEARCH_API_KEY',
+                    brave: 'BRAVE_API_KEY',
+                    tavily: 'TAVILY_API_KEY'
+                  }
+                  const envVar = envVarMap[provider]
+                  if (envVar && process.env[envVar]) {
+                    apiKey = process.env[envVar]
+                  } else {
+                    const globalPath = getGlobalConfigPath()
+                    let config = await readConfigFile(globalPath) || {}
+                    const wsPath = workflow.workspacePath || workflow.file?.workspacePath
+                    if (wsPath) {
+                      const localPath = getLocalConfigPath(wsPath)
+                      const localConfig = await readConfigFile(localPath)
+                      if (localConfig) {
+                        config = mergeConfigs(config, localConfig)
+                      }
+                    }
+                    apiKey = config.services?.[provider]?.api_key || ''
+                  }
+                } catch (configErr) {
+                  console.warn('[WebSearch] Config key resolution failed:', configErr.message)
+                }
+              }
+
+              const maxResults = resultCount || 5
+              const https = require('https')
+              const http = require('http')
+              const urlModule = require('url')
+
+              try {
+                let searchUrl = ''
+                let searchOptions = {}
+
+                if (provider === 'brave') {
+                  searchUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${maxResults}`
+                  searchOptions = {
+                    method: 'GET',
+                    headers: {
+                      'User-Agent': 'Prompd/1.0',
+                      'Accept': 'application/json',
+                      'Accept-Language': 'en-US,en;q=0.9',
+                      'Accept-Encoding': 'gzip',
+                      'X-Subscription-Token': apiKey
+                    }
+                  }
+                } else if (provider === 'tavily') {
+                  searchUrl = 'https://api.tavily.com/search'
+                  searchOptions = {
+                    method: 'POST',
+                    headers: {
+                      'User-Agent': 'Prompd/1.0',
+                      'Content-Type': 'application/json',
+                      'Accept': 'application/json',
+                      'Accept-Language': 'en-US,en;q=0.9'
+                    }
+                  }
+                } else if (provider === 'langsearch') {
+                  searchUrl = 'https://api.langsearch.com/v1/web-search'
+                  searchOptions = {
+                    method: 'POST',
+                    headers: {
+                      'User-Agent': 'Prompd/1.0',
+                      'Content-Type': 'application/json',
+                      'Accept': 'application/json',
+                      'Accept-Language': 'en-US,en;q=0.9',
+                      'Authorization': `Bearer ${apiKey}`
+                    }
+                  }
+                } else {
+                  return { success: false, error: `Unknown search provider: ${provider}` }
+                }
+
+                return await new Promise((resolve) => {
+                  const parsedUrl = urlModule.parse(searchUrl)
+                  const isHttps = parsedUrl.protocol === 'https:'
+                  const httpModule = isHttps ? https : http
+
+                  const req = httpModule.request(searchUrl, searchOptions, (res) => {
+                    const chunks = []
+
+                    res.on('data', (chunk) => {
+                      chunks.push(chunk)
+                    })
+
+                    res.on('end', () => {
+                      try {
+                        const responseData = Buffer.concat(chunks).toString('utf-8')
+
+                        // Check HTTP status before parsing
+                        if (res.statusCode < 200 || res.statusCode >= 300) {
+                          resolve({
+                            success: false,
+                            error: `Search provider returned HTTP ${res.statusCode}: ${responseData.slice(0, 200)}`,
+                            result: null
+                          })
+                          return
+                        }
+
+                        const parsed = JSON.parse(responseData)
+
+                        // Normalize results across providers
+                        let results = []
+                        if (provider === 'brave') {
+                          results = (parsed.web?.results || []).slice(0, maxResults).map(r => ({
+                            title: r.title || '',
+                            url: r.url || '',
+                            content: r.description || '',
+                          }))
+                        } else if (provider === 'tavily') {
+                          results = (parsed.results || []).slice(0, maxResults).map(r => ({
+                            title: r.title || '',
+                            url: r.url || '',
+                            content: r.content || '',
+                            score: r.score,
+                          }))
+                        } else if (provider === 'langsearch') {
+                          const pages = parsed.data?.webPages?.value || []
+                          results = pages.slice(0, maxResults).map(r => ({
+                            title: r.name || '',
+                            url: r.url || '',
+                            content: r.snippet || '',
+                          }))
+                        }
+
+                        resolve({
+                          success: true,
+                          result: results
+                        })
+                      } catch (parseErr) {
+                        resolve({
+                          success: false,
+                          error: `Failed to parse search response: ${parseErr.message}`,
+                          result: null
+                        })
+                      }
+                    })
+                  })
+
+                  req.on('error', (err) => {
+                    console.error('[Workflow Executor] Web search error:', err)
+                    resolve({
+                      success: false,
+                      error: err.message,
+                      result: null
+                    })
+                  })
+
+                  // Send body for POST providers
+                  if (provider === 'tavily') {
+                    req.write(JSON.stringify({
+                      api_key: apiKey,
+                      query: query,
+                      max_results: maxResults,
+                    }))
+                  } else if (provider === 'langsearch') {
+                    req.write(JSON.stringify({
+                      query: query,
+                      freshness: 'noLimit',
+                      summary: false,
+                      count: Math.min(maxResults, 10),
+                    }))
+                  }
+
+                  req.end()
+                })
+              } catch (error) {
+                return {
+                  success: false,
+                  error: error.message,
+                  result: null
+                }
+              }
+            }
+
             // Handle command execution
             if (request.toolType !== 'command') {
               return {
                 success: false,
-                error: `Unsupported tool type: ${request.toolType}. Supported: 'command', 'http'.`
+                error: `Unsupported tool type: ${request.toolType}. Supported: 'command', 'http', 'web-search'.`
               }
             }
 
@@ -4995,8 +5245,8 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               return arg
             })
 
-            // Whitelist of allowed executables for security
-            const allowedExecutables = [
+            // Built-in whitelist of allowed executables for security
+            const builtinExecutables = [
               'npm', 'npx', 'node',
               'yarn', 'pnpm',
               'git',
@@ -5004,18 +5254,26 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               'eslint', 'prettier',
               'python', 'python3', 'pip',
               'prompd',
-              'mkdir', 'rmdir',
               'dotnet',
-              'echo', 'type', 'dir', 'ls',
-              'cat', 'head', 'tail',
+              'ls', 'dir', 'find', 'tree',
+              'cat', 'head', 'tail', 'type',
+              'grep', 'sed', 'awk',
+              'wc', 'sort', 'uniq', 'diff',
+              'cp', 'mv', 'mkdir', 'rmdir', 'touch',
+              'echo', 'pwd',
               'where', 'which',
               'whoami', 'hostname',
+              'curl', 'wget',
             ]
+
+            // Merge with workflow-specific custom commands passed from renderer
+            const workflowCustomCommands = (options?.customCommands || []).map(c => c.toLowerCase())
+            const allowedExecutables = [...new Set([...builtinExecutables, ...workflowCustomCommands])]
 
             if (!allowedExecutables.includes(executable)) {
               return {
                 success: false,
-                result: `Command '${executable}' not allowed. Allowed: ${allowedExecutables.join(', ')}`,
+                result: `Command '${executable}' not allowed. Allowed built-in: ${builtinExecutables.join(', ')}${workflowCustomCommands.length > 0 ? `. Custom: ${workflowCustomCommands.join(', ')}` : ''}`,
                 error: `Command '${executable}' not allowed`
               }
             }
@@ -5171,6 +5429,14 @@ ipcMain.handle('workflow:cancel', async (_event, executionId) => {
   if (execution) {
     execution.cancelled = true
     console.log(`[Workflow Executor] Cancelled execution: ${executionId}`)
+    // Send immediate cancellation event to frontend
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('workflow:event', {
+        type: 'cancelled',
+        executionId,
+        timestamp: Date.now()
+      })
+    }
   }
 })
 

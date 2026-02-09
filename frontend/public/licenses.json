@@ -91,13 +91,13 @@
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\@pkgjs\\parseargs",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\@pkgjs\\parseargs\\LICENSE"
   },
-  "@prompd/app@0.1.0": {
+  "@prompd/app@0.1.0-beta-001": {
     "licenses": "UNLICENSED",
     "private": true,
     "publisher": "Prompd LLC",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend"
   },
-  "@prompd/cli@0.4.7": {
+  "@prompd/cli@0.4.8": {
     "licenses": "MIT",
     "publisher": "Logikbug",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli",

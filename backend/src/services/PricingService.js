@@ -11,6 +11,7 @@ class PricingService {
   constructor() {
     this.initialized = false
     this.refreshTimers = new Map()
+    this._refreshInProgress = false
   }
 
   /**
@@ -205,8 +206,14 @@ class PricingService {
 
   /**
    * Get all pricing for a provider (cache-first)
+   * Triggers lazy background refresh if any provider cache has expired
    */
   async getProviderPricing(provider) {
+    // Fire-and-forget: check if any providers need refreshing
+    if (!this._refreshInProgress) {
+      this._lazyRefresh()
+    }
+
     // Check cache first
     const cached = pricingCacheService.getProviderPricing(provider)
     if (cached) {
@@ -224,8 +231,15 @@ class PricingService {
 
   /**
    * Get all current pricing for all providers
+   * Lazily triggers a background reseed if any provider's cache has expired
    */
   async getAllCurrentPricing() {
+    // Fire-and-forget: check if any providers need refreshing
+    // This runs in the background so the current request isn't delayed
+    if (!this._refreshInProgress) {
+      this._lazyRefresh()
+    }
+
     const pricing = await ModelPricing.getAllCurrentPricing()
 
     // Group by provider
@@ -238,6 +252,29 @@ class PricingService {
     }
 
     return byProvider
+  }
+
+  /**
+   * Lazy background refresh - checks if any provider pricing has expired
+   * and reseeds if so. Debounced so concurrent requests don't trigger multiple reseeds.
+   */
+  _lazyRefresh() {
+    this._refreshInProgress = true
+    this.checkAndRefreshExpired()
+      .then(results => {
+        if (results.length > 0) {
+          const refreshed = results.filter(r => r.status === 'refreshed')
+          if (refreshed.length > 0) {
+            console.log(`[pricing] Lazy refresh updated ${refreshed.length} provider(s): ${refreshed.map(r => r.provider).join(', ')}`)
+          }
+        }
+      })
+      .catch(error => {
+        console.error('[pricing] Lazy refresh failed:', error.message)
+      })
+      .finally(() => {
+        this._refreshInProgress = false
+      })
   }
 
   /**

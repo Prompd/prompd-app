@@ -15,16 +15,17 @@
  * - Normalizes whitespace
  */
 export function toTrimmed(markdown: string): string {
-  let result = markdown
+  // Normalize CRLF to LF (Windows compiled output uses \r\n which breaks regex matching)
+  let result = markdown.replace(/\r\n/g, '\n')
 
   // Preserve code blocks by replacing them with placeholders
   // Use <<< >>> to avoid conflicts with markdown syntax (__, *, etc.)
   const codeBlocks: string[] = []
-  result = result.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+  result = result.replace(/```(\w*)[ \t]*\n([\s\S]*?)```[ \t]*(?:\n|$)/g, (_, lang, code) => {
     const index = codeBlocks.length
-    // Keep code blocks with language hint for LLM context
-    codeBlocks.push(lang ? `[${lang}]\n${code.trim()}\n[/${lang}]` : `[code]\n${code.trim()}\n[/code]`)
-    return `<<<CODE_BLOCK_${index}>>>`
+    // Keep original markdown fences - LLMs understand them natively
+    codeBlocks.push(lang ? `\`\`\`${lang}\n${code.trimEnd()}\n\`\`\`` : `\`\`\`\n${code.trimEnd()}\n\`\`\``)
+    return `<<<CODEBLOCK${index}>>>`
   })
 
   // Preserve inline code
@@ -32,7 +33,7 @@ export function toTrimmed(markdown: string): string {
   result = result.replace(/`([^`]+)`/g, (_, code) => {
     const index = inlineCode.length
     inlineCode.push(code)
-    return `<<<INLINE_CODE_${index}>>>`
+    return `<<<INLINECODE${index}>>>`
   })
 
   // Preserve URLs (both markdown links and raw URLs)
@@ -41,13 +42,13 @@ export function toTrimmed(markdown: string): string {
   result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
     const index = urls.length
     urls.push(`${text} (${url})`)
-    return `<<<URL_${index}>>>`
+    return `<<<URL${index}>>>`
   })
   // Raw URLs
   result = result.replace(/(https?:\/\/[^\s\)]+)/g, (url) => {
     const index = urls.length
     urls.push(url)
-    return `<<<URL_${index}>>>`
+    return `<<<URL${index}>>>`
   })
 
   // Strip headers (# ## ### etc)
@@ -82,26 +83,25 @@ export function toTrimmed(markdown: string): string {
   // Strip image syntax, keep alt text
   result = result.replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
 
-  // Restore code blocks
+  // Normalize whitespace BEFORE restoring code blocks (preserves code indentation)
+  result = result.replace(/\n{3,}/g, '\n\n')
+  result = result.split('\n').map(line => line.trim()).join('\n')
+
+  // Restore code blocks (after whitespace normalization to preserve indentation)
+  // Use function replacer to avoid $ pattern interpretation in code content
   codeBlocks.forEach((code, index) => {
-    result = result.replace(`<<<CODE_BLOCK_${index}>>>`, code)
+    result = result.replace(`<<<CODEBLOCK${index}>>>`, () => code)
   })
 
   // Restore inline code (without backticks, just the content)
   inlineCode.forEach((code, index) => {
-    result = result.replace(`<<<INLINE_CODE_${index}>>>`, code)
+    result = result.replace(`<<<INLINECODE${index}>>>`, () => code)
   })
 
   // Restore URLs
   urls.forEach((url, index) => {
-    result = result.replace(`<<<URL_${index}>>>`, url)
+    result = result.replace(`<<<URL${index}>>>`, () => url)
   })
-
-  // Normalize whitespace: collapse multiple blank lines to single
-  result = result.replace(/\n{3,}/g, '\n\n')
-
-  // Trim leading/trailing whitespace from each line
-  result = result.split('\n').map(line => line.trim()).join('\n')
 
   // Trim overall
   result = result.trim()
@@ -114,10 +114,11 @@ export function toTrimmed(markdown: string): string {
  * Strips all formatting, returns pure text content
  */
 export function toPlainText(markdown: string): string {
-  let result = markdown
+  // Normalize CRLF to LF (Windows compiled output uses \r\n)
+  let result = markdown.replace(/\r\n/g, '\n')
 
   // Remove code blocks entirely (just keep the code content)
-  result = result.replace(/```\w*\n([\s\S]*?)```/g, '$1')
+  result = result.replace(/```\w*[ \t]*\n([\s\S]*?)```[ \t]*(?:\n|$)/g, '$1')
 
   // Remove inline code backticks
   result = result.replace(/`([^`]+)`/g, '$1')

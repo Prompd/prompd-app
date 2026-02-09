@@ -31,6 +31,7 @@ export interface Tab {
     contextFile?: string | null // Tab ID for Edit mode context
   }
   showPreview?: boolean // Show compiled markdown preview in split view
+  showChat?: boolean // Show AI chat pane in split view
   previewParams?: Record<string, unknown> // Parameter values for preview compilation
 }
 

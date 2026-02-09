@@ -391,6 +391,13 @@ export interface ElectronAPI {
       purgedCount?: number
       error?: string
     }>
+
+    // Get deployment version history
+    getVersionHistory: (deploymentId: string) => Promise<{
+      success: boolean
+      versions?: DeploymentVersionInfo[]
+      error?: string
+    }>
   }
 
   // Service Management API (user-level service install/uninstall)
@@ -749,6 +756,19 @@ export interface ScheduleExecution {
   error?: string
   startedAt: number
   completedAt?: number
+}
+
+// Deployment version history entry
+export interface DeploymentVersionInfo {
+  id: string
+  deploymentId: string
+  version: string | null
+  packageHash: string
+  triggerSnapshot: string | null
+  metadata: string | null
+  deployedAt: number
+  deployedBy: string | null
+  note: string | null
 }
 
 // Deployment types (package-based workflow deployment)

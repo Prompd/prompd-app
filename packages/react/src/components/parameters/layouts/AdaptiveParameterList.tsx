@@ -180,7 +180,24 @@ function ParameterCardWithInput({
       )
     }
 
-    // Enum type (dropdown)
+    // Array types - check BEFORE enum to prevent array values hitting <select>
+    if (isArrayType(param.type)) {
+      // Handle default array values
+      const arrayValue = Array.isArray(effectiveValue)
+        ? effectiveValue
+        : effectiveValue
+          ? [String(effectiveValue)]
+          : []
+      return (
+        <ArrayPillInput
+          value={arrayValue as string[]}
+          onChange={handleInputChange}
+          placeholder={param.description || 'Add items...'}
+        />
+      )
+    }
+
+    // Enum type (dropdown) - only for non-array params
     if (isEnumType(param)) {
       return (
         <EnumInput
@@ -211,23 +228,6 @@ function ParameterCardWithInput({
           min={param.min}
           max={param.max}
           placeholder={param.description}
-        />
-      )
-    }
-
-    // Array types - use pill input
-    if (isArrayType(param.type)) {
-      // Handle default array values
-      const arrayValue = Array.isArray(effectiveValue)
-        ? effectiveValue
-        : effectiveValue
-          ? [String(effectiveValue)]
-          : []
-      return (
-        <ArrayPillInput
-          value={arrayValue as string[]}
-          onChange={handleInputChange}
-          placeholder={param.description || 'Add items...'}
         />
       )
     }

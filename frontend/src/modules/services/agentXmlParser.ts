@@ -59,20 +59,24 @@ export interface XmlParseResult {
  * Only extracts the FIRST message tag to avoid concatenating messages from previous responses.
  */
 function extractMessageFallback(content: string): string | undefined {
-  // Try to extract content between the FIRST <message> and </message> tag only
-  const messageRegex = /<message>([\s\S]*?)<\/message>/i
-  const match = messageRegex.exec(content)
+  // Extract content from ALL <message>...</message> tags and concatenate
+  const messageRegex = /<message>([\s\S]*?)<\/message>/gi
+  const parts: string[] = []
+  let match: RegExpExecArray | null
 
-  if (match && match[1]) {
-    let message = match[1].trim()
-    // Unescape common escape sequences
-    message = message
-      .replace(/\\n/g, '\n')
-      .replace(/\\t/g, '\t')
-      .replace(/\\r/g, '\r')
-    return message
+  while ((match = messageRegex.exec(content)) !== null) {
+    if (match[1]) {
+      let text = match[1].trim()
+      // Unescape common escape sequences
+      text = text
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\r/g, '\r')
+      if (text) parts.push(text)
+    }
   }
-  return undefined
+
+  return parts.length > 0 ? parts.join('\n') : undefined
 }
 
 /**
@@ -326,18 +330,22 @@ export function parseAgentResponse(content: string): XmlParseResult {
       }
     }
 
-    // Extract only the FIRST message tag (we already isolated the current <response> block)
-    // This prevents concatenating messages from previous responses in the conversation
-    const messageEl = response.querySelector('message')
+    // Extract all direct <message> children and concatenate them
+    // LLMs sometimes split a single response across multiple <message> tags
+    const messageEls = response.querySelectorAll(':scope > message')
     let message = ''
-    if (messageEl) {
-      let text = messageEl.textContent?.trim() || ''
-      // Unescape common escape sequences that LLMs often produce in messages
-      text = text
-        .replace(/\\n/g, '\n')
-        .replace(/\\t/g, '\t')
-        .replace(/\\r/g, '\r')
-      message = text
+    if (messageEls.length > 0) {
+      const parts: string[] = []
+      messageEls.forEach(el => {
+        let text = el.textContent?.trim() || ''
+        // Unescape common escape sequences that LLMs often produce in messages
+        text = text
+          .replace(/\\n/g, '\n')
+          .replace(/\\t/g, '\t')
+          .replace(/\\r/g, '\r')
+        if (text) parts.push(text)
+      })
+      message = parts.join('\n')
     }
 
     // Extract content block if present (LLMs sometimes put longer content in a separate <content> tag)

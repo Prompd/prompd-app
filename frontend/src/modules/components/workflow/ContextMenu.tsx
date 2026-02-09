@@ -7,12 +7,14 @@
  * - Canvas: Paste, Add Node (submenu)
  */
 
-import { memo, useCallback, useEffect, useRef } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import {
   Copy, Scissors, Clipboard, Files, Power, PowerOff, Trash2,
-  Unlink, Plus, Zap, Settings
+  Unlink, Plus, Zap, Settings, ChevronRight,
 } from 'lucide-react'
 import type { WorkflowNodeType } from '../../services/workflowTypes'
+import { getNodeColor } from './nodeColors'
+import { NODE_TYPE_CATEGORIES, NODE_TYPE_REGISTRY } from '../../services/nodeTypeRegistry'
 
 // ============================================================================
 // Types
@@ -55,6 +57,7 @@ interface MenuItem {
   id: string
   label: string
   icon?: React.ComponentType<{ style?: React.CSSProperties }>
+  nodeType?: WorkflowNodeType
   onClick?: () => void
   shortcut?: string
   separator?: boolean
@@ -63,74 +66,16 @@ interface MenuItem {
 }
 
 // ============================================================================
-// Node type groups for "Add Node" submenu
+// Node type groups for "Add Node" submenu — derived from registry
 // ============================================================================
 
-const NODE_TYPE_GROUPS: Array<{
-  label: string
-  types: Array<{ type: WorkflowNodeType; label: string; icon?: React.ComponentType<any> }>
-}> = [
-  {
-    label: 'Core',
-    types: [
-      { type: 'trigger', label: 'Trigger' },
-      { type: 'prompt', label: 'Prompt' },
-      { type: 'provider', label: 'Provider' },
-      { type: 'output', label: 'Output' },
-    ]
-  },
-  {
-    label: 'AI & Agents',
-    types: [
-      { type: 'agent', label: 'Agent' },
-      { type: 'chat-agent', label: 'Chat Agent' },
-      { type: 'claude-code', label: 'Claude Code' },
-    ]
-  },
-  {
-    label: 'Tools',
-    types: [
-      { type: 'tool', label: 'Tool' },
-      { type: 'tool-call-router', label: 'Tool Router' },
-      { type: 'tool-call-parser', label: 'Tool Parser' },
-      { type: 'mcp-tool', label: 'MCP Tool' },
-    ]
-  },
-  {
-    label: 'Control Flow',
-    types: [
-      { type: 'condition', label: 'Condition' },
-      { type: 'loop', label: 'Loop' },
-      { type: 'parallel', label: 'Parallel' },
-      { type: 'merge', label: 'Merge' },
-    ]
-  },
-  {
-    label: 'Data & Transform',
-    types: [
-      { type: 'transformer', label: 'Transform' },
-      { type: 'code', label: 'Code' },
-      { type: 'memory', label: 'Memory' },
-      { type: 'api', label: 'API' },
-    ]
-  },
-  {
-    label: 'Interaction',
-    types: [
-      { type: 'user-input', label: 'User Input' },
-      { type: 'callback', label: 'Callback' },
-      { type: 'guardrail', label: 'Guardrail' },
-    ]
-  },
-  {
-    label: 'Execution',
-    types: [
-      { type: 'command', label: 'Command' },
-      { type: 'workflow', label: 'Workflow' },
-      { type: 'error-handler', label: 'Error Handler' },
-    ]
-  },
-]
+const NODE_TYPE_GROUPS = NODE_TYPE_CATEGORIES.map(cat => ({
+  label: cat.label,
+  types: cat.types.map(t => {
+    const entry = NODE_TYPE_REGISTRY[t]
+    return { type: t, label: entry.label, icon: entry.icon }
+  }),
+}))
 
 // ============================================================================
 // Context Menu Component
@@ -158,6 +103,7 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
   } = props
 
   const menuRef = useRef<HTMLDivElement>(null)
+  const [expandedSubmenu, setExpandedSubmenu] = useState<string | null>(null)
 
   // Close on click outside
   useEffect(() => {
@@ -245,10 +191,12 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
     // Add node submenu
     const submenu: MenuItem[] = []
     NODE_TYPE_GROUPS.forEach((group, groupIdx) => {
-      group.types.forEach((nodeType, typeIdx) => {
+      group.types.forEach((nodeType) => {
         submenu.push({
           id: `add-${nodeType.type}`,
           label: nodeType.label,
+          icon: nodeType.icon,
+          nodeType: nodeType.type,
           onClick: () => onAddNode?.(nodeType.type)
         })
       })
@@ -310,52 +258,130 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
         }
 
         const Icon = item.icon
+        const hasSubmenu = item.submenu && item.submenu.length > 0
+        const isExpanded = expandedSubmenu === item.id
 
         return (
-          <button
-            key={item.id}
-            onClick={() => {
-              item.onClick?.()
-              onClose()
-            }}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 12px',
-              background: 'none',
-              border: 'none',
-              borderRadius: 4,
-              color: item.danger ? 'var(--error)' : 'var(--text)',
-              fontSize: '13px',
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'background 0.1s',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = item.danger
-                ? 'color-mix(in srgb, var(--error) 10%, transparent)'
-                : 'var(--panel-2)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'none'
-            }}
-          >
-            {Icon && <Icon style={{ width: 14, height: 14, flexShrink: 0 }} />}
-            <span style={{ flex: 1 }}>{item.label}</span>
-            {item.shortcut && (
-              <span
-                style={{
-                  fontSize: 11,
+          <div key={item.id}>
+            <button
+              onClick={() => {
+                if (hasSubmenu) {
+                  setExpandedSubmenu(isExpanded ? null : item.id)
+                } else {
+                  item.onClick?.()
+                  onClose()
+                }
+              }}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 12px',
+                background: isExpanded ? 'var(--panel-2)' : 'none',
+                border: 'none',
+                borderRadius: 4,
+                color: item.danger ? 'var(--error)' : 'var(--text)',
+                fontSize: '13px',
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'background 0.1s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = item.danger
+                  ? 'color-mix(in srgb, var(--error) 10%, transparent)'
+                  : 'var(--panel-2)'
+              }}
+              onMouseLeave={(e) => {
+                if (!isExpanded) {
+                  e.currentTarget.style.background = 'none'
+                }
+              }}
+            >
+              {Icon && <Icon style={{ width: 14, height: 14, flexShrink: 0 }} />}
+              <span style={{ flex: 1 }}>{item.label}</span>
+              {item.shortcut && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: 'var(--muted)',
+                    opacity: 0.7,
+                  }}
+                >
+                  {item.shortcut}
+                </span>
+              )}
+              {hasSubmenu && (
+                <ChevronRight style={{
+                  width: 12,
+                  height: 12,
+                  flexShrink: 0,
                   color: 'var(--muted)',
-                  opacity: 0.7,
-                }}
-              >
-                {item.shortcut}
-              </span>
+                  transform: isExpanded ? 'rotate(90deg)' : 'none',
+                  transition: 'transform 0.15s',
+                }} />
+              )}
+            </button>
+            {hasSubmenu && isExpanded && (
+              <div style={{
+                maxHeight: 280,
+                overflowY: 'auto',
+                borderLeft: '2px solid var(--border)',
+                marginLeft: 16,
+                paddingLeft: 4,
+              }}>
+                {item.submenu!.map((sub) => {
+                  if (sub.separator) {
+                    return (
+                      <div
+                        key={sub.id}
+                        style={{
+                          height: 1,
+                          background: 'var(--border)',
+                          margin: '2px 0',
+                        }}
+                      />
+                    )
+                  }
+                  const SubIcon = sub.icon
+                  const nodeColor = sub.nodeType ? getNodeColor(sub.nodeType) : undefined
+                  return (
+                    <button
+                      key={sub.id}
+                      onClick={() => {
+                        sub.onClick?.()
+                        onClose()
+                      }}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '6px 10px',
+                        background: 'none',
+                        border: 'none',
+                        borderRadius: 4,
+                        color: 'var(--text)',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'var(--panel-2)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'none'
+                      }}
+                    >
+                      {SubIcon && <SubIcon style={{ width: 12, height: 12, flexShrink: 0, color: nodeColor }} />}
+                      <span>{sub.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
             )}
-          </button>
+          </div>
         )
       })}
     </div>

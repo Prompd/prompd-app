@@ -15,6 +15,9 @@ export interface JSONSchemaProperty {
   description?: string
   default?: unknown
   enum?: string[]
+  items?: JSONSchemaProperty & { properties?: Record<string, JSONSchemaProperty>; required?: string[] }
+  properties?: Record<string, JSONSchemaProperty>
+  required?: string[]
 }
 
 // Tool definition
@@ -175,20 +178,142 @@ export const AGENT_TOOLS: AgentTool[] = [
       required: ['command']
     },
     requiresApproval: true,
-    allowedCommands: ['npm', 'node', 'npx', 'git', 'yarn', 'pnpm', 'tsc', 'eslint', 'prettier']
+    allowedCommands: [
+      'npm', 'node', 'npx', 'git', 'yarn', 'pnpm', 'pip', 'python', 'python3',
+      'prompd', 'dotnet', 'tsc', 'eslint', 'prettier',
+      'ls', 'dir', 'find', 'cat', 'head', 'tail', 'grep', 'sed', 'awk',
+      'wc', 'sort', 'uniq', 'diff', 'cp', 'mv', 'mkdir', 'touch',
+      'echo', 'pwd', 'which', 'where', 'type', 'tree', 'curl', 'wget'
+    ]
   },
   {
     name: 'ask_user',
-    description: 'Ask the user a clarifying question',
+    description: 'Ask the user a clarifying question, optionally with selectable options',
     parameters: {
       type: 'object',
       properties: {
         question: {
           type: 'string',
           description: 'The question to ask the user'
+        },
+        options: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              label: { type: 'string', description: 'Option text' },
+              description: { type: 'string', description: 'Optional explanation' }
+            },
+            required: ['label']
+          },
+          description: 'Optional list of selectable options'
         }
       },
       required: ['question']
+    },
+    requiresApproval: false
+  },
+  {
+    name: 'edit_file',
+    description: 'Make targeted search/replace edits to an existing file',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Relative path from workspace root'
+        },
+        edits: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              search: { type: 'string', description: 'Exact text to find' },
+              replace: { type: 'string', description: 'Text to replace it with' }
+            },
+            required: ['search', 'replace']
+          },
+          description: 'Array of search/replace operations'
+        }
+      },
+      required: ['path', 'edits']
+    },
+    requiresApproval: true
+  },
+  {
+    name: 'search_registry',
+    description: 'Search the Prompd package registry for templates and components',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search terms to find packages'
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional tags to filter results'
+        }
+      },
+      required: ['query']
+    },
+    requiresApproval: false
+  },
+  {
+    name: 'list_package_files',
+    description: 'List all files in an installed or registry package',
+    parameters: {
+      type: 'object',
+      properties: {
+        package_name: {
+          type: 'string',
+          description: 'Package name (e.g. @prompd/public-examples)'
+        },
+        version: {
+          type: 'string',
+          description: 'Package version (e.g. 1.1.0)'
+        }
+      },
+      required: ['package_name', 'version']
+    },
+    requiresApproval: false
+  },
+  {
+    name: 'read_package_file',
+    description: 'Read a specific file from an installed or registry package',
+    parameters: {
+      type: 'object',
+      properties: {
+        package_name: {
+          type: 'string',
+          description: 'Package name (e.g. @prompd/public-examples)'
+        },
+        version: {
+          type: 'string',
+          description: 'Package version (e.g. 1.1.0)'
+        },
+        file_path: {
+          type: 'string',
+          description: 'Path to the file within the package'
+        }
+      },
+      required: ['package_name', 'version', 'file_path']
+    },
+    requiresApproval: false
+  },
+  {
+    name: 'present_plan',
+    description: 'Present a plan to the user for review before executing. Returns the user\'s decision.',
+    parameters: {
+      type: 'object',
+      properties: {
+        content: {
+          type: 'string',
+          description: 'Markdown-formatted plan content'
+        }
+      },
+      required: ['content']
     },
     requiresApproval: false
   }

@@ -14,6 +14,7 @@ import { MessageSquare, Type, ListChecks, HelpCircle, Hash, Loader2, CheckCircle
 import type { UserInputNodeData, BaseNodeData } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { getNodeColor } from '../nodeColors'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 interface UserInputNodeProps {
   id: string
@@ -243,6 +244,13 @@ export const UserInputNode = memo(({ id, data, selected }: UserInputNodeProps) =
           Input received
         </div>
       )}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+        showOutput={false}
+      />
 
       {/* Output Handle */}
       <Handle

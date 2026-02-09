@@ -100,7 +100,7 @@ export class GroqPricingFetcher extends BasePricingFetcher {
   }
 
   getDefaultPricing() {
-    // Pricing as of December 2024
+    // Pricing as of February 2026 - https://groq.com/pricing
     // Note: Check https://console.groq.com/docs/deprecations for deprecated models
     return [
       {
@@ -111,23 +111,8 @@ export class GroqPricingFetcher extends BasePricingFetcher {
           outputTokens: 0.79
         },
         capabilities: {
-          contextWindow: 128000,
-          maxOutputTokens: 32768,
-          supportsVision: false,
-          supportsTools: true,
-          supportsStreaming: true
-        }
-      },
-      {
-        model: 'llama-3.1-70b-versatile',
-        displayName: 'Llama 3.1 70B Versatile',
-        pricing: {
-          inputTokens: 0.59,
-          outputTokens: 0.79
-        },
-        capabilities: {
           contextWindow: 131072,
-          maxOutputTokens: 8192,
+          maxOutputTokens: 32768,
           supportsVision: false,
           supportsTools: true,
           supportsStreaming: true
@@ -149,53 +134,52 @@ export class GroqPricingFetcher extends BasePricingFetcher {
         }
       },
       {
-        model: 'llama-3.2-90b-vision-preview',
-        displayName: 'Llama 3.2 90B Vision',
+        model: 'openai/gpt-oss-120b',
+        displayName: 'GPT-OSS 120B',
         pricing: {
-          inputTokens: 0.90,
-          outputTokens: 0.90
+          inputTokens: 0.15,
+          outputTokens: 0.60
         },
         capabilities: {
-          contextWindow: 128000,
-          maxOutputTokens: 8192,
-          supportsVision: true,
-          supportsTools: false,
-          supportsStreaming: true
-        }
-      },
-      {
-        model: 'llama-3.2-11b-vision-preview',
-        displayName: 'Llama 3.2 11B Vision',
-        pricing: {
-          inputTokens: 0.18,
-          outputTokens: 0.18
-        },
-        capabilities: {
-          contextWindow: 128000,
-          maxOutputTokens: 8192,
-          supportsVision: true,
-          supportsTools: false,
-          supportsStreaming: true
-        }
-      },
-      {
-        model: 'mixtral-8x7b-32768',
-        displayName: 'Mixtral 8x7B',
-        pricing: {
-          inputTokens: 0.24,
-          outputTokens: 0.24
-        },
-        capabilities: {
-          contextWindow: 32768,
+          contextWindow: 131072,
           maxOutputTokens: 32768,
           supportsVision: false,
           supportsTools: true,
           supportsStreaming: true
         }
       },
-      // Note: gemma2-9b-it, llama-3.2-3b-preview, llama-3.2-1b-preview were deprecated
-      // See: https://console.groq.com/docs/deprecations
-      // These are now dynamically filtered via fetchPricing() when GROQ_API_KEY is set
+      {
+        model: 'openai/gpt-oss-20b',
+        displayName: 'GPT-OSS 20B',
+        pricing: {
+          inputTokens: 0.075,
+          outputTokens: 0.30
+        },
+        capabilities: {
+          contextWindow: 131072,
+          maxOutputTokens: 32768,
+          supportsVision: false,
+          supportsTools: true,
+          supportsStreaming: true
+        }
+      },
+      {
+        model: 'meta-llama/llama-guard-4-12b',
+        displayName: 'Llama Guard 4 12B',
+        pricing: {
+          inputTokens: 0.20,
+          outputTokens: 0.20
+        },
+        capabilities: {
+          contextWindow: 131072,
+          maxOutputTokens: 8192,
+          supportsVision: false,
+          supportsTools: false,
+          supportsStreaming: true
+        }
+      }
+      // Dynamic model discovery via fetchPricing() when GROQ_API_KEY is set
+      // adds preview models (Llama 4 Maverick, Kimi K2, Qwen3, etc.)
     ]
   }
 }

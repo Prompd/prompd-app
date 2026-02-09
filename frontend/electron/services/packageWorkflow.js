@@ -136,8 +136,34 @@ async function traceDependencyTree(workspaceRoot, workflowRelativePath, workflow
         }
       }
 
-      // 3. Check for Nunjucks includes ({% include="file.prmd" %})
-      const includePattern = /{%\s*include\s*=\s*["']([^"']+)["']\s*%}/g
+      // 2d. Check for top-level section fields that can be file references
+      // (system:, user:, task:, assistant:, response:, output:)
+      const sectionFields = ['system', 'user', 'task', 'assistant', 'response', 'output']
+      for (const field of sectionFields) {
+        const sectionValue = frontmatter[field]
+        if (!sectionValue) continue
+
+        const sectionRefs = Array.isArray(sectionValue) ? sectionValue : [sectionValue]
+        for (const ref of sectionRefs) {
+          if (typeof ref !== 'string') continue
+          // Only resolve relative paths (starts with ./ or ../ or has a file extension)
+          if (!ref.startsWith('./') && !ref.startsWith('../') && !ref.match(/\.\w+$/)) continue
+
+          const filePath = path.isAbsolute(ref)
+            ? path.relative(workspaceRoot, ref)
+            : path.join(path.dirname(relativePath), ref).replace(/\\/g, '/')
+
+          if (await fs.pathExists(path.join(workspaceRoot, filePath))) {
+            referencedFiles.add(filePath)
+            console.log(`[PackageWorkflow] Found ${field} file:`, filePath)
+          } else {
+            console.warn(`[PackageWorkflow] Section file not found (${field}):`, filePath)
+          }
+        }
+      }
+
+      // 3. Check for Jinja/Nunjucks includes ({% include "file.prmd" %} or {% include="file.prmd" %})
+      const includePattern = /{%[-~]?\s*include\s*=?\s*["']([^"']+)["']\s*[-~]?%}/g
       let includeMatch
       while ((includeMatch = includePattern.exec(content)) !== null) {
         const includePath = path.isAbsolute(includeMatch[1])

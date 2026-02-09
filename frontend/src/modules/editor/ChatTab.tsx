@@ -4,7 +4,6 @@ import { useAuthenticatedUser } from '../auth/ClerkWrapper'
 import {
   PrompdProvider,
   PrompdChat,
-  DefaultLLMClient,
   usePrompdUsage,
   getChatModesArray,
   type PrompdLLMRequest,
@@ -16,16 +15,17 @@ import '@prompd/react/dist/style.css'
 import { PrompdEditorIntegration } from '../integrations/PrompdEditorIntegration'
 import { conversationStorage, type Conversation, type ConversationMessage, type AgentPermissionLevel } from '../services/conversationStorage'
 import { fetchChatModes, chatModesToArray, type ChatModeConfig } from '../services/chatModesApi'
-import { getBackendHost } from '../services/apiConfig'
+import { LLMClientRouter } from '../services/llmClientRouter'
 import { createToolExecutor, type IToolExecutor, type ToolCall } from '../services/toolExecutor'
 import type { Tab } from '../../stores/types'
 import { useEditorStore } from '../../stores/editorStore'
 import { useUIStore } from '../../stores/uiStore'
-import { Zap, ShieldCheck, ClipboardList, ChevronDown, Cpu, FileText, MessageCircle, Undo2 } from 'lucide-react'
+import { Zap, ShieldCheck, ClipboardList, ChevronDown, FileText, MessageCircle, Undo2 } from 'lucide-react'
 import { SlashCommandMenu, useSlashCommands, type SlashCommand } from '../components/SlashCommandMenu'
 import { executeSlashCommand, SLASH_COMMANDS } from '../services/slashCommands'
 import { prompdSettings } from '../services/prompdSettings'
 import { PlanApprovalDialog } from '../components/PlanApprovalDialog'
+import PlanReviewModal from '../components/PlanReviewModal'
 import { useAgentMode } from '../hooks/useAgentMode'
 import { undoStack } from '../services/toolExecutor'
 import { buildFileContextMessages } from '../services/fileContextBuilder'
@@ -40,6 +40,8 @@ interface ChatTabProps {
   showNotification?: (message: string, type?: 'info' | 'warning' | 'error') => void
   onFileWritten?: (path: string, content: string) => void  // Callback when agent writes a file
   onAutoSave?: () => Promise<void>  // Callback to auto-save before tool approval
+  onRegisterStop?: (stopFn: (() => void) | null) => void  // Register stop function for menu integration
+  embedded?: boolean  // When true, hides context file selector (used in SplitEditor)
 }
 
 // Fallback system prompt used when backend modes haven't loaded yet
@@ -83,7 +85,155 @@ CRITICAL RULES:
 4. Ensure valid YAML frontmatter with id, name, and version fields.
 5. Parameters MUST use array format with "- name:" syntax, NOT object format.`
 
-export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dark', workspacePath, showNotification, onFileWritten, onAutoSave }: ChatTabProps) {
+/** Welcome state with interactive gradient P icon that chases the mouse */
+function WelcomeGradientP({ contextFileName }: { contextFileName: string | null }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const iconRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [angle, setAngle] = useState(135)
+  const [active, setActive] = useState(false)
+  const [snowing, setSnowing] = useState(false)
+  const rafRef = useRef<number>(0)
+  const snowStopRef = useRef<(() => void) | null>(null)
+
+  // Mouse-tracking gradient effect
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const onMove = (e: MouseEvent) => {
+      if (!iconRef.current) return
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = requestAnimationFrame(() => {
+        const rect = iconRef.current!.getBoundingClientRect()
+        const cx = rect.left + rect.width / 2
+        const cy = rect.top + rect.height / 2
+        const deg = Math.atan2(e.clientY - cy, e.clientX - cx) * (180 / Math.PI)
+        setAngle(deg)
+        setActive(true)
+      })
+    }
+    const onLeave = () => { setActive(false) }
+
+    container.addEventListener('mousemove', onMove)
+    container.addEventListener('mouseleave', onLeave)
+    return () => {
+      container.removeEventListener('mousemove', onMove)
+      container.removeEventListener('mouseleave', onLeave)
+      cancelAnimationFrame(rafRef.current)
+    }
+  }, [])
+
+  // Snow effect — delegates to snowEffect service
+  useEffect(() => {
+    if (!snowing) return
+
+    const canvas = canvasRef.current
+    const container = containerRef.current
+    if (!canvas || !container) return
+
+    // Lazy-import to keep the module isolated
+    import('../services/snowEffect').then(({ startSnowEffect }) => {
+      snowStopRef.current = startSnowEffect(canvas, container, () => setSnowing(false))
+    })
+
+    return () => {
+      snowStopRef.current?.()
+      snowStopRef.current = null
+    }
+  }, [snowing])
+
+  // Click easter egg: trigger snow
+  const handleClick = useCallback(() => {
+    if (snowing) return
+    setSnowing(true)
+    setActive(true)
+  }, [snowing])
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      cancelAnimationFrame(rafRef.current)
+      snowStopRef.current?.()
+    }
+  }, [])
+
+  const maskSvg = encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 475 487">` +
+    `<path fill="white" d="M 271.6313,29.109924 C 456.06055,29.109924 454.60452,304.1 270.40336,304.1 L 228,304 v -47.30173 l 43.85191,0.0317 c 118.41324,0 116.08205,-178.966717 -0.82527,-178.966717 L 132.15087,77.622831 129.6,420.52 c -0.33992,0.0728 -45.968529,35.12868 -45.968529,35.12868 L 83.506489,28.866413 Z"/>` +
+    `<path fill="white" d="m 156,102 103.33423,0.32678 c 88.07508,0 87.938,129.66692 1.26051,129.66692 l -32.5414,0.0925 -0.0533,-47.08616 32.66331,-0.23913 c 27.90739,0 25.69827,-34.89447 -0.0611,-34.99087 L 204.00004,150 c 0.90517,68.30467 0.52,211.29643 0.52,211.29643 0,0 -48.54879,38.04493 -48.62668,38.05052 z"/>` +
+    `</svg>`
+  )
+
+  return (
+    <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', padding: '0 16px', paddingTop: '15%', position: 'relative', overflow: 'hidden' }}>
+      {/* Snow canvas overlay */}
+      {snowing && (
+        <canvas
+          ref={canvasRef}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            zIndex: 10
+          }}
+        />
+      )}
+      <div style={{ marginBottom: '24px', position: 'relative', zIndex: 1 }}>
+        <div
+          ref={iconRef}
+          onClick={handleClick}
+          style={{
+            width: 80,
+            height: 80,
+            margin: '0 auto 16px',
+            cursor: 'pointer',
+            background: active
+              ? `conic-gradient(from ${angle}deg, #06b6d4, #8b5cf6, #ec4899, #f59e0b, #06b6d4)`
+              : 'linear-gradient(135deg, #06b6d4, #3b82f6)',
+            WebkitMaskImage: `url("data:image/svg+xml,${maskSvg}")`,
+            maskImage: `url("data:image/svg+xml,${maskSvg}")`,
+            WebkitMaskSize: 'contain',
+            maskSize: 'contain',
+            WebkitMaskRepeat: 'no-repeat',
+            maskRepeat: 'no-repeat',
+            WebkitMaskPosition: 'center',
+            maskPosition: 'center',
+            transition: active ? 'none' : 'background 0.4s ease'
+          }}
+        />
+        <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '8px', color: 'var(--prompd-text)' }}>
+          Prompd Agent
+        </h2>
+        <p style={{ maxWidth: '320px', margin: '0 auto 16px', color: 'var(--prompd-muted)' }}>
+          {contextFileName
+            ? `Working with ${contextFileName}`
+            : 'Ask me to create, edit, search, or explore packages'
+          }
+        </p>
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap', maxWidth: '300px', margin: '0 auto' }}>
+          {['Create prompts', 'Edit files', 'Search registry', 'Run commands'].map((action) => (
+            <span
+              key={action}
+              style={{
+                padding: '4px 10px',
+                background: 'var(--prompd-panel)',
+                border: '1px solid var(--border)',
+                borderRadius: '12px',
+                fontSize: '12px',
+                color: 'var(--text-muted)'
+              }}
+            >
+              {action}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dark', workspacePath, showNotification, onFileWritten, onAutoSave, onRegisterStop, embedded = false }: ChatTabProps) {
   const { getToken } = useAuthenticatedUser()
   const { trackUsage } = usePrompdUsage()
 
@@ -123,6 +273,9 @@ export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dar
   const [permissionLevel, setPermissionLevel] = useState<AgentPermissionLevel>('confirm')
   const [showPermissionMenu, setShowPermissionMenu] = useState(false)
 
+  // Derive effective chatMode: when Plan permission is selected, use planner mode
+  const effectiveChatMode = permissionLevel === 'plan' ? 'planner' : chatMode
+
   // Chat input state for slash commands
   const [chatInputValue, setChatInputValue] = useState('')
   const slashCommands = useSlashCommands(chatInputValue)
@@ -135,14 +288,47 @@ export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dar
     workspacePath,
     permissionLevel,
     chatModes,
-    chatMode,
+    chatMode: effectiveChatMode,
     getToken,
     trackUsage: (type, provider, model, promptTokens, completionTokens, metadata) => {
       trackUsage(type, provider, model, promptTokens, completionTokens, metadata)
     },
     showNotification,
-    onFileWritten
+    onFileWritten,
+    onToolMessage: (msg) => {
+      // Persist tool execution messages to conversation storage
+      setCurrentConversation(prev => {
+        if (!prev) return null
+        const toolMsg: ConversationMessage = {
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp,
+          metadata: msg.metadata
+        }
+        const existingIdx = prev.messages.findIndex(m => m.id === msg.id)
+        const updatedMessages = existingIdx >= 0
+          ? prev.messages.map((m, i) => i === existingIdx ? toolMsg : m)
+          : [...prev.messages, toolMsg]
+        const updated = { ...prev, messages: updatedMessages, updatedAt: new Date().toISOString() }
+        conversationStorage.save(updated).catch(err => console.error('[ChatTab] Failed to save tool message:', err))
+        return updated
+      })
+    }
   })
+
+  // Register stop function for menu integration (Shift+F5)
+  useEffect(() => {
+    if (agentState.isAgentLoopActive && onRegisterStop) {
+      onRegisterStop(() => agentActions.stop())
+      const electronAPI = (window as any).electronAPI
+      electronAPI?.updateMenuState?.({ isExecutionActive: true })
+    } else if (!agentState.isAgentLoopActive && onRegisterStop) {
+      onRegisterStop(null)
+      const electronAPI = (window as any).electronAPI
+      electronAPI?.updateMenuState?.({ isExecutionActive: false })
+    }
+  }, [agentState.isAgentLoopActive, onRegisterStop, agentActions])
 
   // Undo state
   const [canUndo, setCanUndo] = useState(false)
@@ -161,35 +347,65 @@ export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dar
   // Track if we've initialized for this tab to prevent infinite loops
   const initializedTabRef = useRef<string | null>(null)
 
-  // Load or create conversation on mount
+  // Track the conversationId we last initialized with
+  const initializedConvRef = useRef<string | null>(null)
+
+  // Load or create conversation on mount or when conversationId changes
   useEffect(() => {
-    // Skip if already initialized for this tab
-    if (initializedTabRef.current === tab.id) {
+    const convId = tab.chatConfig?.conversationId
+
+    // Skip if already initialized for this exact tab + conversation combo
+    if (initializedTabRef.current === tab.id && initializedConvRef.current === (convId || null)) {
       return
     }
 
     const initConversation = async () => {
       // Check if tab already has a conversation ID
-      if (tab.chatConfig?.conversationId) {
-        console.log('[ChatTab] Loading conversation:', tab.chatConfig.conversationId)
-        const loaded = await conversationStorage.load(tab.chatConfig.conversationId)
+      if (convId) {
+        console.log('[ChatTab] Loading conversation:', convId)
+        const loaded = await conversationStorage.load(convId)
         if (loaded) {
           console.log('[ChatTab] Loaded conversation with', loaded.messages.length, 'messages:',
             loaded.messages.map(m => ({ role: m.role, content: m.content.slice(0, 50) })))
           setCurrentConversation(loaded)
           initializedTabRef.current = tab.id
+          initializedConvRef.current = convId
           return
         }
-        console.log('[ChatTab] Conversation not found in storage:', tab.chatConfig.conversationId)
+        // Conversation ID was set (e.g. by onNewChat) but not yet in IndexedDB.
+        // Create an empty conversation with this exact ID and save it.
+        // Do NOT call updateTab — the tab already has the correct ID.
+        console.log('[ChatTab] Conversation not found in storage, creating with ID:', convId)
+        const now = new Date().toISOString()
+        const freshConversation: Conversation = {
+          id: convId,
+          title: 'New Conversation',
+          mode: 'agent',
+          permissionLevel: 'confirm',
+          messages: [],
+          createdAt: now,
+          updatedAt: now,
+          isPinned: false
+        }
+        await conversationStorage.save(freshConversation)
+        setCurrentConversation(freshConversation)
+        initializedTabRef.current = tab.id
+        initializedConvRef.current = convId
+        return
       }
-      // Create new conversation and persist the ID to the tab
+      // No conversationId at all — create a new one and persist the ID to the tab
       console.log('[ChatTab] Creating new conversation')
       const newConversation = conversationStorage.createConversation('confirm')
+      await conversationStorage.save(newConversation)
       setCurrentConversation(newConversation)
       initializedTabRef.current = tab.id
+      initializedConvRef.current = newConversation.id
 
       // Save the conversation ID to the tab so it persists across tab switches
-      updateTab(tab.id, {
+      // For inline/embedded chat, contextFile points to the real file tab ID;
+      // for standalone chat tabs, tab.id is the real store ID
+      const targetTabId = tab.chatConfig?.contextFile || tab.id
+      updateTab(targetTabId, {
         chatConfig: {
           mode: tab.chatConfig?.mode || 'agent',
           contextFile: tab.chatConfig?.contextFile,
@@ -198,7 +414,7 @@ export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dar
       })
     }
     initConversation()
-  }, [tab.id])
+  }, [tab.id, tab.chatConfig?.conversationId])
 
   useEffect(() => {
     const loadChatModes = async () => {
@@ -309,9 +525,9 @@ export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dar
 
 
   // Create LLM client with agent functionality
+  // Uses LLMClientRouter to route between local and remote execution (same as AiChatPanel)
   const editorLLMClient = useMemo(() => {
-    const baseClient = new DefaultLLMClient({
-      apiBaseUrl: getBackendHost(),
+    const baseClient = new LLMClientRouter({
       provider: llmProvider.provider,
       model: llmProvider.model,
       getAuthToken: async () => {
@@ -356,53 +572,13 @@ export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dar
     const contextFileName = selectedFileTab?.name || null
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', padding: '0 16px' }}>
-        <div style={{ marginBottom: '24px' }}>
-          <div style={{
-            width: '80px',
-            height: '80px',
-            margin: '0 auto 16px',
-            borderRadius: '50%',
-            background: 'linear-gradient(135deg, #06b6d4, #3b82f6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <Cpu size={40} style={{ color: 'white' }} />
-          </div>
-          <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '8px', color: 'var(--prompd-text)' }}>
-            Prompd Agent
-          </h2>
-          <p style={{ maxWidth: '320px', margin: '0 auto 16px', color: 'var(--prompd-muted)' }}>
-            {contextFileName
-              ? `Working with ${contextFileName}`
-              : 'Ask me to create, edit, search, or explore packages'
-            }
-          </p>
-          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap', maxWidth: '300px', margin: '0 auto' }}>
-            {['Create prompts', 'Edit files', 'Search registry', 'Run commands'].map((action) => (
-              <span
-                key={action}
-                style={{
-                  padding: '4px 10px',
-                  background: 'var(--prompd-panel)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  color: 'var(--text-muted)'
-                }}
-              >
-                {action}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
+      <WelcomeGradientP contextFileName={contextFileName} />
     )
   }, [selectedFileTab])
 
   const handleModeChange = useCallback((modeId: string) => {
-    updateTab(tab.id, {
+    const targetTabId = tab.chatConfig?.contextFile || tab.id
+    updateTab(targetTabId, {
       chatConfig: {
         ...tab.chatConfig,
         mode: modeId
@@ -614,7 +790,7 @@ Write your prompt content here.
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {renderContextSelector()}
+      {!embedded && renderContextSelector()}
 
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <PrompdProvider
@@ -638,6 +814,7 @@ Write your prompt content here.
             onInputChange={setChatInputValue}
             inputTheme={permissionLevel}
             waitingForUserInput={!!agentState.pendingAskUser}
+            onStop={() => agentActions.stop()}
             onBeforeSubmit={async (inputValue) => {
               console.log('[ChatTab] onBeforeSubmit called with:', inputValue)
 
@@ -916,6 +1093,58 @@ Write your prompt content here.
                     }}>
                       {agentState.pendingAskUser.question}
                     </div>
+                    {agentState.pendingAskUser.options && agentState.pendingAskUser.options.length > 0 && (
+                      <div style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '8px',
+                        marginTop: '12px'
+                      }}>
+                        {agentState.pendingAskUser.options.map((opt, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => {
+                              if (chatRef.current) {
+                                chatRef.current.addMessage({
+                                  id: `user-response-${Date.now()}`,
+                                  role: 'user',
+                                  content: opt.label,
+                                  timestamp: new Date().toISOString()
+                                })
+                              }
+                              agentState.pendingAskUser?.resolve(opt.label)
+                              setChatInputValue('')
+                            }}
+                            style={{
+                              padding: opt.description ? '10px 16px' : '8px 16px',
+                              background: 'rgba(168, 85, 247, 0.1)',
+                              border: '1px solid rgba(168, 85, 247, 0.3)',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '2px',
+                              transition: 'all 0.15s'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'rgba(168, 85, 247, 0.2)'
+                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.5)'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'rgba(168, 85, 247, 0.1)'
+                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.3)'
+                            }}
+                          >
+                            <span style={{ color: '#a855f7', fontWeight: 600, fontSize: '14px' }}>{opt.label}</span>
+                            {opt.description && (
+                              <span style={{ color: 'var(--prompd-muted)', fontSize: '12px' }}>{opt.description}</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <div style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -926,7 +1155,10 @@ Write your prompt content here.
                         color: 'var(--prompd-muted)',
                         fontStyle: 'italic'
                       }}>
-                        Type your answer below and press Enter to continue
+                        {agentState.pendingAskUser.options && agentState.pendingAskUser.options.length > 0
+                          ? 'Or type a custom answer below'
+                          : 'Type your answer below and press Enter to continue'
+                        }
                       </div>
                       <button
                         type="button"
@@ -953,6 +1185,27 @@ Write your prompt content here.
         </PrompdProvider>
       </div>
 
+      {/* Token usage status bar */}
+      {agentState.tokenUsage.totalTokens > 0 && (
+        <div style={{
+          padding: '3px 12px',
+          fontSize: '11px',
+          color: theme === 'dark' ? 'var(--text-muted, #6b7280)' : 'rgba(0,0,0,0.4)',
+          borderTop: `1px solid ${theme === 'dark' ? 'var(--border, #2d2d3d)' : '#e2e8f0'}`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          flexShrink: 0,
+          fontFamily: 'var(--font-mono, monospace)',
+          background: theme === 'dark' ? 'rgba(255,255,255,0.01)' : 'rgba(0,0,0,0.01)'
+        }}>
+          <span>{agentState.tokenUsage.totalTokens.toLocaleString()} tokens</span>
+          <span style={{ opacity: 0.5 }}>
+            ({agentState.tokenUsage.promptTokens.toLocaleString()} in / {agentState.tokenUsage.completionTokens.toLocaleString()} out)
+          </span>
+        </div>
+      )}
+
       {/* Plan Approval Dialog */}
       {agentState.pendingPlanApproval && (
         <PlanApprovalDialog
@@ -972,6 +1225,16 @@ Write your prompt content here.
           onReject={(reason) => agentState.pendingPlanApproval?.resolve(false, reason)}
           workspacePath={workspacePath}
           theme={theme}
+        />
+      )}
+
+      {/* Plan Review Modal (present_plan tool) */}
+      {agentState.pendingPlanReview && (
+        <PlanReviewModal
+          content={agentState.pendingPlanReview.content}
+          onRefine={(feedback) => agentState.pendingPlanReview?.resolve({ action: 'refine', feedback })}
+          onApply={(mode) => agentState.pendingPlanReview?.resolve({ action: 'apply', mode })}
+          onCancel={() => agentActions.cancelPlanReview()}
         />
       )}
     </div>

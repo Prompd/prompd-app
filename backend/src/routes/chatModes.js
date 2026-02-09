@@ -27,14 +27,24 @@ router.get('/chat-modes', async (req, res) => {
     // Define mode files to load
     // Unified Agent mode handles all intents: create, edit, explore, discuss
     const modeFiles = [
-      { id: 'agent', file: 'agent.json' }
+      { id: 'agent', file: 'agent.json' },
+      { id: 'planner', file: 'planner.json' }
     ]
 
     for (const { id, file } of modeFiles) {
       const filePath = path.join(PROMPTS_DIR, file)
       try {
         const content = await fs.readFile(filePath, 'utf-8')
-        modes[id] = JSON.parse(content)
+        const config = JSON.parse(content)
+
+        // Load external system prompt file if specified
+        if (config.systemPromptFile) {
+          const promptFilePath = path.join(PROMPTS_DIR, config.systemPromptFile)
+          config.systemPrompt = await fs.readFile(promptFilePath, 'utf-8')
+          delete config.systemPromptFile
+        }
+
+        modes[id] = config
       } catch (error) {
         console.error(`Error loading mode ${id}:`, error.message)
         // Continue loading other modes even if one fails
@@ -63,6 +73,13 @@ router.get('/chat-modes/:modeId', async (req, res) => {
 
     const content = await fs.readFile(filePath, 'utf-8')
     const mode = JSON.parse(content)
+
+    // Load external system prompt file if specified
+    if (mode.systemPromptFile) {
+      const promptFilePath = path.join(PROMPTS_DIR, mode.systemPromptFile)
+      mode.systemPrompt = await fs.readFile(promptFilePath, 'utf-8')
+      delete mode.systemPromptFile
+    }
 
     res.json(mode)
   } catch (error) {

@@ -7,6 +7,7 @@ import { detectHoverContext } from './context'
 import { extractParametersWithMetadata } from './utils'
 import { createFilterHover } from './filters'
 import { getEnvVarsCache } from './envCache'
+import { getCurrentFilePath, getWorkspacePath } from './validation'
 
 /**
  * Nunjucks/Jinja2 syntax help - shown when hovering over template tags
@@ -149,6 +150,202 @@ export function registerHoverProvider(
         }
 
         return { range, contents }
+      }
+
+      // Inherits hover - resolve reference and show prompt metadata
+      if (context.type === 'inherits') {
+        try {
+          const inheritsRef = context.value
+          const contents: monacoEditor.IMarkdownString[] = []
+          const modelContent = model.getValue()
+
+          // Parse using: block to build prefix → package mapping
+          const prefixMap = new Map<string, string>()
+          const frontmatterMatch = modelContent.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+          if (frontmatterMatch) {
+            const yaml = frontmatterMatch[1]
+            // Match object-format using entries: name: "@pkg@ver" + prefix: "@alias"
+            const usingEntries = Array.from(yaml.matchAll(/(?:^|\n)\s*-\s*(?:name:\s*["']?(@[\w./-]+@?[\w.^~*-]*)["']?\s+prefix:\s*["']?(@[\w-]+)["']?|prefix:\s*["']?(@[\w-]+)["']?\s+name:\s*["']?(@[\w./-]+@?[\w.^~*-]*)["']?)/g))
+            for (const entry of usingEntries) {
+              const pkg = entry[1] || entry[4]
+              const prefix = entry[2] || entry[3]
+              if (pkg && prefix) {
+                prefixMap.set(prefix, pkg)
+              }
+            }
+          }
+
+          // Determine type of reference
+          let resolvedPackage: string | null = null
+          let resolvedFilePath: string | null = null
+          let packageName = ''
+          let packageVersion = ''
+          let subPath = ''
+
+          // Check if it's a prefix alias reference (e.g., @core/prompts/base.prmd)
+          const prefixMatch = inheritsRef.match(/^(@[\w-]+)\/(.+)$/)
+          if (prefixMatch && prefixMap.has(prefixMatch[1])) {
+            const pkgRef = prefixMap.get(prefixMatch[1])!
+            subPath = prefixMatch[2]
+
+            // Parse package name and version from the using entry
+            const versionAt = pkgRef.lastIndexOf('@')
+            if (versionAt > 0 && pkgRef[0] === '@') {
+              packageName = pkgRef.substring(0, versionAt)
+              packageVersion = pkgRef.substring(versionAt + 1)
+            } else {
+              packageName = pkgRef
+            }
+            resolvedPackage = pkgRef
+          }
+          // Check if it's a direct package ref (e.g., @prompd/core@0.0.1/prompts/base.prmd)
+          else if (inheritsRef.startsWith('@')) {
+            const versionAt = inheritsRef.indexOf('@', 1)
+            if (versionAt > 0) {
+              packageName = inheritsRef.substring(0, versionAt)
+              const rest = inheritsRef.substring(versionAt + 1)
+              const slashIdx = rest.indexOf('/')
+              if (slashIdx >= 0) {
+                packageVersion = rest.substring(0, slashIdx)
+                subPath = rest.substring(slashIdx + 1)
+              } else {
+                packageVersion = rest
+              }
+              resolvedPackage = `${packageName}@${packageVersion}`
+            }
+          }
+          // Local relative path
+          else {
+            const currentFile = getCurrentFilePath()
+            if (currentFile) {
+              const sep = currentFile.includes('\\') ? '\\' : '/'
+              const dir = currentFile.substring(0, currentFile.lastIndexOf(sep))
+              resolvedFilePath = `${dir}${sep}${inheritsRef.replace(/\//g, sep)}`
+            }
+          }
+
+          // Try to resolve the file path for package references
+          // Check workspace cache first, then fall back to global cache
+          if (resolvedPackage && !resolvedFilePath) {
+            const nsSlash = packageName.indexOf('/')
+            const ns = packageName.substring(1, nsSlash) // strip @
+            const name = packageName.substring(nsSlash + 1)
+
+            // Try workspace .prompd/cache/ first (where compiler installs packages)
+            const wsPath = getWorkspacePath()
+            if (wsPath) {
+              const sep = wsPath.includes('\\') ? '\\' : '/'
+              resolvedFilePath = [wsPath, '.prompd', 'cache', `@${ns}`, name, packageVersion, subPath].join(sep)
+            }
+
+            // Fall back to global ~/.prompd/cache/
+            if (!resolvedFilePath) {
+              try {
+                const electronAPI = (window as { electronAPI?: { getHomePath: () => Promise<string> } }).electronAPI
+                if (electronAPI) {
+                  const homePath = await electronAPI.getHomePath()
+                  const sep = homePath.includes('\\') ? '\\' : '/'
+                  resolvedFilePath = [homePath, '.prompd', 'cache', `@${ns}`, name, packageVersion, subPath].join(sep)
+                }
+              } catch {
+                // Can't resolve home path
+              }
+            }
+          }
+
+          // Try to read the .prmd file and extract frontmatter metadata
+          let promptMeta: Record<string, string | string[]> | null = null
+          if (resolvedFilePath) {
+            try {
+              const electronAPI = (window as { electronAPI?: { readFile: (p: string) => Promise<{ success: boolean; content?: string }> } }).electronAPI
+              if (electronAPI) {
+                const result = await electronAPI.readFile(resolvedFilePath)
+                if (result.success && result.content) {
+                  const normalized = result.content.replace(/\r\n/g, '\n')
+                  const fmMatch = normalized.match(/^---\n([\s\S]*?)\n---/)
+                  if (fmMatch) {
+                    const yamlStr = fmMatch[1]
+                    // Extract key fields from frontmatter
+                    promptMeta = {}
+                    const nameMatch = yamlStr.match(/^name:\s*["']?(.+?)["']?\s*$/m)
+                    if (nameMatch) promptMeta.name = nameMatch[1]
+                    const descMatch = yamlStr.match(/^description:\s*["']?(.+?)["']?\s*$/m)
+                    if (descMatch) promptMeta.description = descMatch[1]
+                    const providerMatch = yamlStr.match(/^provider:\s*["']?(.+?)["']?\s*$/m)
+                    if (providerMatch) promptMeta.provider = providerMatch[1]
+                    const modelMatch = yamlStr.match(/^model:\s*["']?(.+?)["']?\s*$/m)
+                    if (modelMatch) promptMeta.model = modelMatch[1]
+                    const versionMatch = yamlStr.match(/^version:\s*["']?(.+?)["']?\s*$/m)
+                    if (versionMatch) promptMeta.version = versionMatch[1]
+                    const idMatch = yamlStr.match(/^id:\s*["']?(.+?)["']?\s*$/m)
+                    if (idMatch) promptMeta.id = idMatch[1]
+
+                    // Extract parameter names
+                    const paramNames: string[] = []
+                    const paramNameMatches = Array.from(yamlStr.matchAll(/^\s+(?:- name:\s*["']?(\w+)["']?|(\w+):\s*\{)/gm))
+                    for (const m of paramNameMatches) {
+                      const pName = m[1] || m[2]
+                      if (pName) paramNames.push(pName)
+                    }
+                    if (paramNames.length > 0) promptMeta.parameters = paramNames
+                  }
+                }
+              }
+            } catch {
+              // File read failed - continue without metadata
+            }
+          }
+
+          // Build hover content
+          if (resolvedPackage) {
+            contents.push({ value: `### Inherits: \`${inheritsRef}\`` })
+            contents.push({ value: `**Package:** \`${packageName}${packageVersion ? '@' + packageVersion : ''}\`` })
+            if (subPath) {
+              contents.push({ value: `**File:** \`${subPath}\`` })
+            }
+          } else {
+            contents.push({ value: `### Inherits: \`${inheritsRef}\`` })
+            if (resolvedFilePath) {
+              contents.push({ value: `**Path:** \`${resolvedFilePath}\`` })
+            }
+          }
+
+          if (promptMeta) {
+            contents.push({ value: '---' })
+            if (promptMeta.name) contents.push({ value: `**Name:** ${promptMeta.name}` })
+            if (promptMeta.description) contents.push({ value: `> ${promptMeta.description}` })
+            if (promptMeta.id) contents.push({ value: `**ID:** \`${promptMeta.id}\`` })
+            if (promptMeta.version) contents.push({ value: `**Version:** \`${promptMeta.version}\`` })
+            if (promptMeta.provider) contents.push({ value: `**Provider:** \`${promptMeta.provider}\`` })
+            if (promptMeta.model) contents.push({ value: `**Model:** \`${promptMeta.model}\`` })
+            if (promptMeta.parameters && Array.isArray(promptMeta.parameters) && promptMeta.parameters.length > 0) {
+              const paramList = promptMeta.parameters.map(p => `\`${p}\``).join(', ')
+              contents.push({ value: `**Parameters:** ${paramList}` })
+            }
+          } else if (!resolvedFilePath) {
+            contents.push({ value: '---' })
+            contents.push({ value: '_Could not resolve file path_' })
+          } else {
+            contents.push({ value: '---' })
+            contents.push({ value: '_File not found or could not be read_' })
+          }
+
+          // Widen hover range to cover the full inherits value (quoted or not)
+          const inheritsLineMatch = line.match(/inherits:\s*["']?([^"'\s#]+)["']?/)
+          if (inheritsLineMatch) {
+            const valueStart = line.indexOf(inheritsLineMatch[1])
+            const valueEnd = valueStart + inheritsLineMatch[1].length
+            const fullRange = new monaco.Range(
+              position.lineNumber, valueStart + 1,
+              position.lineNumber, valueEnd + 1
+            )
+            return { range: fullRange, contents }
+          }
+
+          return { range, contents }
+        } catch (error) {
+          console.warn('[IntelliSense] Inherits hover failed:', error)
+        }
       }
 
       if (context.type === 'package') {

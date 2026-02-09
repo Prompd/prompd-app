@@ -134,6 +134,9 @@ interface UIState {
   // Workflow connections panel
   showConnectionsPanel: boolean
 
+  // Workflow node palette sidebar
+  showNodePalette: boolean
+
   // Bottom panel (unified tab interface)
   showBottomPanel: boolean
   activeBottomTab: 'errors' | 'prompds' | 'workflows' | 'packages' | 'output'
@@ -216,6 +219,10 @@ interface UIActions {
   setShowConnectionsPanel: (show: boolean) => void
   toggleConnectionsPanel: () => void
 
+  // Workflow node palette sidebar
+  setShowNodePalette: (show: boolean) => void
+  toggleNodePalette: () => void
+
   // Bottom panel (unified)
   setShowBottomPanel: (show: boolean) => void
   setActiveBottomTab: (tab: 'errors' | 'prompds' | 'workflows' | 'packages' | 'output') => void
@@ -268,6 +275,7 @@ export const useUIStore = create<UIStore>()(
           showWorkflowPanel: false,
           workflowPanelPinned: false,
           showConnectionsPanel: false,
+          showNodePalette: true,
           showBottomPanel: false,
           activeBottomTab: 'errors',
           bottomPanelHeight: 200,
@@ -809,6 +817,15 @@ export const useUIStore = create<UIStore>()(
 
           toggleConnectionsPanel: () => set((state) => {
             state.showConnectionsPanel = !state.showConnectionsPanel
+          }),
+
+          // Workflow node palette sidebar
+          setShowNodePalette: (show) => set((state) => {
+            state.showNodePalette = show
+          }),
+
+          toggleNodePalette: () => set((state) => {
+            state.showNodePalette = !state.showNodePalette
           }),
 
           // Bottom panel (unified)

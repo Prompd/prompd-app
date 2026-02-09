@@ -232,9 +232,9 @@ Include a subject line suggestion.
 Write an email to my {{recipient}} about: {{purpose}}
 
 Tone: {{tone}}
-{{#if key_points}}
+{% if key_points %}
 Key points to include: {{key_points}}
-{{/if}}
+{% endif %}
 `
   },
   {
@@ -274,11 +274,11 @@ Your analysis should:
 5. Quantify findings with specific numbers
 
 # User
-{{#if question}}
+{% if question %}
 Analyze this data to answer: {{question}}
-{{else}}
+{% else %}
 Provide a comprehensive analysis of this data:
-{{/if}}
+{% endif %}
 
 \`\`\`
 {{data}}
@@ -572,7 +572,8 @@ CRITICAL RULES:
 2. Output ONLY the raw .prmd file content starting with ---
 3. Do NOT wrap the output in markdown code blocks
 4. Do NOT add any explanation before or after
-5. The file must start with exactly --- and end with the User section content`
+5. The file must start with exactly --- and end with the User section content
+6. Use Nunjucks template syntax for control flow: {% if var %}, {% else %}, {% endif %}, {% for item in list %}, {% endfor %}. Variable output uses {{var}}. Do NOT use Handlebars syntax ({{#if}}, {{/if}}, {{#each}}, {{/each}})`
 
       const userPrompt = `Create a .prmd prompt file for: ${promptDescription}
 

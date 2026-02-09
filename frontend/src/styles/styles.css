@@ -685,6 +685,23 @@ select.input {
   animation: spin 1s linear infinite;
 }
 
+/* Plan execution pulsing border */
+@keyframes plan-executing-pulse {
+  0%, 100% {
+    border-color: #f97316;
+    box-shadow: 0 0 4px rgba(249, 115, 22, 0.3);
+  }
+  50% {
+    border-color: #fb923c;
+    box-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
+  }
+}
+
+.plan-executing {
+  animation: plan-executing-pulse 1.5s ease-in-out infinite;
+  border: 1px solid #f97316 !important;
+}
+
 /* Smooth fade transitions for mode switching */
 .mode-transition {
   transition: all 0.3s ease-in-out;

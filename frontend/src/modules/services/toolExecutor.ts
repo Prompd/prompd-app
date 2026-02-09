@@ -9,7 +9,6 @@
 import { registryApi } from './registryApi'
 import { packageCache } from './packageCache'
 import { useEditorStore } from '../../stores/editorStore'
-import { useWorkflowStore } from '../../stores/workflowStore'
 import { BUILTIN_COMMAND_EXECUTABLES } from './workflowTypes'
 
 /**
@@ -232,6 +231,7 @@ export interface IToolExecutor {
   readFile(path: string): Promise<ToolResult>
   writeFile(path: string, content: string): Promise<ToolResult>
   editFile(path: string, edits: EditOperation[]): Promise<ToolResult>
+  renameFile(oldPath: string, newPath: string): Promise<ToolResult>
   listFiles(path: string, recursive?: boolean): Promise<ToolResult>
   searchFiles(pattern: string, glob?: string): Promise<ToolResult>
   runCommand(command: string, cwd?: string): Promise<ToolResult>
@@ -282,7 +282,7 @@ export class ElectronToolExecutor implements IToolExecutor {
 
   isToolAvailable(tool: string): boolean {
     // All tools available in Electron
-    return ['read_file', 'write_file', 'edit_file', 'list_files', 'search_files', 'search_registry', 'read_package_file', 'list_package_files', 'run_command', 'ask_user'].includes(tool)
+    return ['read_file', 'write_file', 'edit_file', 'rename_file', 'list_files', 'search_files', 'search_registry', 'read_package_file', 'list_package_files', 'run_command', 'ask_user'].includes(tool)
   }
 
   async execute(call: ToolCall): Promise<ToolResult> {
@@ -301,6 +301,9 @@ export class ElectronToolExecutor implements IToolExecutor {
           break
         case 'edit_file':
           result = await this.editFile(call.params.path as string, call.params.edits as EditOperation[])
+          break
+        case 'rename_file':
+          result = await this.renameFile(call.params.old_path as string, call.params.new_path as string)
           break
         case 'list_files':
           result = await this.listFiles(call.params.path as string || '.', call.params.recursive as boolean)
@@ -452,7 +455,14 @@ export class ElectronToolExecutor implements IToolExecutor {
         originalContent = currentContent
       }
 
-      const found = currentContent.includes(edit.search)
+      // Normalize line endings for search/replace (Windows CRLF vs Unix LF)
+      // LLM always sends \n but files on Windows may have \r\n
+      const hasCRLF = currentContent.includes('\r\n')
+      const normalizedContent = hasCRLF ? currentContent.replace(/\r\n/g, '\n') : currentContent
+      const normalizedSearch = edit.search.replace(/\r\n/g, '\n')
+      const normalizedReplace = edit.replace.replace(/\r\n/g, '\n')
+
+      const found = normalizedContent.includes(normalizedSearch)
       appliedEdits.push({
         search: edit.search.substring(0, 50) + (edit.search.length > 50 ? '...' : ''),
         found,
@@ -475,8 +485,11 @@ export class ElectronToolExecutor implements IToolExecutor {
         }
       }
 
-      // Apply the edit
-      const newContent = currentContent.replace(edit.search, edit.replace)
+      // Apply the edit on normalized content, then restore original line endings
+      let newContent = normalizedContent.replace(normalizedSearch, normalizedReplace)
+      if (hasCRLF) {
+        newContent = newContent.replace(/\n/g, '\r\n')
+      }
 
       // Validate .prmd format before writing this edit
       if (path.endsWith('.prmd') || path.endsWith('.prompd')) {
@@ -556,6 +569,70 @@ NEVER put markdown headers (# Title) BETWEEN the opening --- and closing ---. Th
         updatedContent: finalContent,
         canUndo: true
       }
+    }
+  }
+
+  async renameFile(oldPath: string, newPath: string): Promise<ToolResult> {
+    const oldValidation = this.validatePath(oldPath)
+    if (!oldValidation.valid) {
+      return { success: false, error: `Invalid source path: ${oldValidation.error}` }
+    }
+    const newValidation = this.validatePath(newPath)
+    if (!newValidation.valid) {
+      return { success: false, error: `Invalid destination path: ${newValidation.error}` }
+    }
+
+    const api = (window as unknown as { electronAPI?: { rename?: (old: string, next: string) => Promise<{ success: boolean; error?: string }> } }).electronAPI
+    if (!api?.rename) {
+      return { success: false, error: 'Electron API not available' }
+    }
+
+    try {
+      const fullOldPath = this.resolvePath(oldPath)
+      const fullNewPath = this.resolvePath(newPath)
+
+      const result = await api.rename(fullOldPath, fullNewPath)
+
+      if (result.success) {
+        // Update any open tabs that reference the old file path
+        const store = useEditorStore.getState()
+        const tabs = store.tabs
+        const normalizedOld = fullOldPath.replace(/\\/g, '/')
+
+        for (const tab of tabs) {
+          if (!tab.filePath) continue
+          const tabPath = tab.filePath.replace(/\\/g, '/')
+
+          const matches =
+            tabPath === normalizedOld ||
+            tabPath.endsWith('/' + oldPath.replace(/\\/g, '/')) ||
+            normalizedOld.endsWith('/' + tabPath) ||
+            (this.workspacePath && tabPath === `${this.workspacePath.replace(/\\/g, '/')}/${oldPath.replace(/\\/g, '/')}`)
+
+          if (matches) {
+            // Extract new filename for tab name
+            const newFileName = newPath.replace(/\\/g, '/').split('/').pop() || newPath
+            console.log(`[ToolExecutor] Renaming tab: ${tab.name} -> ${newFileName}`)
+            store.updateTab(tab.id, {
+              name: newFileName,
+              filePath: fullNewPath
+            })
+          }
+        }
+
+        return {
+          success: true,
+          output: {
+            old_path: oldPath,
+            new_path: newPath,
+            message: `Renamed ${oldPath} to ${newPath}`
+          }
+        }
+      } else {
+        return { success: false, error: result.error || 'Failed to rename file' }
+      }
+    } catch (error) {
+      return { success: false, error: `Rename failed: ${error}` }
     }
   }
 
@@ -658,7 +735,7 @@ NEVER put markdown headers (# Title) BETWEEN the opening --- and closing ---. Th
         const result = await api.readDir(dirPath)
         if (!result.success) return
 
-        for (const entry of result.entries || []) {
+        for (const entry of result.files || []) {
           const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name
 
           files.push({
@@ -955,17 +1032,15 @@ NEVER put markdown headers (# Title) BETWEEN the opening --- and closing ---. Th
   }
 
   async runCommand(command: string, cwd?: string): Promise<ToolResult> {
-    // Build dynamic whitelist from built-in commands + user custom commands
-    const builtInCommands = BUILTIN_COMMAND_EXECUTABLES.map(cmd => cmd.executable.toLowerCase())
-    const customCommands = useWorkflowStore.getState().customCommands.map(cmd => cmd.executable.toLowerCase())
-    const allowedCommands = [...new Set([...builtInCommands, ...customCommands])]
+    // AIChat uses only the built-in command whitelist (workflow custom commands are separate)
+    const allowedCommands = BUILTIN_COMMAND_EXECUTABLES.map(cmd => cmd.executable.toLowerCase())
 
     const firstWord = command.split(' ')[0].toLowerCase()
 
     if (!allowedCommands.includes(firstWord)) {
       return {
         success: false,
-        error: `Command '${firstWord}' not allowed. Allowed built-in: ${builtInCommands.join(', ')}${customCommands.length > 0 ? `. Custom: ${customCommands.join(', ')}` : ''}`
+        error: `Command '${firstWord}' not allowed. Allowed: ${allowedCommands.join(', ')}`
       }
     }
 
@@ -1127,10 +1202,14 @@ NEVER put markdown headers (# Title) BETWEEN the opening --- and closing ---. Th
           const result = await api.readFile(tryPath)
           if (result.success) {
             console.log(`[ToolExecutor] Found package file at: ${tryPath}`)
+            // Normalize CRLF to LF so LLM sees consistent line endings
+            const content = typeof result.content === 'string'
+              ? result.content.replace(/\r\n/g, '\n')
+              : result.content
             return {
               success: true,
               output: {
-                content: result.content,
+                content,
                 path,
                 resolvedPath: tryPath
               }
@@ -1152,7 +1231,11 @@ NEVER put markdown headers (# Title) BETWEEN the opening --- and closing ---. Th
     try {
       const result = await api.readFile(fullPath)
       if (result.success) {
-        return { success: true, output: { content: result.content, path } }
+        // Normalize CRLF to LF so LLM sees consistent line endings
+        const content = typeof result.content === 'string'
+          ? result.content.replace(/\r\n/g, '\n')
+          : result.content
+        return { success: true, output: { content, path } }
       } else {
         return { success: false, error: result.error || 'Failed to read file' }
       }
@@ -1317,6 +1400,8 @@ export class BrowserToolExecutor implements IToolExecutor {
           call.params.package_name as string,
           call.params.version as string
         )
+      case 'rename_file':
+        return { success: false, error: 'File rename not available in browser mode.' }
       case 'run_command':
         return { success: false, error: 'Command execution not available in browser mode.' }
       case 'ask_user':
@@ -1498,6 +1583,10 @@ NEVER put markdown headers (# Title) BETWEEN the opening --- and closing ---. Th
         canUndo: true
       }
     }
+  }
+
+  async renameFile(_oldPath: string, _newPath: string): Promise<ToolResult> {
+    return { success: false, error: 'File rename not available in browser mode.' }
   }
 
   /**

@@ -81,12 +81,13 @@ export type WorkflowNodeType =
   | 'code'            // Code execution node: TS/JS, Python, or C#
   | 'memory'          // Memory node: KV store, conversation history, or cache
   | 'output'
+  | 'web-search'      // Web search node: search the web via configurable provider
 
 export interface WorkflowNode {
   id: string
   type: WorkflowNodeType
   position: { x: number; y: number }
-  data: TriggerNodeData | PromptNodeData | ProviderNodeData | ConditionNodeData | LoopNodeData | ParallelNodeData | MergeNodeData | TransformerNodeData | ApiNodeData | ToolNodeData | ToolCallParserNodeData | ToolCallRouterNodeData | AgentNodeData | ChatAgentNodeData | GuardrailNodeData | CallbackNodeData | UserInputNodeData | ErrorHandlerNodeData | CommandNodeData | ClaudeCodeNodeData | WorkflowNodeData | McpToolNodeData | CodeNodeData | MemoryNodeData | OutputNodeData
+  data: TriggerNodeData | PromptNodeData | ProviderNodeData | ConditionNodeData | LoopNodeData | ParallelNodeData | MergeNodeData | TransformerNodeData | ApiNodeData | ToolNodeData | ToolCallParserNodeData | ToolCallRouterNodeData | AgentNodeData | ChatAgentNodeData | GuardrailNodeData | CallbackNodeData | UserInputNodeData | ErrorHandlerNodeData | CommandNodeData | ClaudeCodeNodeData | WorkflowNodeData | McpToolNodeData | CodeNodeData | MemoryNodeData | OutputNodeData | WebSearchNodeData
   /** Parent node ID for compound nodes (loop/parallel containers) */
   parentId?: string
   /** Extent for child nodes - 'parent' constrains to parent bounds */
@@ -912,6 +913,26 @@ export interface CommandNodeData extends BaseNodeData {
 }
 
 /**
+ * WebSearchNodeData - Search the web via configurable provider
+ *
+ * Uses the connection system to configure which search provider to use.
+ * Supports LangSearch (free), Brave Search, and Tavily.
+ */
+export interface WebSearchNodeData extends BaseNodeData {
+  /** Search query template (supports {{ }} expressions) */
+  query: string
+
+  /** Maximum number of results to return (default: 5) */
+  resultCount?: number
+
+  /** Search provider: 'langsearch' (free, default), 'brave', or 'tavily' */
+  provider?: 'langsearch' | 'brave' | 'tavily'
+
+  /** API key for LangSearch/Brave/Tavily providers */
+  apiKey?: string
+}
+
+/**
  * ClaudeCodeNodeData - Claude Code agent with SSH support for remote development
  *
  * This node encapsulates a full Claude Code agent that can:
@@ -1239,21 +1260,49 @@ export interface CustomCommandConfig {
  * Built-in allowed executables for command tool type
  */
 export const BUILTIN_COMMAND_EXECUTABLES = [
+  // Package managers
   { executable: 'npm', description: 'Node.js package manager', actions: ['run', 'install', 'test', 'build', 'start'] },
   { executable: 'npx', description: 'Execute npm packages', actions: [] },
   { executable: 'node', description: 'Node.js runtime', actions: [] },
   { executable: 'yarn', description: 'Yarn package manager', actions: ['run', 'install', 'test', 'build', 'start'] },
   { executable: 'pnpm', description: 'PNPM package manager', actions: ['run', 'install', 'test', 'build', 'start'] },
+  { executable: 'pip', description: 'Python package manager', actions: ['install', 'list', 'show'] },
+  // Version control
   { executable: 'git', description: 'Version control', actions: ['status', 'add', 'commit', 'push', 'pull', 'log', 'diff', 'branch'] },
+  // Languages and runtimes
   { executable: 'python', description: 'Python interpreter', actions: [] },
   { executable: 'python3', description: 'Python 3 interpreter', actions: [] },
-  { executable: 'pip', description: 'Python package manager', actions: ['install', 'list', 'show'] },
-  { executable: 'prompd', description: 'Prompd CLI', actions: ['compile', 'run', 'validate', 'package'] },
+  { executable: 'prompd', description: 'Prompd CLI', actions: ['compile', 'run', 'validate', 'package', 'list', 'show'] },
   { executable: 'dotnet', description: '.NET CLI', actions: ['build', 'run', 'test', 'publish'] },
   { executable: 'tsc', description: 'TypeScript compiler', actions: [] },
   { executable: 'eslint', description: 'JavaScript linter', actions: [] },
   { executable: 'prettier', description: 'Code formatter', actions: [] },
+  // Filesystem and shell utilities
+  { executable: 'ls', description: 'List directory contents', actions: [] },
+  { executable: 'dir', description: 'List directory contents (Windows)', actions: [] },
+  { executable: 'find', description: 'Find files by name or pattern', actions: [] },
+  { executable: 'cat', description: 'Display file contents', actions: [] },
+  { executable: 'head', description: 'Display first lines of file', actions: [] },
+  { executable: 'tail', description: 'Display last lines of file', actions: [] },
+  { executable: 'grep', description: 'Search text patterns in files', actions: [] },
+  { executable: 'sed', description: 'Stream editor for text transformation', actions: [] },
+  { executable: 'awk', description: 'Text processing', actions: [] },
+  { executable: 'wc', description: 'Word/line/byte count', actions: [] },
+  { executable: 'sort', description: 'Sort lines', actions: [] },
+  { executable: 'uniq', description: 'Filter duplicate lines', actions: [] },
+  { executable: 'diff', description: 'Compare files', actions: [] },
+  { executable: 'cp', description: 'Copy files', actions: [] },
+  { executable: 'mv', description: 'Move/rename files', actions: [] },
+  { executable: 'mkdir', description: 'Create directories', actions: [] },
+  { executable: 'touch', description: 'Create empty files or update timestamps', actions: [] },
   { executable: 'echo', description: 'Print text', actions: [] },
+  { executable: 'pwd', description: 'Print working directory', actions: [] },
+  { executable: 'which', description: 'Locate a command', actions: [] },
+  { executable: 'where', description: 'Locate a command (Windows)', actions: [] },
+  { executable: 'type', description: 'Display file contents (Windows)', actions: [] },
+  { executable: 'tree', description: 'Display directory tree', actions: [] },
+  { executable: 'curl', description: 'Transfer data from URLs', actions: [] },
+  { executable: 'wget', description: 'Download files from web', actions: [] },
 ] as const
 
 /**
@@ -2003,6 +2052,7 @@ export type WorkflowConnectionType =
   | 'github'        // GitHub API
   | 'mcp-server'    // External MCP server
   | 'websocket'     // WebSocket connection
+  | 'web-search'    // Web search provider (LangSearch, Brave, Tavily)
   | 'custom'        // User-defined
 
 export type WorkflowConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
@@ -2032,6 +2082,7 @@ export type WorkflowConnectionConfig =
   | GitHubConnectionConfig
   | McpServerConnectionConfig
   | WebSocketConnectionConfig
+  | WebSearchConnectionConfig
   | CustomConnectionConfig
 
 export interface SSHConnectionConfig {
@@ -2088,6 +2139,14 @@ export interface WebSocketConnectionConfig {
   url: string
   protocols?: string[]
   headers?: Record<string, string>
+}
+
+export interface WebSearchConnectionConfig {
+  type: 'web-search'
+  /** Search provider */
+  provider: 'langsearch' | 'brave' | 'tavily'
+  /** API key for LangSearch/Brave/Tavily */
+  apiKey?: string
 }
 
 export interface CustomConnectionConfig {

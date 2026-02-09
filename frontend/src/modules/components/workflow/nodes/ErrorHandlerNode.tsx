@@ -18,6 +18,7 @@ import { AlertTriangle, RefreshCw, ArrowRight, Bell, XCircle, RotateCcw } from '
 import type { ErrorHandlerNodeData, BaseNodeData } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { getNodeColor } from '../nodeColors'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 // Handle style constants
 const handleSize = 12
@@ -304,6 +305,12 @@ export const ErrorHandlerNode = memo(({ id, data, selected }: ErrorHandlerNodePr
           {nodeData.description}
         </div>
       )}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+      />
 
       {/* onError Output Handle (bottom) - connect to Checkpoint for error events */}
       <Handle

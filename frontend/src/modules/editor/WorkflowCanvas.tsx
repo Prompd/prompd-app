@@ -133,6 +133,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
   const isWorkflowPanelPinned = useUIStore(selectWorkflowPanelPinned)
   const showConnectionsPanel = useUIStore(state => state.showConnectionsPanel)
   const setShowConnectionsPanel = useUIStore(state => state.setShowConnectionsPanel)
+  const showNodePalette = useUIStore(state => state.showNodePalette)
   const setBuildOutput = useUIStore(state => state.setBuildOutput)
   const setShowBuildPanel = useUIStore(state => state.setShowBuildPanel)
 
@@ -1271,23 +1272,26 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
     try {
       const result = await executor.execute()
       setExecutionResult(result)
+      // Preserve nodeStates from last progress update so debug footers persist
+      const currentState = useWorkflowStore.getState().executionState
       setExecutionState({
         workflowId: workflowFile.metadata.id,
         status: result.success ? 'completed' : 'failed',
-        nodeStates: {},
-        nodeOutputs: result.nodeOutputs,
-        variables: {},
+        nodeStates: currentState?.nodeStates || {},
+        nodeOutputs: result.nodeOutputs || currentState?.nodeOutputs || {},
+        variables: currentState?.variables || {},
         errors: result.errors,
         endTime: Date.now(),
       })
     } catch (error) {
       console.error('[WorkflowCanvas] Workflow execution failed:', error)
+      const currentState = useWorkflowStore.getState().executionState
       setExecutionState({
         workflowId: workflowFile.metadata.id,
         status: 'failed',
-        nodeStates: {},
-        nodeOutputs: {},
-        variables: {},
+        nodeStates: currentState?.nodeStates || {},
+        nodeOutputs: currentState?.nodeOutputs || {},
+        variables: currentState?.variables || {},
         errors: [{
           message: error instanceof Error ? error.message : String(error),
           timestamp: Date.now(),
@@ -1314,7 +1318,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
       userInputResolveRef.current = null
     }
     executorRef.current?.stop()
-    setExecutionState(null)
+    // Keep executionState so node debug footers persist after stop
     setIsPaused(false)
     setPendingCheckpoint(null)
     setPendingUserInput(null)
@@ -1356,9 +1360,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
     }
     // Just hide the panel - don't clear execution results (they persist in store)
     setShowExecutionPanel(false)
-    // NOTE: Don't clear executionResult, checkpoints, or promptsSent - they persist in workflowStore
-    // so users can reopen the panel and see previous results
-    setExecutionState(null)
+    // Keep executionState so node debug footers persist after panel close
     setIsPaused(false)
     setPendingCheckpoint(null)
     setPendingUserInput(null)
@@ -1407,7 +1409,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
   return (
     <div className="flex h-full w-full">
       {/* Node Palette Sidebar */}
-      {!readOnly && (
+      {!readOnly && showNodePalette && (
         <NodePalette />
       )}
 

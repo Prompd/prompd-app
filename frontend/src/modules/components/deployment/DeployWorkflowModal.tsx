@@ -235,6 +235,63 @@ export function DeployWorkflowModal({ open, onClose, workflow, workflowPath }: D
       })
 
       if (result?.success) {
+        // Write the deployed version back to the workflow file
+        if (workflowPath && window.electronAPI?.readFile) {
+          try {
+            const fileResult = await window.electronAPI.readFile(workflowPath)
+            if (fileResult.success && fileResult.content) {
+              const wf = JSON.parse(fileResult.content)
+              const versionChanged = wf.version !== version ||
+                (wf.metadata && wf.metadata.version !== version)
+
+              if (versionChanged) {
+                wf.version = version
+                if (wf.metadata) {
+                  wf.metadata.version = version
+                }
+                const updatedContent = JSON.stringify(wf, null, 2)
+
+                const autoSaveEnabled = useUIStore.getState().autoSaveEnabled
+
+                // Find the open editor tab for this file
+                const { tabs, activeTabId, updateTab } = useEditorStore.getState()
+                const normalizedPath = workflowPath.replace(/\\/g, '/')
+                const matchingTab = tabs.find(t =>
+                  t.filePath && t.filePath.replace(/\\/g, '/') === normalizedPath
+                )
+
+                if (autoSaveEnabled && window.electronAPI?.writeFile) {
+                  // Auto-save enabled: write to disk and sync tab
+                  await window.electronAPI.writeFile(workflowPath, updatedContent)
+
+                  if (matchingTab) {
+                    updateTab(matchingTab.id, {
+                      text: updatedContent,
+                      savedText: updatedContent,
+                      dirty: false
+                    })
+                    if (matchingTab.id === activeTabId) {
+                      useEditorStore.getState().setTextWithoutTabUpdate(updatedContent)
+                    }
+                  }
+                } else if (matchingTab) {
+                  // Auto-save disabled: update tab content but mark dirty
+                  updateTab(matchingTab.id, {
+                    text: updatedContent,
+                    dirty: true
+                  })
+                  if (matchingTab.id === activeTabId) {
+                    useEditorStore.getState().setTextWithoutTabUpdate(updatedContent)
+                  }
+                }
+              }
+            }
+          } catch (versionErr) {
+            // Non-critical: version writeback failed, deployment still succeeded
+            console.warn('[Deploy] Failed to write version back to workflow file:', versionErr)
+          }
+        }
+
         addToast('Deployment successful!', 'success')
         // Notify other components that deployments have changed
         window.dispatchEvent(new CustomEvent('deployment-updated'))

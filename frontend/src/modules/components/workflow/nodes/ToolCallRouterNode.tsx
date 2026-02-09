@@ -24,6 +24,7 @@ import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { DockedNodePreview, useDockedNodes } from './DockedNodePreview'
 import { DOCKABLE_HANDLES } from '../../../services/workflowTypes'
 import { getNodeColor } from '../nodeColors'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 const handleSize = 12
 const handleBorder = '2px solid var(--panel)'
@@ -474,6 +475,13 @@ export const ToolCallRouterNode = memo(({ id, data, selected }: ToolCallRouterNo
           </span>
           <span>{getRoutingModeLabel()}</span>
         </div>
+
+        {/* Execution debug footer */}
+        <NodeExecutionFooter
+          nodeState={nodeState}
+          allNodeStates={executionState?.nodeStates}
+          showError={false}
+        />
       </div>
     </>
   )

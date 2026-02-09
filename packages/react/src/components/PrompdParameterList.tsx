@@ -116,10 +116,26 @@ export function PrompdParameterList({
     return (
       <div className={clsx('prompd-parameter-list-inline flex items-center gap-2 flex-wrap', className)}>
         <span className="text-xs font-medium" style={{ color: 'var(--prompd-muted)' }}>Params:</span>
-        {parameters.map((param: any) => (
+        {parameters.map((param: any) => {
+          const isArrayParam = param.type === 'array' || param.type === 'string[]' || param.type?.includes?.('[]')
+          return (
           <div key={param.name} className="inline-flex items-center gap-1.5">
             <span className="text-xs" style={{ color: 'var(--prompd-muted)' }}>{param.name}:</span>
-            {param.type === 'enum' || param.values || param.enum ? (
+            {isArrayParam ? (
+              <span
+                className="text-xs"
+                style={{
+                  padding: '0.125rem 0.5rem',
+                  fontSize: '0.75rem',
+                  borderRadius: '0.25rem',
+                  background: 'var(--prompd-panel)',
+                  border: '1px solid var(--prompd-border)',
+                  color: 'var(--prompd-text)',
+                }}
+              >
+                {Array.isArray(values[param.name]) ? values[param.name].join(', ') : String(values[param.name] ?? param.default ?? '--')}
+              </span>
+            ) : param.type === 'enum' || param.values || param.enum ? (
               <select
                 value={values[param.name] || param.default || ''}
                 onChange={(e) => handleChange(param.name, e.target.value)}
@@ -175,7 +191,8 @@ export function PrompdParameterList({
             )}
             {param.required && <span className="text-xs" style={{ color: '#ef4444' }}>*</span>}
           </div>
-        ))}
+          )
+        })}
       </div>
     )
   }

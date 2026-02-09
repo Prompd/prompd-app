@@ -18,6 +18,7 @@ import { DockedNodePreview, useDockedNodes } from './DockedNodePreview'
 import { ToolRouterDockPreview } from './ToolRouterDockPreview'
 import { DOCKABLE_HANDLES } from '../../../services/workflowTypes'
 import { getNodeColor } from '../nodeColors'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 // Handle style constants
 const handleSize = 12
@@ -557,6 +558,14 @@ export const AgentNode = memo(({ id, data, selected }: AgentNodeProps) => {
           {nodeState.error}
         </div>
       )}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+        showOutput={false}
+        showError={false}
+      />
 
       {/* Main Output Handle (right) - workflow data flow */}
       <Handle

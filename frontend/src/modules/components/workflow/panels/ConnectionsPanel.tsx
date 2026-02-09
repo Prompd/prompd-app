@@ -108,6 +108,12 @@ const CONNECTION_TYPE_INFO: Record<WorkflowConnectionType, {
     color: 'var(--node-orange, #f97316)',
     description: 'WebSocket connection',
   },
+  'web-search': {
+    label: 'Web Search',
+    icon: Search,
+    color: 'var(--node-sky, #0ea5e9)',
+    description: 'Web search provider',
+  },
   custom: {
     label: 'Custom',
     icon: Settings,
@@ -424,6 +430,7 @@ function ConnectionsTab({ searchQuery, onAddConnection }: ConnectionsTabProps) {
       github: [],
       'mcp-server': [],
       websocket: [],
+      'web-search': [],
       custom: [],
     }
 
