@@ -8,6 +8,7 @@ import { Flag, CheckCircle, Loader2, XCircle, Maximize2 } from 'lucide-react'
 import type { OutputNodeData, BaseNodeData } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { OutputViewDialog } from '../OutputViewDialog'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 interface OutputNodeProps {
   id: string
@@ -170,6 +171,13 @@ export const OutputNode = memo(({ id, data, selected }: OutputNodeProps) => {
           onClose={() => setShowOutputDialog(false)}
         />
       )}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+        showOutput={false}
+      />
     </div>
   )
 })

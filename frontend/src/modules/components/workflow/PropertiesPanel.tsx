@@ -34,6 +34,7 @@ import {
   Route,
   Eye,
   EyeOff,
+  Search,
 } from 'lucide-react'
 import { useWorkflowStore } from '../../../stores/workflowStore'
 import { ErrorHandlerSelector } from './shared/property-components/ErrorHandlerSelector'
@@ -65,6 +66,7 @@ import type {
   ChatAgentNodeData,
   MemoryNodeData,
   GuardrailNodeData,
+  WebSearchNodeData,
 } from '../../services/workflowTypes'
 
 // Import all property editors from node files
@@ -92,6 +94,7 @@ import { TriggerNodeProperties } from './nodes/TriggerNode'
 import { ChatAgentNodeProperties } from './nodes/ChatAgentNode'
 import { MemoryNodeProperties } from './nodes/MemoryNode'
 import { GuardrailNodeProperties } from './nodes/GuardrailNode'
+import { WebSearchNodeProperties } from './nodes/WebSearchNode'
 
 export function WorkflowPropertiesPanel() {
   // Subscribe to selectedNodeId separately - this is a primitive and won't cause extra re-renders
@@ -154,6 +157,8 @@ export function WorkflowPropertiesPanel() {
         return <AlertTriangle style={{ ...iconStyle, color: 'var(--node-orange)' }} />
       case 'command':
         return <Terminal style={{ ...iconStyle, color: 'var(--node-slate, var(--muted))' }} />
+      case 'web-search':
+        return <Search style={{ ...iconStyle, color: 'var(--node-sky)' }} />
       case 'code':
         return <FileCode style={{ ...iconStyle, color: 'var(--node-blue)' }} />
       case 'claude-code':
@@ -471,6 +476,14 @@ export function WorkflowPropertiesPanel() {
           <CommandNodeProperties
             data={selectedNode.data as CommandNodeData}
             onChange={handleDataChange}
+          />
+        )}
+
+        {selectedNode.type === 'web-search' && (
+          <WebSearchNodeProperties
+            data={selectedNode.data as WebSearchNodeData}
+            onChange={handleDataChange}
+            nodeId={selectedNode.id}
           />
         )}
 

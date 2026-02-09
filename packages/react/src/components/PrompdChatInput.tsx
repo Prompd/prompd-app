@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react'
-import { SendHorizontal, Loader2 } from 'lucide-react'
+import { SendHorizontal, Loader2, Square } from 'lucide-react'
 import type { PrompdChatInputProps, PrompdInputTheme } from '../types'
 import { clsx } from 'clsx'
 
@@ -36,6 +36,7 @@ export function PrompdChatInput({
   onChange,
   onSubmit,
   isLoading = false,
+  onStop,
   placeholder = 'Ask me anything... (Up/Down for history)',
   maxLines = 10,
   className,
@@ -97,11 +98,14 @@ export function PrompdChatInput({
     const textarea = textareaRef.current
     if (!textarea) return
 
-    const cursorAtStart = textarea.selectionStart === 0 && textarea.selectionEnd === 0
-    const cursorAtEnd = textarea.selectionStart === value.length && textarea.selectionEnd === value.length
-    const isEmptyOrSingleLine = !value.includes('\n')
+    const cursorPos = textarea.selectionStart
+    const selectionCollapsed = textarea.selectionStart === textarea.selectionEnd
+    const textBeforeCursor = value.substring(0, cursorPos)
+    const cursorOnFirstLine = !textBeforeCursor.includes('\n')
+    const cursorOnLastLine = !value.substring(cursorPos).includes('\n')
+    const isEmpty = value === ''
 
-    if (e.key === 'ArrowUp' && (cursorAtStart || isEmptyOrSingleLine)) {
+    if (e.key === 'ArrowUp' && selectionCollapsed && (isEmpty || cursorOnFirstLine)) {
       e.preventDefault()
 
       if (historyIndex === -1) {
@@ -125,7 +129,7 @@ export function PrompdChatInput({
           textarea.selectionEnd = textarea.value.length
         }
       }, 0)
-    } else if (e.key === 'ArrowDown' && (cursorAtEnd || isEmptyOrSingleLine)) {
+    } else if (e.key === 'ArrowDown' && selectionCollapsed && (isEmpty || cursorOnLastLine)) {
       if (historyIndex === -1) return // Not in history navigation mode
 
       e.preventDefault()
@@ -225,6 +229,19 @@ export function PrompdChatInput({
             <div className="flex items-center gap-2">
               {rightControls ? (
                 rightControls
+              ) : isLoading && onStop ? (
+                <button
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); onStop() }}
+                  className="prompd-stop-button p-2.5 rounded-xl text-white transition-all duration-200 hover:scale-[1.02] active:scale-95"
+                  style={{
+                    background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                    boxShadow: '0 4px 14px 0 rgba(239, 68, 68, 0.3)'
+                  }}
+                  title="Stop generation (Esc)"
+                >
+                  <Square className="w-4 h-4" fill="currentColor" />
+                </button>
               ) : (
                 <button
                   type="submit"
@@ -254,27 +271,43 @@ export function PrompdChatInput({
         {/* Default submit button when no controls */}
         {!leftControls && !rightControls && (
           <div className="flex justify-end px-3 pb-3">
-            <button
-              type="submit"
-              disabled={!canSend}
-              className={clsx(
-                'prompd-submit-button p-2 rounded-lg transition-all duration-200',
-                canSend
-                  ? 'opacity-100 scale-100 hover:scale-110'
-                  : 'opacity-30 scale-90 cursor-not-allowed'
-              )}
-              style={{
-                background: canSend ? themeColors.button : 'var(--prompd-muted)',
-                color: 'white',
-                boxShadow: canSend ? `0 2px 8px ${themeColors.glow}` : 'none'
-              }}
-            >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <SendHorizontal className="w-5 h-5" />
-              )}
-            </button>
+            {isLoading && onStop ? (
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); onStop() }}
+                className="prompd-stop-button p-2 rounded-lg transition-all duration-200 opacity-100 scale-100 hover:scale-110"
+                style={{
+                  background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                  color: 'white',
+                  boxShadow: '0 2px 8px rgba(239, 68, 68, 0.3)'
+                }}
+                title="Stop generation (Esc)"
+              >
+                <Square className="w-4 h-4" fill="currentColor" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!canSend}
+                className={clsx(
+                  'prompd-submit-button p-2 rounded-lg transition-all duration-200',
+                  canSend
+                    ? 'opacity-100 scale-100 hover:scale-110'
+                    : 'opacity-30 scale-90 cursor-not-allowed'
+                )}
+                style={{
+                  background: canSend ? themeColors.button : 'var(--prompd-muted)',
+                  color: 'white',
+                  boxShadow: canSend ? `0 2px 8px ${themeColors.glow}` : 'none'
+                }}
+              >
+                {isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <SendHorizontal className="w-5 h-5" />
+                )}
+              </button>
+            )}
           </div>
         )}
       </div>

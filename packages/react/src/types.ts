@@ -487,6 +487,8 @@ export interface PrompdChatProps {
   // Force the input to be ready for user input (overrides internal isLoading state)
   // Used when agent is waiting for user input (ask_user tool)
   waitingForUserInput?: boolean
+  // Callback fired when the user clicks the stop button during generation
+  onStop?: () => void
 }
 
 /**
@@ -540,6 +542,8 @@ export interface PrompdContextAreaProps {
   hasFolderOpen?: boolean  // Whether a folder is currently open in file browser
   activeSection?: string | null  // Currently active section for file selection
   variant?: 'compact' | 'card'  // Display variant: compact (default) or card (filled backgrounds)
+  currentFilePath?: string  // Path of the current .prmd file, used to convert dropped paths to relative
+  workspacePath?: string    // Workspace root path, used to strip absolute prefix from currentFilePath
   className?: string
 }
 
@@ -565,6 +569,9 @@ export interface PrompdChatInputProps {
   onChange: (value: string) => void
   onSubmit: () => void
   isLoading?: boolean
+  // Callback fired when the stop button is clicked during loading.
+  // If provided, shows a clickable stop button instead of a disabled spinner when isLoading is true.
+  onStop?: () => void
   placeholder?: string
   maxLines?: number
   className?: string

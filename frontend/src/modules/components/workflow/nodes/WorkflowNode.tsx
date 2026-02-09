@@ -13,6 +13,7 @@ import { GitBranch, CheckCircle, XCircle, Loader2, Package, ArrowRight, AlertTri
 import type { WorkflowNodeData, BaseNodeData } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { getNodeColor } from '../nodeColors'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 // Handle style constants
 const handleSize = 12
@@ -314,6 +315,13 @@ export const WorkflowNode = memo(({ id, data, selected }: WorkflowNodeProps) => 
           {nodeState.error}
         </div>
       )}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+        showError={false}
+      />
 
       {/* Output Handle */}
       <Handle

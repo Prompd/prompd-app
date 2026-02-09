@@ -1,6 +1,7 @@
 import { Code2, Palette, Settings, Play, LogOut, User, Moon, Sun, SplitSquareHorizontal, HelpCircle } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
+import { PrompdIcon } from '../components/PrompdIcon'
 import { useAuthenticatedUser, useElectronAuth, isElectron } from '../auth/ClerkWrapper'
 import { UserButton } from '@clerk/clerk-react'
 import { useUIStore } from '../../stores/uiStore'
@@ -294,6 +295,8 @@ type Props = {
   workspacePath?: string | null  // For .env file detection
   showPreview?: boolean  // Whether split preview is shown
   onTogglePreview?: () => void  // Toggle split preview
+  showChat?: boolean  // Whether chat pane is shown in split view
+  onToggleChat?: () => void  // Toggle chat pane
 }
 
 export default function EditorHeader({
@@ -309,7 +312,9 @@ export default function EditorHeader({
   onExecuteWorkflow,
   workspacePath,
   showPreview = false,
-  onTogglePreview
+  onTogglePreview,
+  showChat = false,
+  onToggleChat
 }: Props) {
   const { isAuthenticated, isLoaded, getToken, email } = useAuthenticatedUser()
   const headerRef = useRef<HTMLDivElement>(null)
@@ -643,6 +648,32 @@ export default function EditorHeader({
               >
                 <SplitSquareHorizontal size={14} />
                 {!isMediumCompact && <span>Preview</span>}
+              </button>
+            )}
+            {/* Chat toggle - opens AI chat in split view, available in Code mode for .prmd files */}
+            {isPrompdFile && onToggleChat && (
+              <button
+                onClick={mode === 'code' ? onToggleChat : undefined}
+                disabled={mode !== 'code'}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: isMediumCompact ? '0' : '4px',
+                  padding: isMediumCompact ? '4px 6px' : '4px 10px',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  border: 'none',
+                  borderRadius: '4px',
+                  background: showChat && mode === 'code' ? 'rgba(99, 102, 241, 0.85)' : 'transparent',
+                  color: showChat && mode === 'code' ? 'white' : 'var(--text-secondary)',
+                  cursor: mode === 'code' ? 'pointer' : 'not-allowed',
+                  opacity: mode === 'code' ? 1 : 0.4,
+                  transition: 'all 0.2s'
+                }}
+                title={mode !== 'code' ? 'Chat only available in Code mode' : (showChat ? 'Hide chat panel' : 'Open AI chat')}
+              >
+                <PrompdIcon size={14} />
+                {!isMediumCompact && <span>Chat</span>}
               </button>
             )}
           </div>

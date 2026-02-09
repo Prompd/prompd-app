@@ -258,6 +258,12 @@ export function detectContext(text: string, lineNumber: number, column: number):
  * Detect context for hover information
  */
 export function detectHoverContext(line: string, word: monacoEditor.editor.IWordAtPosition): HoverContext {
+  // Check if this is an inherits: line - extract the full reference value
+  const inheritsMatch = line.match(/^\s*inherits:\s*["']?([^"'\s#]+)["']?/)
+  if (inheritsMatch) {
+    return { type: 'inherits', value: inheritsMatch[1] }
+  }
+
   // Check if word is part of a package reference
   // Pattern: "@scope/package@version" or "@scope/package"
   // Capture both package name and optional version

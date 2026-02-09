@@ -87,10 +87,11 @@ export class DeploymentDependencyResolver {
       return
     }
 
-    // Extract context file references (context: or contexts: - both singular and plural)
-    const contextArray = parsed.frontmatter?.context || parsed.frontmatter?.contexts
-    if (contextArray && Array.isArray(contextArray)) {
-      for (const contextRef of contextArray) {
+    // Extract context file references (context: or contexts: - both singular and plural, string or array)
+    const contextValue = parsed.frontmatter?.context || parsed.frontmatter?.contexts
+    if (contextValue) {
+      const contextRefs = Array.isArray(contextValue) ? contextValue : [contextValue]
+      for (const contextRef of contextRefs) {
         if (typeof contextRef !== 'string') continue
         const contextPath = path.resolve(path.dirname(absolutePath), contextRef)
 
@@ -104,6 +105,28 @@ export class DeploymentDependencyResolver {
           result.contextFiles.push(contextPath)
         } else {
           console.warn(`[DependencyResolver] Context file not found: ${contextPath}`)
+        }
+      }
+    }
+
+    // Extract section file references (system:, user:, task:, assistant:, response:, output:)
+    // These are top-level frontmatter fields that can point to files
+    const sectionFields = ['system', 'user', 'task', 'assistant', 'response', 'output']
+    for (const field of sectionFields) {
+      const sectionValue = parsed.frontmatter?.[field]
+      if (!sectionValue) continue
+
+      const sectionRefs = Array.isArray(sectionValue) ? sectionValue : [sectionValue]
+      for (const ref of sectionRefs) {
+        if (typeof ref !== 'string') continue
+        // Only resolve relative paths (starts with ./ or ../ or has a file extension)
+        if (!ref.startsWith('./') && !ref.startsWith('../') && !ref.match(/\.\w+$/)) continue
+
+        const sectionPath = path.resolve(path.dirname(absolutePath), ref)
+        if (fs.existsSync(sectionPath)) {
+          result.contextFiles.push(sectionPath)
+        } else {
+          console.warn(`[DependencyResolver] Section file not found (${field}): ${sectionPath}`)
         }
       }
     }
@@ -166,13 +189,28 @@ export class DeploymentDependencyResolver {
     // Extract attached files (files: field in frontmatter)
     if (parsed.frontmatter?.files && Array.isArray(parsed.frontmatter.files)) {
       for (const fileRef of parsed.frontmatter.files) {
-        const filePath = path.resolve(path.dirname(absolutePath), fileRef)
+        const refPath = path.resolve(path.dirname(absolutePath), fileRef)
 
-        if (fs.existsSync(filePath)) {
-          result.contextFiles.push(filePath)
+        if (fs.existsSync(refPath)) {
+          result.contextFiles.push(refPath)
         } else {
-          console.warn(`[DependencyResolver] Attached file not found: ${filePath}`)
+          console.warn(`[DependencyResolver] Attached file not found: ${refPath}`)
         }
+      }
+    }
+
+    // Extract Jinja {% include "..." %} directives from the body
+    const body = parsed.body || ''
+    const includeRegex = /\{%[-~]?\s*include\s+["']([^"']+)["']\s*[-~]?%\}/g
+    let includeMatch
+    while ((includeMatch = includeRegex.exec(body)) !== null) {
+      const includePath = includeMatch[1]
+      const resolvedInclude = path.resolve(path.dirname(absolutePath), includePath)
+
+      if (fs.existsSync(resolvedInclude)) {
+        result.contextFiles.push(resolvedInclude)
+      } else {
+        console.warn(`[DependencyResolver] Include file not found: ${resolvedInclude}`)
       }
     }
   }

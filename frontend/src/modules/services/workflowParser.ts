@@ -21,6 +21,7 @@ import type {
   WorkflowMetadata,
 } from './workflowTypes'
 import { validateWorkflow } from './workflowValidator'
+import { ALL_NODE_TYPES } from './nodeTypeRegistry'
 
 // Use simple React Flow types for parser output
 type WorkflowCanvasNode = Node<BaseNodeData>
@@ -35,35 +36,18 @@ export interface ParsedWorkflow {
   metadata?: WorkflowMetadata  // Convenience accessor for file.metadata
 }
 
-// Valid node types
-const VALID_NODE_TYPES: WorkflowNodeType[] = [
-  'trigger',
-  'prompt',
-  'provider',
-  'condition',
-  'loop',
-  'parallel',
-  'merge',
-  'transformer',
-  'api',
-  'tool',
-  'tool-call-parser',
-  'tool-call-router',
-  'agent',
-  'chat-agent',   // Composite chat agent with guardrail
-  'guardrail',    // Input validation node
-  'callback',
-  'checkpoint',   // Alias for callback
-  'user-input',
-  'error-handler',
-  'command',      // Phase E: Shell command execution
-  'code',         // Phase E: Custom code execution
-  'claude-code',  // Phase E: Claude Code agent with SSH
-  'workflow',     // Phase E: Sub-workflow invocation
-  'mcp-tool',     // Phase E: External MCP tool execution
-  'memory',       // Memory/storage operations
-  'output',
-]
+// Valid node types — derived from the single-source-of-truth registry.
+// When adding a new node type, update ALL of the following locations:
+//   1. workflowTypes.ts              - WorkflowNodeType union + NodeData interface
+//   2. nodeTypeRegistry.ts           - NODE_TYPE_REGISTRY entry + category
+//   3. workflowParser.ts             - createWorkflowNode() switch (below)
+//   4. workflowValidator.ts          - validateNodeData() switch (if type-specific validation needed)
+//   5. workflowExecutor.ts           - executeNode() switch (frontend execution)
+//   6. nodes/index.ts                - NODE_TYPE_MAP (React component mapping)
+//   7. nodes/<Name>Node.tsx          - Canvas component + properties panel
+//   8. CLI nodeTypeRegistry.ts       - Mirror of #2
+//   9. CLI workflowExecutor.ts       - Mirror of #5
+const VALID_NODE_TYPES: WorkflowNodeType[] = ALL_NODE_TYPES
 
 // Internal handles that indicate container-internal edges
 const INTERNAL_HANDLES = ['loop-start', 'loop-end', 'parallel-start', 'parallel-end']
@@ -141,7 +125,9 @@ export function serializeWorkflow(
   edges: WorkflowCanvasEdge[]
 ): string {
   // Update node positions, data, and container properties from React Flow
-  const updatedNodes: WorkflowNode[] = file.nodes.map(node => {
+  const fileNodes = file.nodes || []
+  const fileEdges = file.edges || []
+  const updatedNodes: WorkflowNode[] = fileNodes.map(node => {
     const rfNode = nodes.find(n => n.id === node.id)
     if (rfNode) {
       const nodeData = rfNode.data as BaseNodeData
@@ -201,6 +187,8 @@ export function serializeWorkflow(
 
   const updatedFile: WorkflowFile = {
     ...file,
+    version: file.version || '1.0.0',
+    metadata: file.metadata || { id: `workflow-${Date.now()}`, name: 'New Workflow', description: '' },
     nodes: updatedNodes,
     edges: workflowEdges,
   }
@@ -509,6 +497,18 @@ export function createWorkflowNode(
           requiresApproval: true,
         },
       }
+    case 'web-search':
+      return {
+        id: nodeId,
+        type,
+        position,
+        data: {
+          ...baseData,
+          query: '',
+          resultCount: 5,
+          provider: 'langsearch',
+        },
+      }
     case 'claude-code':
       return {
         id: nodeId,
@@ -652,6 +652,7 @@ function getDefaultLabel(type: WorkflowNodeType): string {
     'mcp-tool': 'MCP Tool',
     memory: 'Memory',
     output: 'Output',
+    'web-search': 'Web Search',
   }
   return labels[type] || 'Node'
 }

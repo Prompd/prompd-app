@@ -13,7 +13,7 @@ export interface Context {
 }
 
 export interface HoverContext {
-  type: 'package' | 'parameter' | 'filter' | 'envvar' | 'none'
+  type: 'package' | 'parameter' | 'filter' | 'envvar' | 'inherits' | 'none'
   value: string
 }
 

@@ -1,11 +1,19 @@
 /**
  * NodePalette - Draggable sidebar for adding nodes to the workflow canvas
+ *
+ * All node metadata (labels, descriptions, icons, colors, categories) is
+ * derived from the single-source-of-truth nodeTypeRegistry.
  */
 
 import { useState, useMemo, useCallback } from 'react'
-import type { LucideIcon } from 'lucide-react'
-import { MessageSquare, GitBranch, Repeat, GitFork, Combine, Wand2, Globe, Flag, Eye, Cpu, UserCircle, Wrench, ScanSearch, Bot, Play, Route, AlertTriangle, Terminal, Server, Workflow, Plug, ChevronDown, ChevronRight, Search, X, Star, FileCode, ShieldCheck, MessagesSquare, Database } from 'lucide-react'
+import { ChevronDown, ChevronRight, Search, X, Star } from 'lucide-react'
 import type { WorkflowNodeType } from '../../services/workflowTypes'
+import {
+  NODE_TYPE_CATEGORIES,
+  PALETTE_NODE_TYPES,
+  NODE_TYPE_REGISTRY,
+  type NodeTypeEntry,
+} from '../../services/nodeTypeRegistry'
 
 // Local storage key for favorites
 const FAVORITES_STORAGE_KEY = 'workflow-node-favorites'
@@ -29,206 +37,13 @@ function saveFavorites(favorites: WorkflowNodeType[]): void {
   }
 }
 
-interface NodePaletteItem {
-  type: WorkflowNodeType
-  label: string
-  description: string
-  icon: LucideIcon
-  colorVar: string // CSS variable suffix for theming
-}
+// Palette item type — same shape as NodeTypeEntry from the registry
+type NodePaletteItem = NodeTypeEntry
 
-const PALETTE_ITEMS: NodePaletteItem[] = [
-  // === Entry & Exit ===
-  {
-    type: 'trigger',
-    label: 'Trigger',
-    description: 'Workflow entry point',
-    icon: Play,
-    colorVar: 'green',
-  },
-  {
-    type: 'output',
-    label: 'Output',
-    description: 'Workflow final output',
-    icon: Flag,
-    colorVar: 'green',
-  },
-
-  // === AI & Prompts ===
-  {
-    type: 'prompt',
-    label: 'Prompt',
-    description: 'Execute a .prmd file',
-    icon: MessageSquare,
-    colorVar: 'purple',
-  },
-  {
-    type: 'provider',
-    label: 'Provider',
-    description: 'LLM provider & model config',
-    icon: Cpu,
-    colorVar: 'rose',
-  },
-  {
-    type: 'agent',
-    label: 'AI Agent',
-    description: 'Autonomous agent with tools',
-    icon: Bot,
-    colorVar: 'indigo',
-  },
-  {
-    type: 'chat-agent',
-    label: 'Chat Agent',
-    description: 'Input + Guard + Agent + Tools',
-    icon: MessagesSquare,
-    colorVar: 'indigo',
-  },
-  {
-    type: 'claude-code',
-    label: 'Claude Code',
-    description: 'Claude Code agent (local/SSH)',
-    icon: Server,
-    colorVar: 'violet',
-  },
-  {
-    type: 'guardrail',
-    label: 'Guardrail',
-    description: 'Validate input with pass/reject',
-    icon: ShieldCheck,
-    colorVar: 'amber',
-  },
-
-  // === Tools & Execution ===
-  {
-    type: 'tool',
-    label: 'Tool',
-    description: 'Unified tool execution',
-    icon: Wrench,
-    colorVar: 'orange',
-  },
-  {
-    type: 'command',
-    label: 'Command',
-    description: 'Execute shell commands',
-    icon: Terminal,
-    colorVar: 'slate',
-  },
-  {
-    type: 'code',
-    label: 'Code',
-    description: 'Run TS/Python/C# snippets',
-    icon: FileCode,
-    colorVar: 'blue',
-  },
-  {
-    type: 'api',
-    label: 'HTTP Request',
-    description: 'Make REST API calls',
-    icon: Globe,
-    colorVar: 'blue',
-  },
-  {
-    type: 'mcp-tool',
-    label: 'MCP Tool',
-    description: 'External MCP server tool',
-    icon: Plug,
-    colorVar: 'cyan',
-  },
-
-  // === Tool Utilities (for Agent tool routing) ===
-  {
-    type: 'tool-call-parser',
-    label: 'Tool Parser',
-    description: 'Parse LLM tool call output',
-    icon: ScanSearch,
-    colorVar: 'cyan',
-  },
-  {
-    type: 'tool-call-router',
-    label: 'Tool Router',
-    description: 'Route tool calls to handlers',
-    icon: Route,
-    colorVar: 'teal',
-  },
-
-  // === Control Flow ===
-  {
-    type: 'condition',
-    label: 'Condition',
-    description: 'Branch based on expression',
-    icon: GitBranch,
-    colorVar: 'amber',
-  },
-  {
-    type: 'loop',
-    label: 'Loop',
-    description: 'Iterate over items or count',
-    icon: Repeat,
-    colorVar: 'cyan',
-  },
-  {
-    type: 'parallel',
-    label: 'Parallel',
-    description: 'Execute branches concurrently',
-    icon: GitFork,
-    colorVar: 'indigo',
-  },
-  {
-    type: 'merge',
-    label: 'Merge',
-    description: 'Combine parallel results',
-    icon: Combine,
-    colorVar: 'emerald',
-  },
-
-  // === Data Transform ===
-  {
-    type: 'transformer',
-    label: 'Transform',
-    description: 'Transform data with template',
-    icon: Wand2,
-    colorVar: 'orange',
-  },
-  {
-    type: 'memory',
-    label: 'Memory',
-    description: 'KV store, conversation, or cache',
-    icon: Database,
-    colorVar: 'emerald',
-  },
-
-  // === Interaction & Debug ===
-  {
-    type: 'user-input',
-    label: 'User Input',
-    description: 'Pause for user input',
-    icon: UserCircle,
-    colorVar: 'violet',
-  },
-  {
-    type: 'callback',
-    label: 'Checkpoint',
-    description: 'Log, pause, approve, or notify',
-    icon: Eye,
-    colorVar: 'amber',
-  },
-  {
-    type: 'error-handler',
-    label: 'Error Handler',
-    description: 'Configure error handling',
-    icon: AlertTriangle,
-    colorVar: 'rose',
-  },
-
-  // === Composition ===
-  {
-    type: 'workflow',
-    label: 'Sub-Workflow',
-    description: 'Invoke another .pdflow',
-    icon: Workflow,
-    colorVar: 'teal',
-  },
-]
+// Derive palette items from the registry (only types that belong to a category)
+const PALETTE_ITEMS: NodePaletteItem[] = PALETTE_NODE_TYPES
+  .map(t => NODE_TYPE_REGISTRY[t])
+  .filter((e): e is NodeTypeEntry => !!e)
 
 interface PaletteItemProps {
   item: NodePaletteItem
@@ -433,7 +248,7 @@ export function NodePalette() {
     <div
       className="node-palette"
       style={{
-        width: '220px',
+        width: '250px',
         height: '100%',
         borderRight: '1px solid var(--border)',
         background: 'var(--panel-2)',
@@ -570,69 +385,16 @@ export function NodePalette() {
           }} />
         )}
 
-        <CollapsibleSection
-          title="Entry & Exit"
-          nodeTypes={['trigger', 'output']}
-          filter={filter}
-          favorites={favorites}
-          onToggleFavorite={toggleFavorite}
-        />
-
-        <CollapsibleSection
-          title="AI & Prompts"
-          nodeTypes={['prompt', 'provider', 'agent', 'chat-agent', 'claude-code', 'guardrail']}
-          filter={filter}
-          favorites={favorites}
-          onToggleFavorite={toggleFavorite}
-        />
-
-        <CollapsibleSection
-          title="Tools & Execution"
-          nodeTypes={['tool', 'command', 'code', 'api', 'mcp-tool']}
-          filter={filter}
-          favorites={favorites}
-          onToggleFavorite={toggleFavorite}
-        />
-
-        <CollapsibleSection
-          title="Tool Routing"
-          nodeTypes={['tool-call-parser', 'tool-call-router']}
-          filter={filter}
-          favorites={favorites}
-          onToggleFavorite={toggleFavorite}
-        />
-
-        <CollapsibleSection
-          title="Control Flow"
-          nodeTypes={['condition', 'loop', 'parallel', 'merge']}
-          filter={filter}
-          favorites={favorites}
-          onToggleFavorite={toggleFavorite}
-        />
-
-        <CollapsibleSection
-          title="Data"
-          nodeTypes={['transformer', 'memory']}
-          filter={filter}
-          favorites={favorites}
-          onToggleFavorite={toggleFavorite}
-        />
-
-        <CollapsibleSection
-          title="Interaction & Debug"
-          nodeTypes={['user-input', 'callback', 'error-handler']}
-          filter={filter}
-          favorites={favorites}
-          onToggleFavorite={toggleFavorite}
-        />
-
-        <CollapsibleSection
-          title="Composition"
-          nodeTypes={['workflow']}
-          filter={filter}
-          favorites={favorites}
-          onToggleFavorite={toggleFavorite}
-        />
+        {NODE_TYPE_CATEGORIES.map(cat => (
+          <CollapsibleSection
+            key={cat.key}
+            title={cat.paletteLabel}
+            nodeTypes={cat.types}
+            filter={filter}
+            favorites={favorites}
+            onToggleFavorite={toggleFavorite}
+          />
+        ))}
       </div>
     </div>
   )

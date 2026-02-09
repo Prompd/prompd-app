@@ -17,6 +17,7 @@ import { ScanSearch, CheckCircle, XCircle, Loader2, Braces, Check, Minus } from 
 import type { ToolCallParserNodeData, BaseNodeData } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { getNodeColor } from '../nodeColors'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 interface ToolCallParserNodeProps {
   id: string
@@ -266,6 +267,13 @@ export const ToolCallParserNode = memo(({ id, data, selected }: ToolCallParserNo
           {nodeState.error}
         </div>
       )}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+        showError={false}
+      />
 
       {/* Output Handle - "Found" (tool call detected) */}
       <Handle

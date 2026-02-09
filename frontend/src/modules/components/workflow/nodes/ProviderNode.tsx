@@ -14,6 +14,7 @@ import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { useUIStore } from '../../../../stores/uiStore'
 import type { ProviderWithPricing, ModelWithPricing } from '../../../../stores/uiStore'
 import { formatPricePerMillion } from '../../../lib/formatters'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 interface ProviderNodeProps {
   id: string
@@ -72,6 +73,8 @@ function ProviderHandle() {
 
 export const ProviderNode = memo(({ id, data, selected }: ProviderNodeProps) => {
   const nodeData = data as ProviderNodeData
+  const executionState = useWorkflowStore(state => state.executionState)
+  const nodeState = executionState?.nodeStates[id]
   const updateNodeData = useWorkflowStore(state => state.updateNodeData)
 
   // Get providers from UI store (initialized at app level)
@@ -340,6 +343,13 @@ export const ProviderNode = memo(({ id, data, selected }: ProviderNodeProps) => 
           </span>
         </div>
       )}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+        showOutput={false}
+      />
     </div>
   )
 })

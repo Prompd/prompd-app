@@ -198,7 +198,7 @@ export function extractParameterReferences(
   // {% for item in collection %} - collection is used (item is defined by loop)
   // {% set var = expression %} - variables in expression are used (var is defined)
   // {% if condition %} - variables in condition are used
-  const forLoopRegex = /\{%-?\s*for\s+(\w+)\s+in\s+(\w+(?:\.\w+)*)/g
+  const forLoopRegex = /\{%-?\s*for\s+(\w+)\s+in\s+\[?\s*(\w+(?:\.\w+)*)\s*\]?/g
   const setVarRegex = /\{%-?\s*set\s+\w+\s*=\s*(.+?)\s*%\}/g
   const ifRegex = /\{%-?\s*(?:if|elif)\s+(.+?)\s*%\}/g
 

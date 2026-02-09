@@ -3,6 +3,65 @@ import { Upload, X, FileText, FolderOpen } from 'lucide-react'
 import type { PrompdContextAreaProps } from '../types'
 import { clsx } from 'clsx'
 
+/**
+ * Convert a workspace-relative path to a path relative to the current file.
+ * e.g. "systems/system-admin.md" relative to "prompts/my-prompt.prmd" → "../systems/system-admin.md"
+ *
+ * If sourceFilePath is absolute, workspacePath is used to strip the prefix
+ * so both paths are in the same workspace-relative coordinate system.
+ */
+function toRelativePath(targetPath: string, sourceFilePath?: string, workspacePath?: string): string {
+  if (!sourceFilePath) return targetPath
+
+  let normalizedSource = sourceFilePath.replace(/\\/g, '/')
+  const normalizedTarget = targetPath.replace(/\\/g, '/')
+
+  // If source is absolute and we have a workspace path, strip the workspace prefix
+  // to get a workspace-relative source path (same coordinate system as the dropped path)
+  if (workspacePath) {
+    const normalizedWorkspace = workspacePath.replace(/\\/g, '/').replace(/\/$/, '') + '/'
+    if (normalizedSource.startsWith(normalizedWorkspace)) {
+      normalizedSource = normalizedSource.substring(normalizedWorkspace.length)
+    }
+  }
+
+  // Detect absolute path without workspace to strip — can't compute relative, return as-is
+  if (/^[A-Za-z]:\//.test(normalizedSource) || normalizedSource.startsWith('/')) {
+    return normalizedTarget
+  }
+
+  // Get the directory of the source file
+  const sourceDir = normalizedSource.includes('/')
+    ? normalizedSource.substring(0, normalizedSource.lastIndexOf('/') + 1)
+    : ''
+
+  if (!sourceDir) return normalizedTarget
+
+  const sourceParts = sourceDir.split('/').filter(p => p)
+  const targetParts = normalizedTarget.split('/').filter(p => p)
+
+  // Find common prefix length
+  let commonLength = 0
+  while (commonLength < sourceParts.length &&
+         commonLength < targetParts.length &&
+         sourceParts[commonLength] === targetParts[commonLength]) {
+    commonLength++
+  }
+
+  // Build relative path: ../ for each remaining source dir, then remaining target path
+  const upCount = sourceParts.length - commonLength
+  const remainingTarget = targetParts.slice(commonLength)
+
+  let relative = '../'.repeat(upCount) + remainingTarget.join('/')
+
+  // Ensure explicit relative prefix
+  if (!relative.startsWith('../')) {
+    relative = './' + relative
+  }
+
+  return relative
+}
+
 export function PrompdContextArea({
   sections,
   value,
@@ -13,6 +72,8 @@ export function PrompdContextArea({
   hasFolderOpen = false,
   activeSection,
   variant = 'compact',
+  currentFilePath,
+  workspacePath,
   className
 }: PrompdContextAreaProps) {
   const handleFileAdd = async (sectionName: string, files: FileList) => {
@@ -40,8 +101,12 @@ export function PrompdContextArea({
     const section = sections.find(s => s.name === sectionName)
     if (!section) return
 
+    // Convert workspace-relative path to file-relative path
+    // The compiler resolves all paths relative to the source .prmd file
+    const resolvedPath = toRelativePath(filePath, currentFilePath, workspacePath)
+
     const currentFiles = value.get(sectionName) || []
-    const newFiles = section.allowMultiple ? [...currentFiles, filePath] : [filePath]
+    const newFiles = section.allowMultiple ? [...currentFiles, resolvedPath] : [resolvedPath]
     updateSection(sectionName, newFiles)
   }
 
@@ -391,7 +456,8 @@ function FileSection({
 
       {/* File list dropdown - only for compact variant, shown on hover when has files */}
       {variant === 'compact' && hasFiles && isHovered && (
-        <div className="absolute top-full left-0 right-0 z-[9999] mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-2 space-y-1">
+        <div className="absolute top-full left-0 right-0 z-[9999] pt-1">
+        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-2 space-y-1">
           {files.map((file, index) => (
             <div
               key={`${file}-${index}`}
@@ -425,6 +491,7 @@ function FileSection({
               </button>
             </div>
           ))}
+        </div>
         </div>
       )}
     </div>

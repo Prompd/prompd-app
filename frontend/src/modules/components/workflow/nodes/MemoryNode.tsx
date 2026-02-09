@@ -13,6 +13,7 @@ import { Database, CheckCircle, XCircle, Loader2, Key, MessageSquare, Clock } fr
 import type { MemoryNodeData, BaseNodeData } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { getNodeColor } from '../nodeColors'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 interface MemoryNodeProps {
   id: string
@@ -171,6 +172,12 @@ export const MemoryNode = memo(({ id, data, selected }: MemoryNodeProps) => {
           background: nodeColor,
           border: '2px solid var(--panel)',
         }}
+      />
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
       />
 
       {/* Output Handle */}

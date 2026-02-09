@@ -14,6 +14,7 @@ import { hasVariables, getUniqueVariablePaths } from '../../common/VariableRefer
 import { DockedNodePreview, useDockedNodes } from './DockedNodePreview'
 import { DOCKABLE_HANDLES } from '../../../services/workflowTypes'
 import { getNodeColor } from '../nodeColors'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 interface TransformNodeProps {
   id: string
@@ -145,6 +146,12 @@ export const TransformNode = memo(({ id, data, selected }: TransformNodeProps) =
           background: nodeColor,
           border: '2px solid var(--panel)',
         }}
+      />
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
       />
 
       {/* Output Handle */}

@@ -11,6 +11,8 @@ const LANGUAGE_ID = 'prompd'
 
 // Store file path for compiler diagnostics (set by editor when opening files)
 let currentFilePath: string | null = null
+// Store workspace path for resolving package cache locations
+let currentWorkspacePath: string | null = null
 
 // Flag to defer expensive compiler diagnostics on initial load
 // This prevents the UI from freezing when opening a file
@@ -23,6 +25,27 @@ let deferCompilerDiagnostics = true
 export function setCurrentFilePath(filePath: string | null) {
   currentFilePath = filePath
   console.log('[intellisense] Current file path set to:', filePath)
+}
+
+/**
+ * Get the current file path (used by hover provider for resolving relative references)
+ */
+export function getCurrentFilePath(): string | null {
+  return currentFilePath
+}
+
+/**
+ * Set the workspace path for package cache resolution.
+ */
+export function setWorkspacePath(path: string | null) {
+  currentWorkspacePath = path
+}
+
+/**
+ * Get the current workspace path (used by hover provider for package cache resolution)
+ */
+export function getWorkspacePath(): string | null {
+  return currentWorkspacePath
 }
 
 /**
@@ -857,108 +880,148 @@ async function validatePackageReferences(
   const registrySync = getRegistrySync()
 
   // Helper to parse package reference into namespace and name
+  // Format: @namespace/package-name@version or @namespace/package-name
   const parsePackageRef = (pkgRef: string): { namespace: string; name: string; version?: string } | null => {
-    // Format: @namespace/package-name@version or @namespace/package-name
-    const match = pkgRef.match(/^(@[\w-]+)\/([\w-]+)(?:@([\w.-]+))?$/)
-    if (!match) return null
-    return {
-      namespace: match[1],
-      name: match[2],
-      version: match[3]
+    // Use lastIndexOf('@') to find the version separator (first '@' is namespace prefix)
+    const versionAt = pkgRef.lastIndexOf('@')
+    if (versionAt <= 0) return null // must have at least @namespace
+
+    let refPart: string
+    let version: string | undefined
+
+    // If lastIndexOf('@') > 0 and isn't the leading '@', it's the version separator
+    if (versionAt > 1 && pkgRef[0] === '@') {
+      refPart = pkgRef.substring(0, versionAt)
+      version = pkgRef.substring(versionAt + 1)
+      if (!version) version = undefined
+    } else {
+      refPart = pkgRef
     }
+
+    // refPart should be @namespace/package-name
+    const slashIdx = refPart.indexOf('/')
+    if (slashIdx < 0) return null
+    const namespace = refPart.substring(0, slashIdx)
+    const name = refPart.substring(slashIdx + 1)
+    if (!namespace || !name) return null
+    // Namespace must start with @
+    if (!namespace.startsWith('@')) return null
+
+    return { namespace, name, version }
+  }
+
+  // Collect prefixes defined in the using: block so we can recognize alias paths
+  // using: entries can be objects with name/prefix or bare strings
+  const definedPrefixes = new Set<string>()
+  const usingNameMatches = Array.from(yamlContent.matchAll(/name:\s*["']?(@[\w./-]+@?[\w.^~*-]*)["']?/g))
+  const usingPrefixMatches = Array.from(yamlContent.matchAll(/prefix:\s*["']?(@[\w-]+)["']?/g))
+  for (const m of usingPrefixMatches) {
+    definedPrefixes.add(m[1])
   }
 
   // Extract inherits reference
-  const inheritsMatch = yamlContent.match(/^\s*inherits:\s*["']?(@[\w/-]+@?[\w.-]*)["']?/m)
+  const inheritsMatch = yamlContent.match(/^\s*inherits:\s*["']?(@[\w./-]+@?[\w.^~*-]*)["']?/m)
   if (inheritsMatch) {
     const pkgRef = inheritsMatch[1]
     const lineNumber = fullContent.substring(0, fullContent.indexOf(inheritsMatch[0])).split('\n').length
-    const parsed = parsePackageRef(pkgRef)
 
-    // Validate format
-    if (!parsed) {
-      markers.push({
-        severity: monaco.MarkerSeverity.Error,
-        startLineNumber: lineNumber,
-        startColumn: inheritsMatch[0].indexOf(pkgRef) + 1,
-        endLineNumber: lineNumber,
-        endColumn: inheritsMatch[0].indexOf(pkgRef) + pkgRef.length + 1,
-        message: `Invalid package reference format. Use @namespace/package-name@version`,
-        code: 'invalid-package-reference'
-      })
-    } else {
-      // Check if version is specified
-      if (!parsed.version) {
+    // Check if the inherits value uses a defined prefix alias (e.g. @core/prompts/base.prmd)
+    const refPrefix = pkgRef.match(/^(@[\w-]+)\//)?.[1]
+    const usesAlias = refPrefix ? definedPrefixes.has(refPrefix) : false
+
+    if (!usesAlias) {
+      // It's a direct package reference — validate it
+      const parsed = parsePackageRef(pkgRef)
+      if (!parsed) {
         markers.push({
           severity: monaco.MarkerSeverity.Error,
           startLineNumber: lineNumber,
           startColumn: inheritsMatch[0].indexOf(pkgRef) + 1,
           endLineNumber: lineNumber,
           endColumn: inheritsMatch[0].indexOf(pkgRef) + pkgRef.length + 1,
-          message: `Package '${pkgRef}' must include version (e.g., ${pkgRef}@1.0.0)`,
-          code: 'missing-package-version'
+          message: `Invalid package reference format. Use @namespace/package-name@version`,
+          code: 'invalid-package-reference'
         })
-      }
-
-      // Check if package is deprecated
-      if (registrySync.isDeprecated(parsed.namespace, parsed.name)) {
-        const deprecationMsg = registrySync.getDeprecationMessage(parsed.namespace, parsed.name)
-        markers.push({
-          severity: monaco.MarkerSeverity.Warning,
-          startLineNumber: lineNumber,
-          startColumn: inheritsMatch[0].indexOf(pkgRef) + 1,
-          endLineNumber: lineNumber,
-          endColumn: inheritsMatch[0].indexOf(pkgRef) + pkgRef.length + 1,
-          message: deprecationMsg || `Package '${pkgRef}' is deprecated`,
-          code: 'deprecated-package',
-          tags: [monaco.MarkerTag.Deprecated]
-        })
+      } else {
+        if (!parsed.version) {
+          markers.push({
+            severity: monaco.MarkerSeverity.Error,
+            startLineNumber: lineNumber,
+            startColumn: inheritsMatch[0].indexOf(pkgRef) + 1,
+            endLineNumber: lineNumber,
+            endColumn: inheritsMatch[0].indexOf(pkgRef) + pkgRef.length + 1,
+            message: `Package '${pkgRef}' must include version (e.g., ${pkgRef}@1.0.0)`,
+            code: 'missing-package-version'
+          })
+        }
+        if (registrySync.isDeprecated(parsed.namespace, parsed.name)) {
+          const deprecationMsg = registrySync.getDeprecationMessage(parsed.namespace, parsed.name)
+          markers.push({
+            severity: monaco.MarkerSeverity.Warning,
+            startLineNumber: lineNumber,
+            startColumn: inheritsMatch[0].indexOf(pkgRef) + 1,
+            endLineNumber: lineNumber,
+            endColumn: inheritsMatch[0].indexOf(pkgRef) + pkgRef.length + 1,
+            message: deprecationMsg || `Package '${pkgRef}' is deprecated`,
+            code: 'deprecated-package',
+            tags: [monaco.MarkerTag.Deprecated]
+          })
+        }
       }
     }
+    // else: alias path like @core/prompts/base.prmd — skip package validation
   }
 
   // Extract using references
-  const usingMatches = Array.from(yamlContent.matchAll(/-\s*["']?(@[\w/-]+@?[\w.-]*)["']?/g))
-  for (const match of usingMatches) {
-    const pkgRef = match[1]
-    const lineNumber = fullContent.substring(0, fullContent.indexOf(match[0])).split('\n').length
+  // Supports both object format (name: "@ns/pkg@ver") and bare list format (- "@ns/pkg@ver")
+  const usingRefs: { ref: string; index: number }[] = []
+  // Object format: name: "@prompd/core@0.0.1"
+  for (const m of usingNameMatches) {
+    usingRefs.push({ ref: m[1], index: m.index! })
+  }
+  // Bare list format: - "@prompd/core@0.0.1"  (only if not already inside a name: key)
+  const bareMatches = Array.from(yamlContent.matchAll(/-\s*["'](@[\w./-]+@?[\w.^~*-]*)["']\s*$/gm))
+  for (const m of bareMatches) {
+    usingRefs.push({ ref: m[1], index: m.index! })
+  }
+
+  for (const { ref: pkgRef, index } of usingRefs) {
+    const lineNumber = fullContent.substring(0, fullContent.indexOf(pkgRef, index)).split('\n').length
     const parsed = parsePackageRef(pkgRef)
 
     if (!parsed) {
       markers.push({
         severity: monaco.MarkerSeverity.Error,
         startLineNumber: lineNumber,
-        startColumn: match.index! + match[0].indexOf(pkgRef) + 1,
+        startColumn: 1,
         endLineNumber: lineNumber,
-        endColumn: match.index! + match[0].indexOf(pkgRef) + pkgRef.length + 1,
+        endColumn: 1000,
         message: `Invalid package reference format. Use @namespace/package-name@version`,
         code: 'invalid-package-reference'
       })
       continue
     }
 
-    // Validate version is specified
     if (!parsed.version) {
       markers.push({
         severity: monaco.MarkerSeverity.Warning,
         startLineNumber: lineNumber,
-        startColumn: match.index! + match[0].indexOf(pkgRef) + 1,
+        startColumn: 1,
         endLineNumber: lineNumber,
-        endColumn: match.index! + match[0].indexOf(pkgRef) + pkgRef.length + 1,
+        endColumn: 1000,
         message: `Package '${pkgRef}' should include version (e.g., ${pkgRef}@1.0.0)`,
         code: 'missing-package-version'
       })
     }
 
-    // Check if package is deprecated
     if (registrySync.isDeprecated(parsed.namespace, parsed.name)) {
       const deprecationMsg = registrySync.getDeprecationMessage(parsed.namespace, parsed.name)
       markers.push({
         severity: monaco.MarkerSeverity.Warning,
         startLineNumber: lineNumber,
-        startColumn: match.index! + match[0].indexOf(pkgRef) + 1,
+        startColumn: 1,
         endLineNumber: lineNumber,
-        endColumn: match.index! + match[0].indexOf(pkgRef) + pkgRef.length + 1,
+        endColumn: 1000,
         message: deprecationMsg || `Package '${pkgRef}' is deprecated`,
         code: 'deprecated-package',
         tags: [monaco.MarkerTag.Deprecated]
@@ -1210,7 +1273,8 @@ export async function validateModel(
       console.log('[intellisense] Defined params:', Array.from(definedParams))
 
       // Extract loop variables from {% for VAR in COLLECTION %} or {%- for VAR in COLLECTION %} blocks
-      const forLoopPattern = /\{%-?\s*for\s+(\w+)\s+in\s+(\w+)/g
+      // Also handles [COLLECTION] bracket syntax (e.g., {% for item in [items] %})
+      const forLoopPattern = /\{%-?\s*for\s+(\w+)\s+in\s+\[?\s*(\w+)/g
       console.log('[intellisense] Searching for loop patterns in content length:', content.length)
       const loopMatchArray = Array.from(content.matchAll(forLoopPattern))
       console.log('[intellisense] Found', loopMatchArray.length, 'for loop matches')

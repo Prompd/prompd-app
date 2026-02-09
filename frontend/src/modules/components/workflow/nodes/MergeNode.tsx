@@ -10,6 +10,7 @@ import { Handle, Position } from '@xyflow/react'
 import { Combine, CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import type { MergeNodeData, BaseNodeData } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 interface MergeNodeProps {
   id: string
@@ -121,6 +122,12 @@ export const MergeNode = memo(({ id, data, selected }: MergeNodeProps) => {
           />
         </>
       )}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+      />
 
       {/* Output Handle - single merged output */}
       <Handle

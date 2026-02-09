@@ -12,6 +12,7 @@ import { Plug, CheckCircle, XCircle, Loader2, Clock, Link2 } from 'lucide-react'
 import type { McpToolNodeData, BaseNodeData, WorkflowConnection } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { getNodeColor } from '../nodeColors'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 // Handle style constants
 const handleSize = 12
@@ -363,6 +364,14 @@ export const McpToolNode = memo(({ id, data, selected }: McpToolNodeProps) => {
           {String(nodeState.error)}
         </div>
       )}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+        showOutput={false}
+        showError={false}
+      />
 
       {/* Output Handle */}
       <Handle

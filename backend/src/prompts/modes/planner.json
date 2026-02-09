@@ -1,0 +1,201 @@
+{
+  "id": "planner",
+  "label": "Planner",
+  "icon": "ClipboardList",
+  "description": "AI planning assistant that explores and designs before executing",
+  "responseFormat": "xml",
+  "systemPromptFile": "planner.md",
+  "tools": [
+    {
+      "name": "read_file",
+      "description": "Read the contents of a file",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative path from workspace root"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "requiresApproval": false
+    },
+    {
+      "name": "list_files",
+      "description": "List files in a directory",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Directory path relative to workspace root",
+            "default": "."
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Whether to list recursively",
+            "default": false
+          }
+        }
+      },
+      "requiresApproval": false
+    },
+    {
+      "name": "search_files",
+      "description": "Search for text pattern in files using regex",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Regex pattern to search for"
+          },
+          "glob": {
+            "type": "string",
+            "description": "Glob pattern to filter files",
+            "default": "**/*"
+          }
+        },
+        "required": [
+          "pattern"
+        ]
+      },
+      "requiresApproval": false
+    },
+    {
+      "name": "search_registry",
+      "description": "Search the Prompd package registry for templates and components",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search terms to find packages"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional tags to filter results"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "requiresApproval": false,
+      "triggersModal": true
+    },
+    {
+      "name": "list_package_files",
+      "description": "List all files in an installed or registry package",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "package_name": {
+            "type": "string",
+            "description": "Package name (e.g. @prompd/public-examples)"
+          },
+          "version": {
+            "type": "string",
+            "description": "Package version (e.g. 1.1.0)"
+          }
+        },
+        "required": [
+          "package_name",
+          "version"
+        ]
+      },
+      "requiresApproval": false
+    },
+    {
+      "name": "read_package_file",
+      "description": "Read a specific file from an installed or registry package",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "package_name": {
+            "type": "string",
+            "description": "Package name (e.g. @prompd/public-examples)"
+          },
+          "version": {
+            "type": "string",
+            "description": "Package version (e.g. 1.1.0)"
+          },
+          "file_path": {
+            "type": "string",
+            "description": "Path to the file within the package (e.g. prompts/base-template.prmd)"
+          }
+        },
+        "required": [
+          "package_name",
+          "version",
+          "file_path"
+        ]
+      },
+      "requiresApproval": false
+    },
+    {
+      "name": "ask_user",
+      "description": "Ask the user a clarifying question, optionally with selectable options",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "The question to ask the user"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "description": "Option text"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Optional explanation of this option"
+                }
+              },
+              "required": [
+                "label"
+              ]
+            },
+            "description": "Optional list of selectable options for the user"
+          }
+        },
+        "required": [
+          "question"
+        ]
+      },
+      "requiresApproval": false
+    },
+    {
+      "name": "present_plan",
+      "description": "Present a plan to the user for review before executing. Returns the user's decision.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Markdown-formatted plan content"
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "requiresApproval": false
+    }
+  ],
+  "settings": {
+    "maxIterations": 25,
+    "streamResponses": true
+  }
+}

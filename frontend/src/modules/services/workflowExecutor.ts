@@ -27,6 +27,7 @@
 
 import { memoryService } from './memoryService'
 import { useEditorStore } from '@/stores/editorStore'
+import { useWorkflowStore } from '@/stores/workflowStore'
 
 // Import workflow file format types from frontend (what gets passed around in UI)
 import type { ParsedWorkflow } from './workflowParser'
@@ -111,11 +112,14 @@ export function createWorkflowExecutor(
     const workflowFilePath = (activeTab as { filePath?: string } | undefined)?.filePath || undefined
 
     // Create serializable options (strip out functions and non-serializable objects)
+    // Include workflow custom commands so the main process can allow them
+    const workflowCustomCommands = useWorkflowStore.getState().customCommands.map(cmd => cmd.executable)
     const serializableOptions = {
       executionMode: options.executionMode,
       breakpoints: options.breakpoints ? Array.from(options.breakpoints) : undefined,
       workingDirectory: workspacePath || undefined,
-      workflowFilePath
+      workflowFilePath,
+      customCommands: workflowCustomCommands
     }
 
     // Start execution (returns immediately with executionId)

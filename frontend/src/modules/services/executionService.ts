@@ -155,6 +155,46 @@ function parseCompiledPromptIntoSections(compiledMarkdown: string): Record<strin
 }
 
 /**
+ * Remove a named section (e.g. "system") from compiled markdown.
+ * Strips the heading and all content up to the next heading of equal or higher level.
+ */
+function removeSection(compiledMarkdown: string, sectionName: string): string {
+  const lines = compiledMarkdown.split('\n')
+  const result: string[] = []
+  let skipping = false
+  let skipLevel = 0
+
+  for (const line of lines) {
+    // Check if this is a heading that matches the section to remove
+    const headingMatch = line.match(/^(#{1,3})\s+(.+?)\s*$/)
+    if (headingMatch) {
+      const level = headingMatch[1].length
+      const name = headingMatch[2].toLowerCase()
+
+      if (skipping) {
+        // Stop skipping when we hit another heading at same or higher level
+        if (level <= skipLevel) {
+          skipping = false
+          result.push(line)
+        }
+        // else: subheading within the section, keep skipping
+      } else if (name === sectionName.toLowerCase()) {
+        // Start skipping this section
+        skipping = true
+        skipLevel = level
+      } else {
+        result.push(line)
+      }
+    } else if (!skipping) {
+      result.push(line)
+    }
+  }
+
+  // Clean up any resulting double blank lines
+  return result.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+/**
  * Convert plain compiled markdown into @prompd/react PrompdCompiledPrompt format
  */
 function buildCompiledPromptStructure(
@@ -390,11 +430,27 @@ export async function executePrompdConfig(
       compiledMarkdown = rewrittenPrompt
     }
 
+    // Extract system section from compiled markdown to send as system role
+    // The compiler outputs ## System as a markdown heading — we extract it and send
+    // it via the provider's native system prompt mechanism (role: "system" for OpenAI,
+    // system field for Anthropic, systemInstruction for Google, etc.)
+    let promptForExecution = compiledMarkdown
+    let systemPrompt: string | undefined
+
+    const sections = parseCompiledPromptIntoSections(compiledMarkdown)
+    if (sections.system) {
+      systemPrompt = sections.system
+      // Remove the ## System section from the prompt so it's not duplicated
+      promptForExecution = removeSection(compiledMarkdown, 'system')
+      console.log('[executionService] Extracted system prompt:', systemPrompt.slice(0, 100) + (systemPrompt.length > 100 ? '...' : ''))
+    }
+
     // Execute via execution router (local-first with fallback to remote)
     console.log('[executionService] Executing via router:', {
       provider: config.provider,
       model: config.model,
-      promptLength: compiledMarkdown.length,
+      promptLength: promptForExecution.length,
+      hasSystemPrompt: !!systemPrompt,
       maxTokens: config.maxTokens,
       temperature: config.temperature,
       mode: config.mode
@@ -403,7 +459,8 @@ export async function executePrompdConfig(
     const routerResult = await executionRouter.execute({
       provider: config.provider,
       model: config.model,
-      prompt: compiledMarkdown,
+      prompt: promptForExecution,
+      systemPrompt,
       compile: false,  // Already compiled above
       parameters: config.parameters,
       maxTokens: config.maxTokens ?? 4096,

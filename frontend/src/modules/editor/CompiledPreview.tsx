@@ -5,14 +5,12 @@
  * and renders the result as formatted markdown.
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Loader2, AlertCircle, RefreshCw, CheckCircle2, Clock, Sparkles, ChevronDown, ChevronRight, Eye, Code, Maximize2, Minimize2, X, Hash, FileText, Scissors, Layout, Map as MapIcon } from 'lucide-react'
-import { PrompdParameterList, type PrompdParameter, PrompdContextArea, type PrompdFileSections, type PrompdFileSection } from '@prompd/react'
+import { Loader2, AlertCircle, RefreshCw, CheckCircle2, Clock, Sparkles, ChevronDown, ChevronRight, Eye, Code, Maximize2, Minimize2, X, Hash, FileText, Scissors, Layout, Map as MapIcon, Play } from 'lucide-react'
+import { PrompdParameterList, type PrompdParameter, PrompdContextArea, type PrompdFileSections, type PrompdFileSection, validateRequiredParameters } from '@prompd/react'
 import Editor from '@monaco-editor/react'
 import MarkdownPreview from '../components/MarkdownPreview'
 import XmlDesignView, { type XmlDesignViewHandle } from '../components/XmlDesignView'
 import { ContentMinimap, type MinimapSection } from '../components/ContentMinimap'
-import { ExecutionControls } from '../components/ExecutionControls'
-import type { GenerationMode } from '../components/GenerationControls'
 import { localCompiler } from '../services/localCompiler'
 import { parsePrompd } from '../lib/prompdParser'
 import { getMonacoTheme, registerPrompdThemes, readOnlyEditorOptions } from '../lib/monacoConfig'
@@ -51,39 +49,10 @@ interface CompiledPreviewProps {
   /** Callback to close the preview */
   onClose?: () => void
 
-  // Optional execution features
-  /** Show execution controls */
-  showExecution?: boolean
-  /** Provider data for execution */
-  executionProvider?: string
-  /** Model for execution */
-  executionModel?: string
-  /** Available providers list */
-  executionProviders?: Array<{ id: string, name: string, models: Array<{ id: string, name: string }> }>
-  /** Provider change callback */
-  onExecutionProviderChange?: (provider: string) => void
-  /** Model change callback */
-  onExecutionModelChange?: (model: string) => void
-  /** Max tokens */
-  executionMaxTokens?: number
-  /** Temperature */
-  executionTemperature?: number
-  /** Generation mode */
-  executionMode?: GenerationMode
-  /** Max tokens change callback */
-  onExecutionMaxTokensChange?: (value: number) => void
-  /** Temperature change callback */
-  onExecutionTemperatureChange?: (value: number) => void
-  /** Mode change callback */
-  onExecutionModeChange?: (mode: GenerationMode) => void
   /** Execute callback */
   onExecute?: () => void
   /** Is executing */
   isExecuting?: boolean
-  /** Can execute (all required params filled) */
-  canExecute?: boolean
-  /** Disabled reason */
-  executionDisabledReason?: string
 
   /** Show context sections */
   showContextSections?: boolean
@@ -123,23 +92,8 @@ export function CompiledPreview({
   isMaximized = false,
   onToggleMaximize,
   onClose,
-  // Execution props
-  showExecution = false,
-  executionProvider = 'openai',
-  executionModel = 'gpt-4',
-  executionProviders = [],
-  onExecutionProviderChange,
-  onExecutionModelChange,
-  executionMaxTokens = 4096,
-  executionTemperature = 0.7,
-  executionMode = 'default',
-  onExecutionMaxTokensChange,
-  onExecutionTemperatureChange,
-  onExecutionModeChange,
   onExecute,
   isExecuting = false,
-  canExecute = true,
-  executionDisabledReason,
   // Context sections props
   showContextSections = false,
   contextSections = {},
@@ -158,8 +112,7 @@ export function CompiledPreview({
   })
 
   // UI state
-  const [paramsCollapsed, setParamsCollapsed] = useState(false)
-  const [contextCollapsed, setContextCollapsed] = useState(false)
+  const [activeControlsTab, setActiveControlsTab] = useState<'context' | 'params' | null>(null)
   const [viewMode, setViewMode] = useState<'rendered' | 'raw'>('rendered')
   const [xmlViewMode, setXmlViewMode] = useState<'designer' | 'raw'>('designer')
   const [outputFormat, setOutputFormat] = useState<OutputFormat>('markdown')
@@ -242,6 +195,13 @@ export function CompiledPreview({
       return { parsedParams: [], contentType: 'md', parsedSections: {} }
     }
   }, [content])
+
+  // Validate required parameters (works even when params panel is closed)
+  const { isParamsValid, missingParams } = useMemo(() => {
+    if (parsedParams.length === 0) return { isParamsValid: true, missingParams: [] as string[] }
+    const result = validateRequiredParameters(parsedParams, parameters)
+    return { isParamsValid: result.isValid, missingParams: result.missingRequired }
+  }, [parsedParams, parameters])
 
   // For XML content-type, transforms don't apply
   const isXmlContent = contentType === 'xml'
@@ -931,11 +891,11 @@ export function CompiledPreview({
       }, delay)
     }
 
-    // For params-section, scroll to the parameters area and expand if collapsed
+    // For params-section, scroll to the parameters area and expand the params tab
     if (sectionId === 'params-section' || sectionId.startsWith('param-')) {
-      const needsExpand = paramsCollapsed
+      const needsExpand = activeControlsTab !== 'params'
       if (needsExpand) {
-        setParamsCollapsed(false)
+        setActiveControlsTab('params')
       }
       scrollTo('[data-section="params"]', needsExpand ? 100 : 0)
       return
@@ -973,7 +933,7 @@ export function CompiledPreview({
     if (sectionId.startsWith('heading-')) {
       scrollTo('[data-section="content"]', 0)
     }
-  }, [paramsCollapsed])
+  }, [activeControlsTab])
 
   return (
     <div
@@ -981,7 +941,7 @@ export function CompiledPreview({
         display: 'flex',
         flexDirection: 'column',
         height,
-        background: theme === 'dark' ? 'var(--panel)' : '#ffffff',
+        background: theme === 'dark' ? 'var(--panel-2)' : '#ffffff',
         overflow: 'hidden'
       }}
     >
@@ -1269,8 +1229,51 @@ export function CompiledPreview({
               height: '16px',
               background: theme === 'dark' ? 'var(--border)' : '#d1d5db'
             }} />
-            {/* Actions: Minimap, Recompile, Maximize, Close */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+            {/* Actions: Run, Minimap, Recompile, Maximize, Close */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              {onExecute && (
+                <button
+                  onClick={onExecute}
+                  disabled={isExecuting || !isParamsValid}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    height: '22px',
+                    padding: '0 8px',
+                    background: (isExecuting || !isParamsValid)
+                      ? (theme === 'dark' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.1)')
+                      : (theme === 'dark' ? 'rgba(139, 92, 246, 0.25)' : 'rgba(139, 92, 246, 0.2)'),
+                    border: `1px solid ${(isExecuting || !isParamsValid)
+                      ? (theme === 'dark' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(139, 92, 246, 0.2)')
+                      : (theme === 'dark' ? 'rgba(139, 92, 246, 0.5)' : 'rgba(139, 92, 246, 0.4)')}`,
+                    borderRadius: '5px',
+                    cursor: (isExecuting || !isParamsValid) ? 'not-allowed' : 'pointer',
+                    color: !isParamsValid ? (theme === 'dark' ? 'rgba(167, 139, 250, 0.5)' : 'rgba(139, 92, 246, 0.4)') : '#a78bfa',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    transition: 'all 0.15s',
+                    marginRight: '4px'
+                  }}
+                  title={isExecuting ? 'Executing...' : (!isParamsValid ? `Missing required: ${missingParams.join(', ')}` : 'Execute prompt')}
+                  onMouseEnter={(e) => {
+                    if (!isExecuting && isParamsValid) {
+                      e.currentTarget.style.background = theme === 'dark' ? 'rgba(139, 92, 246, 0.35)' : 'rgba(139, 92, 246, 0.3)'
+                      e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(139, 92, 246, 0.6)' : 'rgba(139, 92, 246, 0.5)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isExecuting && isParamsValid) {
+                      e.currentTarget.style.background = theme === 'dark' ? 'rgba(139, 92, 246, 0.25)' : 'rgba(139, 92, 246, 0.2)'
+                      e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(139, 92, 246, 0.5)' : 'rgba(139, 92, 246, 0.4)'
+                    }
+                  }}
+                >
+                  {isExecuting ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} fill="currentColor" />}
+                  <span>{isExecuting ? 'Running' : 'Run'}</span>
+                </button>
+              )}
               <button
                 onClick={() => setShowMinimap(!showMinimap)}
                 style={{
@@ -1385,138 +1388,139 @@ export function CompiledPreview({
             paddingRight: showMinimap && minimapSections.length > 0 ? '130px' : '0'
           }}
         >
-          {/* Execution Controls Section */}
-          {showExecution && onExecute && executionProviders && executionProviders.length > 0 && (
-            <div style={{ margin: '12px', flexShrink: 0 }}>
-              <ExecutionControls
-                provider={executionProvider}
-                model={executionModel}
-                providers={executionProviders}
-                onProviderChange={onExecutionProviderChange || (() => {})}
-                onModelChange={onExecutionModelChange || (() => {})}
-                maxTokens={executionMaxTokens}
-                temperature={executionTemperature}
-                mode={executionMode}
-                onMaxTokensChange={onExecutionMaxTokensChange || (() => {})}
-                onTemperatureChange={onExecutionTemperatureChange || (() => {})}
-                onModeChange={onExecutionModeChange || (() => {})}
-                isExecuting={isExecuting}
-                canExecute={canExecute}
-                disabledReason={executionDisabledReason}
-                onExecute={onExecute}
-                theme={theme === 'dark' ? 'vs-dark' : 'light'}
-                compact={true}
-                showProviderSelector={false}
-              />
-            </div>
-          )}
-
-          {/* Context Sections */}
-          {showContextSections && fileSections.length > 0 && (
-            <div
-              style={{
-                padding: '16px',
-                background: 'var(--panel-2)',
-                border: '1px solid var(--border)',
-                borderRadius: '8px',
-                margin: '12px',
-                flexShrink: 0
-              }}
-            >
-              <div
-                onClick={() => setContextCollapsed(!contextCollapsed)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  marginBottom: contextCollapsed ? '0' : '12px',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  color: 'var(--text)',
-                  cursor: 'pointer',
-                  userSelect: 'none'
-                }}
-              >
-                {contextCollapsed ? (
-                  <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
-                ) : (
-                  <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />
+          {/* Controls Strip - Context Files + Parameters */}
+          {((showContextSections && fileSections.length > 0) || (showParameters && parsedParams.length > 0)) && (
+            <div style={{
+              borderBottom: `1px solid ${theme === 'dark' ? 'var(--border)' : '#e2e8f0'}`,
+              background: theme === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)',
+              flexShrink: 0
+            }}>
+              {/* Tab buttons */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0',
+                padding: '0 12px',
+                height: '30px',
+                borderBottom: activeControlsTab ? `1px solid ${theme === 'dark' ? 'var(--border)' : '#e2e8f0'}` : 'none'
+              }}>
+                {showContextSections && fileSections.length > 0 && (() => {
+                  const fileCount = Array.from(fileSectionsValue.values()).reduce((sum, files) => sum + files.length, 0)
+                  return (
+                    <button
+                      onClick={() => setActiveControlsTab(activeControlsTab === 'context' ? null : 'context')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        padding: '0 12px',
+                        height: '100%',
+                        background: 'transparent',
+                        border: 'none',
+                        borderBottom: activeControlsTab === 'context'
+                          ? '2px solid var(--accent, #8b5cf6)'
+                          : '2px solid transparent',
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        fontWeight: 500,
+                        color: activeControlsTab === 'context'
+                          ? (theme === 'dark' ? '#e2e8f0' : '#1e293b')
+                          : (theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)'),
+                        transition: 'all 0.15s',
+                        marginBottom: '-1px'
+                      }}
+                    >
+                      <FileText size={11} />
+                      <span>Context</span>
+                      <span style={{
+                        fontSize: '10px',
+                        padding: '0 5px',
+                        borderRadius: '8px',
+                        background: theme === 'dark' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.12)',
+                        color: '#a78bfa',
+                        fontWeight: 600
+                      }}>{fileCount > 0 ? fileCount : fileSections.length}</span>
+                    </button>
+                  )
+                })()}
+                {showParameters && parsedParams.length > 0 && (
+                  <button
+                    onClick={() => setActiveControlsTab(activeControlsTab === 'params' ? null : 'params')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '0 12px',
+                      height: '100%',
+                      background: !isParamsValid
+                        ? (theme === 'dark' ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.06)')
+                        : 'transparent',
+                      border: 'none',
+                      borderBottom: activeControlsTab === 'params'
+                        ? `2px solid ${!isParamsValid ? '#ef4444' : 'var(--accent, #8b5cf6)'}`
+                        : '2px solid transparent',
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      color: activeControlsTab === 'params'
+                        ? (theme === 'dark' ? '#e2e8f0' : '#1e293b')
+                        : (theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)'),
+                      transition: 'all 0.15s',
+                      marginBottom: '-1px'
+                    }}
+                    title={!isParamsValid ? `Missing required: ${missingParams.join(', ')}` : undefined}
+                  >
+                    <Sparkles size={11} />
+                    <span>Parameters</span>
+                    {!isParamsValid ? (
+                      <span style={{
+                        fontSize: '10px',
+                        padding: '0 5px',
+                        borderRadius: '8px',
+                        background: theme === 'dark' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.12)',
+                        color: '#ef4444',
+                        fontWeight: 600
+                      }}>{missingParams.length}/{parsedParams.length}</span>
+                    ) : (
+                      <span style={{
+                        fontSize: '10px',
+                        padding: '0 5px',
+                        borderRadius: '8px',
+                        background: theme === 'dark' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.12)',
+                        color: '#a78bfa',
+                        fontWeight: 600
+                      }}>{parsedParams.length}</span>
+                    )}
+                  </button>
                 )}
-                <FileText size={14} style={{ color: 'var(--accent)' }} />
-                <span>Context Files</span>
-                <span style={{
-                  fontSize: '11px',
-                  color: 'var(--text-secondary)',
-                  fontWeight: 400,
-                  fontStyle: 'italic',
-                  marginLeft: '4px'
-                }}>
-                  {fileSectionsValue.size === 0
-                    ? '(drag files or click to add)'
-                    : `(${Array.from(fileSectionsValue.values()).reduce((sum, files) => sum + files.length, 0)} file${Array.from(fileSectionsValue.values()).reduce((sum, files) => sum + files.length, 0) !== 1 ? 's' : ''})`
-                  }
-                </span>
               </div>
-              {!contextCollapsed && (
-                <PrompdContextArea
-                  sections={fileSections}
-                  value={fileSectionsValue}
-                  onChange={handleFileSectionsChange}
-                  onFileUpload={handleFileUploadInternal}
-                  onSelectFromBrowser={onSelectFromBrowser ? handleSelectFromBrowserInternal : undefined}
-                  hasFolderOpen={hasFolderOpen}
-                  variant="compact"
-                />
-              )}
-            </div>
-          )}
 
-          {/* Parameters Section - only show when parameters exist */}
-          {showParameters && parsedParams.length > 0 && (
-            <div
-              data-section="params"
-              style={{
-                padding: paramsCollapsed ? '12px 16px' : '16px',
-                background: 'var(--panel-2)',
-                border: '1px solid var(--border)',
-                borderRadius: '8px',
-                margin: '12px',
-                flexShrink: 0
-              }}
-            >
-              <button
-                onClick={() => setParamsCollapsed(!paramsCollapsed)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  width: '100%',
-                  padding: 0,
-                  marginBottom: paramsCollapsed ? 0 : '12px',
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  color: 'var(--text)',
-                  textAlign: 'left'
-                }}
-              >
-                {paramsCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                <Sparkles size={14} style={{ color: 'var(--accent)' }} />
-                <span>Parameters</span>
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 400, marginLeft: '4px' }}>
-                  ({parsedParams.length})
-                </span>
-              </button>
-              {!paramsCollapsed && (
-                <PrompdParameterList
-                  parameters={parsedParams}
-                  values={parameters}
-                  onChange={handleParameterChange}
-                  layout="adaptive"
-                  columns={2}
-                />
+              {/* Expanded content */}
+              {activeControlsTab === 'context' && showContextSections && fileSections.length > 0 && (
+                <div style={{ padding: '10px 12px' }}>
+                  <PrompdContextArea
+                    sections={fileSections}
+                    value={fileSectionsValue}
+                    onChange={handleFileSectionsChange}
+                    onFileUpload={handleFileUploadInternal}
+                    onSelectFromBrowser={onSelectFromBrowser ? handleSelectFromBrowserInternal : undefined}
+                    hasFolderOpen={hasFolderOpen}
+                    currentFilePath={filePath || undefined}
+                    workspacePath={workspacePath || undefined}
+                    variant="compact"
+                  />
+                </div>
+              )}
+              {activeControlsTab === 'params' && showParameters && parsedParams.length > 0 && (
+                <div data-section="params" style={{ padding: '10px 12px' }}>
+                  <PrompdParameterList
+                    parameters={parsedParams}
+                    values={parameters}
+                    onChange={handleParameterChange}
+                    layout="adaptive"
+                    columns={2}
+                  />
+                </div>
               )}
             </div>
           )}

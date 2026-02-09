@@ -31,6 +31,7 @@ import {
   ShieldCheck,
   MessagesSquare,
   Database,
+  Search,
 } from 'lucide-react'
 import type { WorkflowNodeType, BaseNodeData } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
@@ -67,6 +68,7 @@ const NODE_TYPE_ICONS: Record<WorkflowNodeType, React.ComponentType<{ style?: Re
   code: Code,
   memory: Database,
   output: FileOutput,
+  'web-search': Search,
 }
 
 // ============================================================================

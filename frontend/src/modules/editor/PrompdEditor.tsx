@@ -3,7 +3,7 @@ import Editor, { OnChange, BeforeMount, OnMount } from '@monaco-editor/react'
 import type * as monacoEditor from 'monaco-editor'
 import { setupPrompdLanguage } from '../lib/textmate'
 import { parsePrompd } from '../lib/prompdParser'
-import { triggerValidation, setCurrentFilePath } from '../lib/intellisense'
+import { triggerValidation, setCurrentFilePath, setWorkspacePath } from '../lib/intellisense'
 import { editorConfigManager, type MonacoEditorOptions } from '../lib/editorconfig'
 import { hotkeyManager } from '../services/hotkeyManager'
 // DISABLED: monacoDiff breaks Code Actions - see issue investigation
@@ -40,6 +40,7 @@ function registerMonacoHotkeys(editor: any, monaco: any): void {
     commandPalette: { label: 'Prompd: Command Palette', handler: () => window.dispatchEvent(new CustomEvent('toggle-command-palette')) },
     compile: { label: 'Prompd: Build Package', handler: () => window.dispatchEvent(new CustomEvent('prompd-build-package')) },
     toggleBlockComment: { label: 'Prompd: Toggle Block Comment', handler: () => editor.trigger('keyboard', 'editor.action.blockComment', null) },
+    openChat: { label: 'Prompd: Open Chat', handler: () => window.dispatchEvent(new CustomEvent('prompd-open-chat')) },
   }
 
   // Get current hotkey bindings from the manager
@@ -134,6 +135,27 @@ function registerMonacoHotkeys(editor: any, monaco: any): void {
     }
   }
 
+  // Register context-menu-only actions (no hotkey binding required)
+  const contextMenuOnlyActions = ['openChat'] as const
+  for (const actionId of contextMenuOnlyActions) {
+    const config = actionConfigs[actionId]
+    if (config) {
+      try {
+        const disposable = editor.addAction({
+          id: `prompd.${actionId}`,
+          label: config.label,
+          contextMenuGroupId: 'prompd',
+          run: config.handler
+        })
+        if (disposable) {
+          monacoCommandDisposables.push(disposable)
+        }
+      } catch (err) {
+        console.warn(`[PrompdEditor] Failed to register context menu action for ${actionId}:`, err)
+      }
+    }
+  }
+
   // Log registered hotkeys for debugging
   const hotkeys = hotkeyManager.getHotkeys()
   for (const [actionId] of Object.entries(bindings)) {
@@ -193,6 +215,11 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
   useEffect(() => {
     setCurrentFilePath(currentFilePath || null)
   }, [currentFilePath])
+
+  // Update the IntelliSense workspace path for package cache resolution
+  useEffect(() => {
+    setWorkspacePath(workspacePath || null)
+  }, [workspacePath])
 
   // Load .editorconfig settings when file or workspace changes
   useEffect(() => {

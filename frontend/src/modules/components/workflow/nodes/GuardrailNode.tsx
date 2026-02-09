@@ -18,6 +18,7 @@ import type { GuardrailNodeData, BaseNodeData, WorkflowNodeType, ProviderNodeDat
 import { DOCKABLE_HANDLES } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { DockedNodePreview, useDockedNodes } from './DockedNodePreview'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 /** Get provider info from providerNodeId reference */
 function useProviderReference(providerNodeId: string | undefined): {
@@ -270,6 +271,12 @@ export const GuardrailNode = memo(({ id, data, selected }: GuardrailNodeProps) =
           )}
         </div>
       )}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+      />
 
       {/* Output Handle (right) - success path */}
       <Handle

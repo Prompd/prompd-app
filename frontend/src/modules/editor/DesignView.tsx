@@ -2756,6 +2756,8 @@ ${parsed.body.replace(/^\n+/, '')}`
               onSelectFromBrowser={onSelectFileFromBrowser}
               onFileClick={onOpenFile ? openContextFile : undefined}
               hasFolderOpen={!!workspaceHandle}
+              currentFilePath={currentFilePath}
+              workspacePath={((workspaceHandle as unknown) as { _electronPath?: string })?._electronPath}
               variant="card"
             />
           </div>
@@ -3542,8 +3544,8 @@ ${parsed.body.replace(/^\n+/, '')}`
                                   </div>
                                 </div>
 
-                                {/* Allowed Values (enum) - only for string type */}
-                                {schema.type === 'string' && (
+                                {/* Allowed Values (enum) - for string and array types */}
+                                {(schema.type === 'string' || schema.type === 'array') && (
                                   <div style={{ marginBottom: '12px' }}>
                                     <div
                                       onClick={(e) => {
@@ -3798,6 +3800,40 @@ ${parsed.body.replace(/^\n+/, '')}`
                                       <option value="true">true</option>
                                       <option value="false">false</option>
                                     </select>
+                                  ) : schema.type === 'array' && schema.enum && schema.enum.length > 0 ? (
+                                    /* Pill selector for array params with enum - toggle items on/off */
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                      {schema.enum.map((enumVal) => {
+                                        const currentDefaults = Array.isArray(schema.default) ? schema.default : []
+                                        const isSelected = currentDefaults.includes(enumVal)
+                                        return (
+                                          <button
+                                            key={enumVal}
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              const updated = isSelected
+                                                ? currentDefaults.filter((v: string) => v !== enumVal)
+                                                : [...currentDefaults, enumVal]
+                                              updateParameter(name, { default: updated.length > 0 ? updated : undefined })
+                                            }}
+                                            style={{
+                                              padding: '4px 10px',
+                                              fontSize: '11px',
+                                              fontWeight: 500,
+                                              border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--input-border)'}`,
+                                              borderRadius: '12px',
+                                              background: isSelected ? 'var(--accent)' : 'transparent',
+                                              color: isSelected ? 'white' : 'var(--text-secondary)',
+                                              cursor: 'pointer',
+                                              transition: 'all 0.15s ease'
+                                            }}
+                                          >
+                                            {enumVal}
+                                          </button>
+                                        )
+                                      })}
+                                    </div>
                                   ) : (
                                     <textarea
                                       value={schema.default !== undefined ? JSON.stringify(schema.default, null, 2) : ''}

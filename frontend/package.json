@@ -1,6 +1,6 @@
 {
   "name": "@prompd/app",
-  "version": "0.1.0",
+  "version": "0.1.0-beta-001",
   "productName": "Prompd",
   "description": "AI prompt editor with package-based inheritance",
   "author": "Prompd LLC",
@@ -154,7 +154,7 @@
   "dependencies": {
     "@clerk/clerk-react": "^5.58.1",
     "@monaco-editor/react": "^4.6.0",
-    "@prompd/cli": "^0.4.7",
+    "@prompd/cli": "file:../../../Logikbug/prompd-cli/cli/npm",
     "@prompd/react": "file:../packages/react",
     "@prompd/scheduler": "file:../packages/scheduler",
     "@xyflow/react": "^12.10.0",

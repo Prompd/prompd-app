@@ -10,6 +10,7 @@ import { Handle, Position, useUpdateNodeInternals, useReactFlow } from '@xyflow/
 import { Split, CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import type { ParallelNodeData, BaseNodeData } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 interface ParallelForkNodeProps {
   id: string
@@ -137,6 +138,12 @@ export const ParallelForkNode = memo(({ id, data, selected }: ParallelForkNodePr
           border: '2px solid var(--panel)',
           top: forkNodeHeight / 2,
         }}
+      />
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
       />
 
       {/* Fork output handles - positioned at node edge, aligned with branch rows */}

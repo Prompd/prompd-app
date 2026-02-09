@@ -11,11 +11,12 @@
  * - Execution history view
  */
 
-import { useState, useEffect } from 'react'
-import { Upload, Play, Pause, Trash2, Clock, CheckCircle, XCircle, AlertCircle, RefreshCw, Package, X, Zap, Globe, FolderOpen, Eye, ChevronDown, ChevronUp, RotateCw, Power } from 'lucide-react'
-import type { DeploymentInfo, TriggerInfo, DeploymentExecution } from '../../../electron'
+import { useState, useEffect, useRef } from 'react'
+import { Upload, Play, Pause, Trash2, Clock, CheckCircle, XCircle, AlertCircle, RefreshCw, Package, X, Zap, Globe, FolderOpen, ChevronDown, ChevronUp, RotateCw, Power, ArrowRight, Activity, ExternalLink } from 'lucide-react'
+import type { DeploymentInfo, TriggerInfo, DeploymentExecution, DeploymentVersionInfo } from '../../../electron'
 import { useConfirmDialog } from '../ConfirmDialog'
 import { useUIStore } from '../../../stores/uiStore'
+import { useEditorStore } from '../../../stores/editorStore'
 import { ParameterInputModal, type WorkflowParameter } from './ParameterInputModal'
 import './DeploymentModal.css'
 
@@ -35,6 +36,16 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
   const [expandedExecutions, setExpandedExecutions] = useState<Set<string>>(new Set())
   const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled' | 'failed'>('all')
 
+  // Version history state
+  const [versionHistory, setVersionHistory] = useState<DeploymentVersionInfo[]>([])
+  const [versionHistoryLoading, setVersionHistoryLoading] = useState(false)
+
+  // Detail panel sub-tab
+  const [detailTab, setDetailTab] = useState<'triggers' | 'executions' | 'versions'>('triggers')
+
+  // Expanded executions within detail panel
+  const [expandedDetailExecutions, setExpandedDetailExecutions] = useState<Set<string>>(new Set())
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
@@ -48,6 +59,26 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
 
   const { showConfirm, ConfirmDialogComponent } = useConfirmDialog()
   const addToast = useUIStore(state => state.addToast)
+  const addTab = useEditorStore(state => state.addTab)
+
+  /** Open JSON content in a new readonly editor tab */
+  const openJsonInEditor = (title: string, content: unknown) => {
+    const formatted = typeof content === 'string' ? content : JSON.stringify(content, null, 2)
+    addTab({
+      id: `json-${Date.now()}`,
+      name: `${title}.json`,
+      text: formatted,
+      savedText: formatted,
+      readOnly: true,
+      type: 'file',
+      viewMode: 'code'
+    })
+    onClose()
+  }
+
+  // Ref to track current selection without triggering effect re-runs
+  const selectedDeploymentRef = useRef(selectedDeployment)
+  selectedDeploymentRef.current = selectedDeployment
 
   // Load deployments on mount
   useEffect(() => {
@@ -73,9 +104,10 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
         if (activeTab === 'history') {
           loadExecutionHistory()
         }
-        // Refresh deployment status if viewing details
-        if (selectedDeployment && data.deploymentId === selectedDeployment.id) {
-          loadDeploymentStatus(selectedDeployment.id)
+        // Refresh deployment status if viewing details (use ref to avoid stale closure)
+        const current = selectedDeploymentRef.current
+        if (current && data.deploymentId === current.id) {
+          loadDeploymentStatus(current.id)
         }
       })
     }
@@ -86,8 +118,10 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
       if (activeTab === 'history') {
         loadExecutionHistory()
       }
-      if (selectedDeployment) {
-        loadDeploymentStatus(selectedDeployment.id)
+      // Use ref to get current selection without needing it in deps
+      const current = selectedDeploymentRef.current
+      if (current) {
+        loadDeploymentStatus(current.id)
       }
     }, 10000)
 
@@ -98,7 +132,15 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
         cleanupExecutionListener()
       }
     }
-  }, [activeTab, selectedDeployment])
+  }, [activeTab])
+
+  // Auto-load version history when Versions sub-tab is selected
+  useEffect(() => {
+    const current = selectedDeploymentRef.current
+    if (detailTab === 'versions' && current && versionHistory.length === 0) {
+      loadVersionHistory(current.id)
+    }
+  }, [detailTab])
 
   const loadDeployments = async () => {
     if (!window.electronAPI?.deployment) {
@@ -110,7 +152,6 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
     try {
       const result = await window.electronAPI.deployment.list()
       if (result.success) {
-        // Include all deployments (enabled, disabled, deleted)
         setDeployments(result.deployments || [])
       }
     } catch (error) {
@@ -151,6 +192,22 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
       }
     } catch (error) {
       console.error('Failed to load execution history:', error)
+    }
+  }
+
+  const loadVersionHistory = async (deploymentId: string) => {
+    if (!window.electronAPI?.deployment?.getVersionHistory) return
+
+    setVersionHistoryLoading(true)
+    try {
+      const result = await window.electronAPI.deployment.getVersionHistory(deploymentId)
+      if (result.success) {
+        setVersionHistory(result.versions || [])
+      }
+    } catch (error) {
+      console.error('Failed to load version history:', error)
+    } finally {
+      setVersionHistoryLoading(false)
     }
   }
 
@@ -354,6 +411,9 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
   const handleViewDetails = (deployment: DeploymentInfo) => {
     setSelectedDeployment(deployment)
     loadDeploymentStatus(deployment.id)
+    setDetailTab('triggers')
+    setVersionHistory([])
+    setExpandedDetailExecutions(new Set())
   }
 
   const handleClearHistory = async () => {
@@ -393,6 +453,23 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
   const formatTimestamp = (timestamp: number) => {
     const date = new Date(timestamp)
     return date.toLocaleString()
+  }
+
+  const formatRelativeTime = (timestamp: number) => {
+    const now = Date.now()
+    const diff = now - timestamp
+    if (diff < 0) {
+      // Future time (for next run)
+      const absDiff = -diff
+      if (absDiff < 60000) return `in ${Math.round(absDiff / 1000)}s`
+      if (absDiff < 3600000) return `in ${Math.round(absDiff / 60000)}m`
+      if (absDiff < 86400000) return `in ${Math.round(absDiff / 3600000)}h`
+      return `in ${Math.round(absDiff / 86400000)}d`
+    }
+    if (diff < 60000) return `${Math.round(diff / 1000)}s ago`
+    if (diff < 3600000) return `${Math.round(diff / 60000)}m ago`
+    if (diff < 86400000) return `${Math.round(diff / 3600000)}h ago`
+    return `${Math.round(diff / 86400000)}d ago`
   }
 
   const getStatusIcon = (status: string) => {
@@ -483,6 +560,83 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
     }
   }
 
+  // Compute changes between consecutive version history entries
+  const computeVersionChanges = (
+    olderVersion: DeploymentVersionInfo,
+    newerVersion: { version: string | null; packageHash: string; triggerSnapshot: string | null }
+  ): string[] => {
+    const changes: string[] = []
+
+    // Version bump
+    const oldVer = olderVersion.version || '0.0.0'
+    const newVer = newerVersion.version || '0.0.0'
+    if (oldVer !== newVer) {
+      changes.push(`Version: v${oldVer} -> v${newVer}`)
+    }
+
+    // Package content changed
+    if (olderVersion.packageHash !== newerVersion.packageHash) {
+      changes.push('Workflow package updated')
+    }
+
+    // Trigger changes
+    const parseTriggers = (snapshot: string | null): Array<{ type: string; scheduleCron?: string; enabled?: boolean }> => {
+      if (!snapshot) return []
+      try { return JSON.parse(snapshot) } catch { return [] }
+    }
+
+    const oldTriggers = parseTriggers(olderVersion.triggerSnapshot)
+    const newTriggers = parseTriggers(newerVersion.triggerSnapshot)
+
+    if (oldTriggers.length !== newTriggers.length) {
+      changes.push(`Triggers: ${oldTriggers.length} -> ${newTriggers.length}`)
+    } else {
+      // Same count but check if types or configs differ
+      const oldTypes = oldTriggers.map(t => `${t.type}:${t.scheduleCron || ''}`).sort().join(',')
+      const newTypes = newTriggers.map(t => `${t.type}:${t.scheduleCron || ''}`).sort().join(',')
+      if (oldTypes !== newTypes) {
+        changes.push('Trigger configuration changed')
+      }
+    }
+
+    if (changes.length === 0) {
+      changes.push('Re-deployed (no visible changes)')
+    }
+
+    return changes
+  }
+
+  // Build the "newer" reference for each version entry:
+  // For the most recent previous version (index 0), compare against current deployment
+  // For index N, compare against index N-1 (which is the version that replaced it)
+  const getChangesForVersion = (index: number): string[] => {
+    const olderVersion = versionHistory[index]
+
+    if (index === 0 && selectedDeployment) {
+      // Compare most recent previous version against the currently deployed state
+      const currentTriggerSnapshot = JSON.stringify(triggers.map(t => ({
+        type: t.triggerType,
+        scheduleCron: t.scheduleCron || undefined,
+        enabled: t.enabled
+      })))
+      return computeVersionChanges(olderVersion, {
+        version: selectedDeployment.version || null,
+        packageHash: selectedDeployment.packageHash || '',
+        triggerSnapshot: currentTriggerSnapshot
+      })
+    } else if (index > 0) {
+      // Compare against the version that replaced this one
+      const newerVersion = versionHistory[index - 1]
+      return computeVersionChanges(olderVersion, {
+        version: newerVersion.version,
+        packageHash: newerVersion.packageHash,
+        triggerSnapshot: newerVersion.triggerSnapshot
+      })
+    }
+
+    return []
+  }
+
   if (!open) return null
 
   if (!window.electronAPI?.deployment) {
@@ -555,164 +709,364 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                   </button>
                 </div>
               ) : (
-                <>
-                  <div className="deployment-filters">
-                    {(['all', 'enabled', 'disabled', 'failed'] as const).map((filter) => {
-                      const count = filter === 'all'
-                        ? deployments.filter(d => d.status !== 'deleted').length
-                        : deployments.filter(d => d.status === filter).length
-                      return (
-                        <button
-                          key={filter}
-                          className={`filter-tab ${statusFilter === filter ? 'active' : ''}`}
-                          onClick={() => setStatusFilter(filter)}
-                        >
-                          {filter.charAt(0).toUpperCase() + filter.slice(1)} ({count})
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <div className="deployments-list">
-                  {deployments.filter(d => d.status !== 'deleted' && (statusFilter === 'all' || d.status === statusFilter)).map((deployment) => {
-                    const isExpanded = selectedDeployment?.id === deployment.id
-
-                    return (
-                      <div key={deployment.id} className={`deployment-card status-${deployment.status}`}>
+                <div className="deployment-split-panel">
+                  {/* Left Panel: deployment list */}
+                  <div className="deployment-list-panel">
+                    <div className="deployment-list-filters">
+                      {(['all', 'enabled', 'disabled', 'failed'] as const).map((filter) => {
+                        const count = filter === 'all'
+                          ? deployments.filter(d => d.status !== 'deleted').length
+                          : deployments.filter(d => d.status === filter).length
+                        return (
+                          <button
+                            key={filter}
+                            className={`filter-tab ${statusFilter === filter ? 'active' : ''}`}
+                            onClick={() => setStatusFilter(filter)}
+                          >
+                            {filter.charAt(0).toUpperCase() + filter.slice(1)} ({count})
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div className="deployment-list-items">
+                      {deployments.filter(d => d.status !== 'deleted' && (statusFilter === 'all' || d.status === statusFilter)).map((deployment) => (
                         <div
-                          className="deployment-card-header"
-                          onClick={() => {
-                            if (isExpanded) {
-                              setSelectedDeployment(null)
-                            } else {
-                              handleViewDetails(deployment)
-                            }
-                          }}
-                          style={{ cursor: 'pointer' }}
+                          key={deployment.id}
+                          className={`deployment-list-item ${selectedDeployment?.id === deployment.id ? 'selected' : ''} status-${deployment.status}`}
+                          onClick={() => handleViewDetails(deployment)}
                         >
-                          <div className="deployment-info">
-                            <div className="deployment-title">
-                              <h4>{deployment.name}</h4>
-                              <span className={`status-badge status-${deployment.status}`}>
-                                {getStatusIcon(deployment.status)}
-                                {deployment.status}
+                          <span className={`deployment-status-dot status-${deployment.status}`} />
+                          <div className="deployment-list-item-info">
+                            <span className="deployment-list-item-name">{deployment.name}</span>
+                            <span className="deployment-list-item-version">v{deployment.version || '1.0.0'}</span>
+                          </div>
+                          {deployment.lastExecutionStatus && (
+                            <span className={`deployment-exec-dot status-${deployment.lastExecutionStatus}`} title={`Last run: ${deployment.lastExecutionStatus}`} />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Right Panel: detail view */}
+                  <div className="deployment-detail-panel">
+                    {selectedDeployment ? (
+                      <>
+                        <div className="deployment-detail-header">
+                          <div className="deployment-detail-title-row">
+                            <h3 className="deployment-detail-name">{selectedDeployment.name}</h3>
+                            <div className="deployment-detail-actions">
+                              <button
+                                className="icon-button"
+                                onClick={() => handleToggleStatus(selectedDeployment)}
+                                title={selectedDeployment.status === 'enabled' ? 'Disable' : 'Enable'}
+                              >
+                                <Power size={16} className={selectedDeployment.status === 'enabled' ? 'status-enabled' : 'status-disabled'} />
+                              </button>
+                              <button
+                                className="icon-button"
+                                onClick={() => handleExecuteNow(selectedDeployment.id, selectedDeployment.name)}
+                                title="Execute now"
+                                disabled={selectedDeployment.status !== 'enabled'}
+                              >
+                                <Play size={16} />
+                              </button>
+                              <button
+                                className="icon-button danger"
+                                onClick={() => handleDelete(selectedDeployment.id, selectedDeployment.name)}
+                                title="Delete"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="deployment-detail-meta">
+                            <span className={`status-badge status-${selectedDeployment.status}`}>
+                              {getStatusIcon(selectedDeployment.status)}
+                              {selectedDeployment.status}
+                            </span>
+                            <span className="deployment-version">v{selectedDeployment.version || '1.0.0'}</span>
+                          </div>
+                          <div className="deployment-detail-id">ID: {selectedDeployment.id}</div>
+                          <div className="deployment-detail-stats">
+                            <div className="detail-stat">
+                              <span className="detail-stat-label">Deployed</span>
+                              <span className="detail-stat-value" title={formatTimestamp(selectedDeployment.deployedAt)}>
+                                {formatRelativeTime(selectedDeployment.deployedAt)}
                               </span>
                             </div>
-                            <div className="deployment-meta">
-                              <span className="deployment-version">v{deployment.version || '1.0.0'}</span>
-                              <span className="deployment-id" title={deployment.id}>ID: {deployment.id.slice(0, 8)}...</span>
-                            </div>
-                          </div>
-                          <div className="deployment-actions">
-                            {deployment.status !== 'deleted' && (
-                              <>
-                                <button
-                                  className="icon-button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleToggleStatus(deployment)
-                                  }}
-                                  title={deployment.status === 'enabled' ? 'Disable' : 'Enable'}
-                                >
-                                  <Power size={16} className={deployment.status === 'enabled' ? 'status-enabled' : 'status-disabled'} />
-                                </button>
-                                <button
-                                  className="icon-button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleExecuteNow(deployment.id, deployment.name)
-                                  }}
-                                  title="Execute now"
-                                  disabled={deployment.status !== 'enabled'}
-                                >
-                                  <Play size={16} />
-                                </button>
-                              </>
+                            {selectedDeployment.lastExecutionAt ? (
+                              <div className="detail-stat">
+                                <span className="detail-stat-label">Last run</span>
+                                <span className={`detail-stat-value ${selectedDeployment.lastExecutionStatus === 'error' ? 'stat-error' : selectedDeployment.lastExecutionStatus === 'success' ? 'stat-success' : ''}`} title={formatTimestamp(selectedDeployment.lastExecutionAt)}>
+                                  {formatRelativeTime(selectedDeployment.lastExecutionAt)}
+                                  {selectedDeployment.lastExecutionStatus && (
+                                    <span className={`detail-stat-dot status-${selectedDeployment.lastExecutionStatus}`} />
+                                  )}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="detail-stat">
+                                <span className="detail-stat-label">Last run</span>
+                                <span className="detail-stat-value muted">Never</span>
+                              </div>
                             )}
-                            <button
-                              className="icon-button danger"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDelete(deployment.id, deployment.name)
-                              }}
-                              title={deployment.status === 'deleted' ? 'Already deleted' : 'Delete'}
-                              disabled={deployment.status === 'deleted'}
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                            <button
-                              className="icon-button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                if (isExpanded) {
-                                  setSelectedDeployment(null)
-                                } else {
-                                  handleViewDetails(deployment)
-                                }
-                              }}
-                              title={isExpanded ? 'Collapse' : 'View details'}
-                            >
-                              {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                            </button>
+                            <div className="detail-stat">
+                              <span className="detail-stat-label">Executions</span>
+                              <span className="detail-stat-value">{deploymentExecutions.length}</span>
+                            </div>
+                            {(() => {
+                              const nextRun = triggers
+                                .filter(t => t.enabled && t.nextRunAt)
+                                .map(t => t.nextRunAt!)
+                                .sort((a, b) => a - b)[0]
+                              return nextRun ? (
+                                <div className="detail-stat">
+                                  <span className="detail-stat-label">Next run</span>
+                                  <span className="detail-stat-value" title={formatTimestamp(nextRun)}>
+                                    {formatRelativeTime(nextRun)}
+                                  </span>
+                                </div>
+                              ) : null
+                            })()}
                           </div>
                         </div>
 
-                      {isExpanded && (
-                        <div className="deployment-details">
-                          <div className="deployment-details-header">
-                            <h5>Triggers ({triggers.length})</h5>
-                          </div>
-                          {triggers.length === 0 ? (
-                            <p className="no-triggers">No triggers configured</p>
-                          ) : (
-                            <div className="triggers-list">
-                              {triggers.map((trigger) => (
-                                <div key={trigger.id} className={`trigger-item ${!trigger.enabled ? 'disabled' : ''}`}>
-                                  <div className="trigger-icon">
-                                    {getTriggerTypeIcon(trigger.triggerType)}
-                                  </div>
-                                  <div className="trigger-info">
-                                    <div className="trigger-type">{trigger.triggerType}</div>
-                                    <div className="trigger-config">
-                                      {trigger.scheduleCron && <span>Cron: {trigger.scheduleCron}</span>}
-                                      {trigger.webhookPath && <span>Path: {trigger.webhookPath}</span>}
-                                      {trigger.eventName && <span>Event: {trigger.eventName}</span>}
-                                      {trigger.fileWatchPaths && <span>Files: {trigger.fileWatchPaths}</span>}
+                        <div className="deployment-detail-tabs">
+                          <button
+                            className={`detail-tab ${detailTab === 'triggers' ? 'active' : ''}`}
+                            onClick={() => setDetailTab('triggers')}
+                          >
+                            Triggers ({triggers.length})
+                          </button>
+                          <button
+                            className={`detail-tab ${detailTab === 'executions' ? 'active' : ''}`}
+                            onClick={() => setDetailTab('executions')}
+                          >
+                            Executions ({deploymentExecutions.length})
+                          </button>
+                          <button
+                            className={`detail-tab ${detailTab === 'versions' ? 'active' : ''}`}
+                            onClick={() => setDetailTab('versions')}
+                          >
+                            Versions{versionHistory.length > 0 ? ` (${versionHistory.length})` : ''}
+                          </button>
+                        </div>
+
+                        <div className="deployment-detail-content">
+                          {detailTab === 'triggers' ? (
+                            triggers.length === 0 ? (
+                              <p className="no-triggers">No triggers configured</p>
+                            ) : (
+                              <div className="triggers-list">
+                                {triggers.map((trigger) => (
+                                  <div key={trigger.id} className={`trigger-item ${!trigger.enabled ? 'disabled' : ''}`}>
+                                    <div className="trigger-icon">
+                                      {getTriggerTypeIcon(trigger.triggerType)}
                                     </div>
+                                    <div className="trigger-info">
+                                      <div className="trigger-type">{trigger.triggerType}</div>
+                                      <div className="trigger-config">
+                                        {trigger.scheduleCron && <span>Cron: {trigger.scheduleCron}</span>}
+                                        {trigger.scheduleTimezone && <span> ({trigger.scheduleTimezone})</span>}
+                                        {trigger.webhookPath && <span>Path: {trigger.webhookPath}</span>}
+                                        {trigger.eventName && <span>Event: {trigger.eventName}</span>}
+                                        {trigger.fileWatchPaths && <span>Files: {trigger.fileWatchPaths}</span>}
+                                      </div>
+                                      <div className="trigger-stats">
+                                        {trigger.triggerCount != null && trigger.triggerCount > 0 && (
+                                          <span className="trigger-stat">
+                                            <Activity size={10} />
+                                            {trigger.triggerCount} fires
+                                          </span>
+                                        )}
+                                        {trigger.lastTriggeredAt && (
+                                          <span className={`trigger-stat ${trigger.lastTriggerStatus === 'error' ? 'stat-error' : ''}`} title={formatTimestamp(trigger.lastTriggeredAt)}>
+                                            Last: {formatRelativeTime(trigger.lastTriggeredAt)}
+                                            {trigger.lastTriggerStatus && (
+                                              <span className={`detail-stat-dot status-${trigger.lastTriggerStatus}`} />
+                                            )}
+                                          </span>
+                                        )}
+                                        {trigger.nextRunAt && trigger.enabled && (
+                                          <span className="trigger-stat" title={formatTimestamp(trigger.nextRunAt)}>
+                                            Next: {formatRelativeTime(trigger.nextRunAt)}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <button
+                                      className="icon-button"
+                                      onClick={() => handleToggleTrigger(trigger)}
+                                      title={trigger.enabled ? 'Disable' : 'Enable'}
+                                    >
+                                      {trigger.enabled ? <Pause size={14} /> : <Play size={14} />}
+                                    </button>
                                   </div>
-                                  <button
-                                    className="icon-button"
-                                    onClick={() => handleToggleTrigger(trigger)}
-                                    title={trigger.enabled ? 'Disable' : 'Enable'}
-                                  >
-                                    {trigger.enabled ? <Pause size={14} /> : <Play size={14} />}
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          <h5>Recent Executions</h5>
-                          {deploymentExecutions.length === 0 ? (
-                            <p className="no-executions">No executions yet</p>
-                          ) : (
-                            <div className="executions-list-mini">
-                              {deploymentExecutions.slice(0, 5).map((execution) => (
-                                <div key={execution.id} className={`execution-item-mini status-${execution.status}`}>
-                                  <span className="execution-status">{execution.status}</span>
-                                  <span className="execution-type">{execution.triggerType}</span>
-                                  <span className="execution-time">{formatTimestamp(execution.startedAt)}</span>
-                                  <span className="execution-duration">{formatDuration(execution.startedAt, execution.completedAt)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                                ))}
+                              </div>
+                            )
+                          ) : detailTab === 'executions' ? (
+                            deploymentExecutions.length === 0 ? (
+                              <p className="no-executions">No executions yet</p>
+                            ) : (
+                              <div className="detail-executions-list">
+                                {deploymentExecutions.map((execution) => {
+                                  const isDetailExpanded = expandedDetailExecutions.has(execution.id)
+                                  const result = execution.result as Record<string, unknown> | undefined
+                                  const outputPreview = result?.output
+                                    ? (typeof result.output === 'string'
+                                      ? result.output.slice(0, 120)
+                                      : JSON.stringify(result.output).slice(0, 120))
+                                    : null
+                                  return (
+                                    <div key={execution.id} className={`detail-execution-item status-${execution.status}`}>
+                                      <div
+                                        className="detail-execution-header"
+                                        onClick={() => {
+                                          setExpandedDetailExecutions(prev => {
+                                            const next = new Set(prev)
+                                            if (next.has(execution.id)) next.delete(execution.id)
+                                            else next.add(execution.id)
+                                            return next
+                                          })
+                                        }}
+                                      >
+                                        <span className={`detail-exec-status status-${execution.status}`}>
+                                          {execution.status === 'success' ? <CheckCircle size={12} /> : execution.status === 'error' ? <XCircle size={12} /> : <Clock size={12} />}
+                                          {execution.status}
+                                        </span>
+                                        <span className="detail-exec-trigger">{execution.triggerType}</span>
+                                        <span className="detail-exec-time" title={formatTimestamp(execution.startedAt)}>
+                                          {formatRelativeTime(execution.startedAt)}
+                                        </span>
+                                        <span className="detail-exec-duration">{formatDuration(execution.startedAt, execution.completedAt)}</span>
+                                        {isDetailExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                      </div>
+                                      {!isDetailExpanded && outputPreview && (
+                                        <div className="detail-exec-preview">{outputPreview}{outputPreview.length >= 120 ? '...' : ''}</div>
+                                      )}
+                                      {!isDetailExpanded && execution.error && (
+                                        <div className="detail-exec-error-preview">{execution.error.slice(0, 120)}{execution.error.length > 120 ? '...' : ''}</div>
+                                      )}
+                                      {isDetailExpanded && (
+                                        <div className="detail-exec-expanded">
+                                          <div className="detail-exec-meta-grid">
+                                            <div className="detail-exec-meta-item">
+                                              <span className="label">Started</span>
+                                              <span className="value">{formatTimestamp(execution.startedAt)}</span>
+                                            </div>
+                                            {execution.completedAt && (
+                                              <div className="detail-exec-meta-item">
+                                                <span className="label">Completed</span>
+                                                <span className="value">{formatTimestamp(execution.completedAt)}</span>
+                                              </div>
+                                            )}
+                                            <div className="detail-exec-meta-item">
+                                              <span className="label">Duration</span>
+                                              <span className="value">{formatDuration(execution.startedAt, execution.completedAt)}</span>
+                                            </div>
+                                            <div className="detail-exec-meta-item">
+                                              <span className="label">ID</span>
+                                              <span className="value mono">{execution.id}</span>
+                                            </div>
+                                          </div>
+                                          {result?.output != null && (
+                                            <div className="detail-exec-section">
+                                              <h6>
+                                                Output
+                                                <button
+                                                  className="section-open-button"
+                                                  onClick={() => openJsonInEditor('Output', result.output)}
+                                                  title="Open in editor"
+                                                >
+                                                  <ExternalLink size={12} />
+                                                </button>
+                                              </h6>
+                                              <pre className="detail-exec-output">
+                                                {typeof result.output === 'string'
+                                                  ? result.output
+                                                  : JSON.stringify(result.output, null, 2)}
+                                              </pre>
+                                            </div>
+                                          )}
+                                          {execution.error && (
+                                            <div className="detail-exec-section">
+                                              <h6>Error</h6>
+                                              <div className="detail-exec-error">{execution.error}</div>
+                                            </div>
+                                          )}
+                                          {execution.parameters && Object.keys(execution.parameters).length > 0 && (
+                                            <div className="detail-exec-section">
+                                              <h6>Parameters</h6>
+                                              <pre className="detail-exec-output">
+                                                {JSON.stringify(execution.parameters, null, 2)}
+                                              </pre>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )
+                          ) : detailTab === 'versions' ? (
+                            versionHistoryLoading ? (
+                              <p className="no-executions">Loading version history...</p>
+                            ) : versionHistory.length === 0 ? (
+                              <p className="no-executions">No previous versions (first deployment)</p>
+                            ) : (
+                              <div className="version-history-list">
+                                {versionHistory.map((version, index) => {
+                                  const triggerCount = version.triggerSnapshot
+                                    ? (() => { try { return JSON.parse(version.triggerSnapshot).length } catch { return 0 } })()
+                                    : 0
+                                  const changes = getChangesForVersion(index)
+                                  return (
+                                    <div key={version.id} className="version-history-item">
+                                      <div className="version-history-header">
+                                        <div className="version-history-version">v{version.version || '0.0.0'}</div>
+                                        <div className="version-history-meta">
+                                          <span>{formatTimestamp(version.deployedAt)}</span>
+                                          <span className="version-history-hash" title={version.packageHash}>
+                                            {version.packageHash.slice(0, 8)}
+                                          </span>
+                                          {triggerCount > 0 && (
+                                            <span>{triggerCount} trigger{triggerCount > 1 ? 's' : ''}</span>
+                                          )}
+                                          {version.deployedBy && (
+                                            <span>by {version.deployedBy}</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      {changes.length > 0 && (
+                                        <div className="version-changes">
+                                          <ArrowRight size={10} />
+                                          <span className="version-changes-label">
+                                            {index === 0 ? 'Changed in current:' : 'Changed in next version:'}
+                                          </span>
+                                          {changes.map((change, ci) => (
+                                            <span key={ci} className="version-change-tag">{change}</span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )
+                          ) : null}
                         </div>
-                      )}
-                    </div>
-                  )
-                  })}
+                      </>
+                    ) : (
+                      <div className="deployment-detail-empty">
+                        <Package size={40} />
+                        <p>Select a deployment</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                </>
               )}
             </>
           ) : activeTab === 'history' ? (
@@ -931,7 +1285,16 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                   {/* Final Output */}
                                   {(execution.result as Record<string, unknown>).output && (
                                     <div className="execution-details-section">
-                                      <h5>Workflow Output</h5>
+                                      <h5>
+                                        Workflow Output
+                                        <button
+                                          className="section-open-button"
+                                          onClick={() => openJsonInEditor('Workflow Output', (execution.result as Record<string, unknown>).output)}
+                                          title="Open in editor"
+                                        >
+                                          <ExternalLink size={12} />
+                                        </button>
+                                      </h5>
                                       <pre className="execution-json execution-result">
                                         {typeof (execution.result as Record<string, unknown>).output === 'string'
                                           ? (execution.result as Record<string, unknown>).output as string
@@ -943,7 +1306,16 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                   {/* Execution Trace */}
                                   {(execution.result as Record<string, unknown>).trace && (
                                     <div className="execution-details-section">
-                                      <h5>Execution Trace</h5>
+                                      <h5>
+                                        Execution Trace
+                                        <button
+                                          className="section-open-button"
+                                          onClick={() => openJsonInEditor('Execution Trace', (execution.result as Record<string, unknown>).trace)}
+                                          title="Open in editor"
+                                        >
+                                          <ExternalLink size={12} />
+                                        </button>
+                                      </h5>
                                       <pre className="execution-json execution-result">
                                         {JSON.stringify((execution.result as Record<string, unknown>).trace, null, 2)}
                                       </pre>
@@ -953,7 +1325,16 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                   {/* Node Outputs */}
                                   {(execution.result as Record<string, unknown>).nodeOutputs && (
                                     <div className="execution-details-section">
-                                      <h5>Node Outputs</h5>
+                                      <h5>
+                                        Node Outputs
+                                        <button
+                                          className="section-open-button"
+                                          onClick={() => openJsonInEditor('Node Outputs', (execution.result as Record<string, unknown>).nodeOutputs)}
+                                          title="Open in editor"
+                                        >
+                                          <ExternalLink size={12} />
+                                        </button>
+                                      </h5>
                                       <pre className="execution-json">
                                         {JSON.stringify((execution.result as Record<string, unknown>).nodeOutputs, null, 2)}
                                       </pre>
@@ -963,7 +1344,16 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                   {/* Metrics */}
                                   {(execution.result as Record<string, unknown>).metrics && (
                                     <div className="execution-details-section">
-                                      <h5>Execution Metrics</h5>
+                                      <h5>
+                                        Execution Metrics
+                                        <button
+                                          className="section-open-button"
+                                          onClick={() => openJsonInEditor('Execution Metrics', (execution.result as Record<string, unknown>).metrics)}
+                                          title="Open in editor"
+                                        >
+                                          <ExternalLink size={12} />
+                                        </button>
+                                      </h5>
                                       <pre className="execution-json">
                                         {JSON.stringify((execution.result as Record<string, unknown>).metrics, null, 2)}
                                       </pre>
@@ -975,7 +1365,16 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                               {/* Fallback: show raw result if not structured */}
                               {(typeof execution.result !== 'object' || execution.result === null) && (
                                 <div className="execution-details-section">
-                                  <h5>Result</h5>
+                                  <h5>
+                                    Result
+                                    <button
+                                      className="section-open-button"
+                                      onClick={() => openJsonInEditor('Result', execution.result)}
+                                      title="Open in editor"
+                                    >
+                                      <ExternalLink size={12} />
+                                    </button>
+                                  </h5>
                                   <pre className="execution-json execution-result">
                                     {typeof execution.result === 'string'
                                       ? execution.result

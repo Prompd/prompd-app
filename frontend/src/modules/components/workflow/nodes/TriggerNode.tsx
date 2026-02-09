@@ -16,6 +16,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Play, Webhook, Clock, FolderSync, Zap, CheckCircle2 } from 'lucide-react'
 import type { TriggerNodeData } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 interface TriggerNodeProps extends NodeProps {
   data: TriggerNodeData
@@ -323,6 +324,12 @@ export const TriggerNode = memo(({ id, data, selected }: TriggerNodeProps) => {
           Triggered
         </div>
       )}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+      />
 
       {/* Output Handle - starts the workflow */}
       <Handle

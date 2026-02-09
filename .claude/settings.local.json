@@ -15,7 +15,9 @@
       "Bash(tree:*)",
       "Read(//c/git/github/Logikbug/registry.prompdhub.ai/backend/src/routes/**)",
       "Bash(npx tsc:*)",
-      "Bash(timeout 60 npx tsc:*)"
+      "Bash(timeout 60 npx tsc:*)",
+      "WebSearch(*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

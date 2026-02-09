@@ -16,6 +16,7 @@ import { Bot, Server, Monitor, CheckCircle, XCircle, Loader2, RotateCcw, Shield,
 import type { ClaudeCodeNodeData, BaseNodeData, WorkflowConnection } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { getNodeColor } from '../nodeColors'
+import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 // Handle style constants
 const handleSize = 12
@@ -371,6 +372,14 @@ export const ClaudeCodeNode = memo(({ id, data, selected }: ClaudeCodeNodeProps)
           {nodeState.error}
         </div>
       )}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+        showOutput={false}
+        showError={false}
+      />
 
       {/* Output Handle */}
       <Handle

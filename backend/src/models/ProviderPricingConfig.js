@@ -60,8 +60,8 @@ import mongoose from 'mongoose'
  * ============================================================================
  */
 
-// Default TTL: 12 hours in milliseconds
-const DEFAULT_TTL_MS = 12 * 60 * 60 * 1000
+// Default TTL: 24 hours in milliseconds
+const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000
 
 const ProviderPricingConfigSchema = new mongoose.Schema({
   // Provider identifier (unique per provider)
