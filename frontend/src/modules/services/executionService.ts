@@ -9,6 +9,7 @@ import { packageCache } from './packageCache'
 import { executionRouter } from './executionRouter'
 import { localCompiler } from './localCompiler'
 import { loadEnvVars } from './envLoader'
+import { prompdSettings } from './prompdSettings'
 import { useUIStore } from '../../stores/uiStore'
 
 /**
@@ -405,7 +406,7 @@ export async function executePrompdConfig(
         format: 'markdown',
         parameters: mergedParameters,
         filePath: sourceFilePath,  // Full disk path (not workspace + filename)
-        registryUrl: 'http://localhost:4000'
+        registryUrl: prompdSettings.getRegistryUrl()
       })
 
       if (compileResult.success && compileResult.output) {

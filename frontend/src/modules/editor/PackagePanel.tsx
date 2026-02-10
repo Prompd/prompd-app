@@ -94,12 +94,12 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
     try {
       const userPackages = await registryApi.getUserPackages()
       setMyPackages(userPackages)
-      setMyPackagesLoaded(true)
     } catch (err: unknown) {
       console.error('Failed to load user packages:', err)
       setMyPackagesError(err instanceof Error ? err.message : 'Failed to load your packages')
       setMyPackages([])
     } finally {
+      setMyPackagesLoaded(true)
       setMyPackagesLoading(false)
     }
   }, [isSignedIn])
