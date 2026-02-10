@@ -869,9 +869,9 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
               targetHandle: 'memory'
             })
           }
-          // Callback/Checkpoint docking to Agent/Guardrail/Prompt/ChatAgent's onCheckpoint
+          // Callback/Checkpoint docking to any node's onCheckpoint handle
           else if ((nodeType === 'callback' || nodeType === 'checkpoint') &&
-                   (hostType === 'agent' || hostType === 'guardrail' || hostType === 'prompt' || hostType === 'chat-agent') &&
+                   (hostType === 'agent' || hostType === 'guardrail' || hostType === 'prompt' || hostType === 'chat-agent' || hostType === 'web-search') &&
                    handleId === 'onCheckpoint') {
             edgesToCreate.push({
               id: `docked-${nodeId}-${hostNodeId}-${handleId}`,

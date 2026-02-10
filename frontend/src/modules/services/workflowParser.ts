@@ -187,7 +187,7 @@ export function serializeWorkflow(
 
   const updatedFile: WorkflowFile = {
     ...file,
-    version: file.version || '1.0.0',
+    version: file.version || '1.0',
     metadata: file.metadata || { id: `workflow-${Date.now()}`, name: 'New Workflow', description: '' },
     nodes: updatedNodes,
     edges: workflowEdges,

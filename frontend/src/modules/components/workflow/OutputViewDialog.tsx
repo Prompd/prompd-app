@@ -4,15 +4,18 @@
  * Displays the complete output data from a workflow node in a readable format.
  */
 
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Flag, Copy, Check } from 'lucide-react'
+import { JsonTreeViewer, tryParseJsonValue } from '../common/JsonTreeViewer'
 
 interface OutputViewDialogProps {
   /** Output data to display */
   output: unknown
   /** Node label for dialog title */
   nodeLabel?: string
+  /** Node ID for JsonTreeViewer rootPath */
+  nodeId?: string
   /** Callback to close dialog */
   onClose: () => void
 }
@@ -20,6 +23,7 @@ interface OutputViewDialogProps {
 export function OutputViewDialog({
   output,
   nodeLabel = 'Output',
+  nodeId,
   onClose,
 }: OutputViewDialogProps) {
   const [copied, setCopied] = useState(false)
@@ -34,6 +38,9 @@ export function OutputViewDialog({
   )
 
   const outputText = typeof output === 'string' ? output : JSON.stringify(output, null, 2)
+
+  // Try to resolve output to a JSON-viewable object (handles string JSON too)
+  const parsedJson = useMemo(() => tryParseJsonValue(output), [output])
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(outputText)
@@ -148,19 +155,28 @@ export function OutputViewDialog({
             background: 'var(--panel)',
           }}
         >
-          <pre
-            style={{
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              margin: 0,
-              fontFamily: 'monospace',
-              fontSize: '13px',
-              lineHeight: '1.6',
-              color: 'var(--text)',
-            }}
-          >
-            {outputText}
-          </pre>
+          {parsedJson !== null ? (
+            <JsonTreeViewer
+              data={parsedJson}
+              rootPath={nodeId ? `${nodeId}.output` : 'output'}
+              defaultExpandDepth={3}
+              maxStringPreview={120}
+            />
+          ) : (
+            <pre
+              style={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                margin: 0,
+                fontFamily: 'monospace',
+                fontSize: '13px',
+                lineHeight: '1.6',
+                color: 'var(--text)',
+              }}
+            >
+              {outputText}
+            </pre>
+          )}
         </div>
 
         {/* Footer with metadata */}

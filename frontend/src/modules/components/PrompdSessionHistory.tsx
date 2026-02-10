@@ -3,7 +3,7 @@
  * Session-only history (cleared on app close) shown in bottom panel Prompds tab
  */
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Clock,
   Cpu,
@@ -13,10 +13,13 @@ import {
   ChevronRight,
   Copy,
   FileText,
-  ExternalLink
+  ExternalLink,
+  Braces,
+  FileCode2,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { JsonTreeViewer, extractJson } from './common/JsonTreeViewer'
 
 export interface PrompdExecutionRecord {
   id: string
@@ -41,6 +44,177 @@ interface PrompdSessionHistoryProps {
   onViewExecution?: (execution: PrompdExecutionRecord, index: number) => void
 }
 
+// ============================================================================
+// ResponseSection - Handles markdown/JSON toggle per execution
+// ============================================================================
+
+interface ResponseSectionProps {
+  exec: PrompdExecutionRecord
+  colors: Record<string, string>
+  viewMode?: 'rendered' | 'json'
+  onViewModeChange: (mode: 'rendered' | 'json') => void
+  onCopy: () => void
+}
+
+function ResponseSection({ exec, colors, viewMode, onViewModeChange, onCopy }: ResponseSectionProps) {
+  const jsonResult = useMemo(() => {
+    if (!exec.response) return null
+    return extractJson(exec.response)
+  }, [exec.response])
+
+  const hasJson = jsonResult !== null
+  // Default: JSON Explorer for full-JSON responses, Rendered for markdown with embedded JSON
+  const activeView = viewMode ?? (jsonResult?.isFullJson ? 'json' : 'rendered')
+
+  const toggleBtnStyle = (active: boolean): React.CSSProperties => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '3px 8px',
+    background: active ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+    border: active ? '1px solid rgba(99, 102, 241, 0.4)' : `1px solid ${colors.border}`,
+    borderRadius: '4px',
+    cursor: 'pointer',
+    color: active ? 'var(--prompd-accent, #a5b4fc)' : colors.textSecondary,
+    fontSize: '11px',
+    transition: 'all 0.15s',
+  })
+
+  return (
+    <div style={{ marginBottom: '16px' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '8px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '11px', color: colors.textMuted, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Response</span>
+          {hasJson && (
+            <div style={{ display: 'flex', gap: '2px' }}>
+              <button
+                onClick={() => onViewModeChange('rendered')}
+                style={toggleBtnStyle(activeView === 'rendered')}
+                title="Rendered markdown view"
+              >
+                <FileCode2 size={11} />
+                Rendered
+              </button>
+              <button
+                onClick={() => onViewModeChange('json')}
+                style={toggleBtnStyle(activeView === 'json')}
+                title="Interactive JSON explorer"
+              >
+                <Braces size={11} />
+                JSON Explorer
+              </button>
+            </div>
+          )}
+        </div>
+        <button
+          onClick={onCopy}
+          style={{
+            padding: '4px 8px',
+            background: 'rgba(255, 255, 255, 0.05)',
+            border: `1px solid ${colors.border}`,
+            borderRadius: '4px',
+            cursor: 'pointer',
+            color: colors.textSecondary,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            fontSize: '11px'
+          }}
+        >
+          <Copy size={12} /> Copy
+        </button>
+      </div>
+
+      {activeView === 'json' && jsonResult ? (
+        <div style={{
+          padding: '14px',
+          background: 'rgba(0, 0, 0, 0.2)',
+          border: `1px solid ${colors.border}`,
+          borderRadius: '6px',
+          overflow: 'auto',
+          maxHeight: '350px',
+          color: 'var(--foreground)'
+        }}>
+          <JsonTreeViewer
+            data={jsonResult.parsed}
+            rootPath="response"
+            defaultExpandDepth={2}
+          />
+        </div>
+      ) : (
+        <div style={{
+          padding: '14px',
+          background: 'rgba(0, 0, 0, 0.2)',
+          border: `1px solid ${colors.border}`,
+          borderRadius: '6px',
+          fontSize: '13px',
+          overflow: 'auto',
+          maxHeight: '250px',
+          lineHeight: '1.6',
+          color: 'var(--foreground)'
+        }} className="history-markdown">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              p: ({ children }) => (
+                <p style={{ margin: '0 0 8px', lineHeight: '1.5' }}>{children}</p>
+              ),
+              code: ({ className, children, ...props }: any) => {
+                const isInline = !className && !String(children).includes('\n')
+                return isInline ? (
+                  <code
+                    style={{
+                      background: 'rgba(99, 102, 241, 0.15)',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      fontFamily: 'monospace',
+                      color: 'var(--prompd-accent, #a5b4fc)'
+                    }}
+                    {...props}
+                  >
+                    {children}
+                  </code>
+                ) : (
+                  <code
+                    style={{
+                      fontSize: '12px',
+                      fontFamily: 'monospace',
+                      lineHeight: '1.4'
+                    }}
+                    className={className}
+                    {...props}
+                  >
+                    {children}
+                  </code>
+                )
+              },
+              pre: ({ children }) => (
+                <pre style={{
+                  margin: '8px 0',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: `1px solid ${colors.border}`,
+                  padding: '10px',
+                  borderRadius: '4px',
+                  overflowX: 'auto',
+                  lineHeight: '1.4'
+                }}>{children}</pre>
+              ),
+            }}
+          >
+            {exec.response}
+          </ReactMarkdown>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function PrompdSessionHistory({
   executions,
   theme = 'dark',
@@ -48,6 +222,11 @@ export function PrompdSessionHistory({
   onViewExecution
 }: PrompdSessionHistoryProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [viewModes, setViewModes] = useState<Record<string, 'rendered' | 'json'>>({})
+
+  const setViewMode = (id: string, mode: 'rendered' | 'json') => {
+    setViewModes(prev => ({ ...prev, [id]: mode }))
+  }
 
   const colors = {
     bg: 'var(--sidebar-bg)',
@@ -302,92 +481,13 @@ export function PrompdSessionHistory({
 
                     {/* Response */}
                     {exec.response && (
-                      <div style={{ marginBottom: '16px' }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          marginBottom: '8px'
-                        }}>
-                          <span style={{ fontSize: '11px', color: colors.textMuted, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Response</span>
-                          <button
-                            onClick={() => handleCopyResponse(exec)}
-                            style={{
-                              padding: '4px 8px',
-                              background: 'rgba(255, 255, 255, 0.05)',
-                              border: `1px solid ${colors.border}`,
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              color: colors.textSecondary,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              fontSize: '11px'
-                            }}
-                          >
-                            <Copy size={12} /> Copy
-                          </button>
-                        </div>
-                        <div style={{
-                          padding: '14px',
-                          background: 'rgba(0, 0, 0, 0.2)',
-                          border: `1px solid ${colors.border}`,
-                          borderRadius: '6px',
-                          fontSize: '13px',
-                          overflow: 'auto',
-                          maxHeight: '250px',
-                          lineHeight: '1.6',
-                          color: 'var(--foreground)'
-                        }} className="history-markdown">
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                              p: ({ children }) => (
-                                <p style={{ margin: '0 0 8px', lineHeight: '1.5' }}>{children}</p>
-                              ),
-                              code: ({ inline, children, ...props }: any) =>
-                                inline ? (
-                                  <code
-                                    style={{
-                                      background: 'rgba(99, 102, 241, 0.15)',
-                                      padding: '2px 6px',
-                                      borderRadius: '4px',
-                                      fontSize: '12px',
-                                      fontFamily: 'monospace',
-                                      color: 'var(--prompd-accent, #a5b4fc)'
-                                    }}
-                                    {...props}
-                                  >
-                                    {children}
-                                  </code>
-                                ) : (
-                                  <code
-                                    style={{
-                                      display: 'block',
-                                      background: 'rgba(0, 0, 0, 0.3)',
-                                      border: `1px solid ${colors.border}`,
-                                      padding: '10px',
-                                      borderRadius: '4px',
-                                      fontSize: '12px',
-                                      fontFamily: 'monospace',
-                                      overflowX: 'auto',
-                                      margin: '8px 0',
-                                      lineHeight: '1.4'
-                                    }}
-                                    {...props}
-                                  >
-                                    {children}
-                                  </code>
-                                ),
-                              pre: ({ children }) => (
-                                <pre style={{ margin: 0 }}>{children}</pre>
-                              ),
-                            }}
-                          >
-                            {exec.response}
-                          </ReactMarkdown>
-                        </div>
-                      </div>
+                      <ResponseSection
+                        exec={exec}
+                        colors={colors}
+                        viewMode={viewModes[exec.id]}
+                        onViewModeChange={(mode) => setViewMode(exec.id, mode)}
+                        onCopy={() => handleCopyResponse(exec)}
+                      />
                     )}
 
                     {/* Error */}

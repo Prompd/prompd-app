@@ -9,8 +9,10 @@
 import { memo } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import { Search, CheckCircle, XCircle, Loader2, Link2 } from 'lucide-react'
-import type { WebSearchNodeData, BaseNodeData } from '../../../services/workflowTypes'
+import type { WebSearchNodeData, BaseNodeData, WorkflowNodeType } from '../../../services/workflowTypes'
+import { DOCKABLE_HANDLES } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
+import { DockedNodePreview, useDockedNodes } from './DockedNodePreview'
 import { getNodeColor } from '../nodeColors'
 import { NodeExecutionFooter } from './NodeExecutionFooter'
 
@@ -29,6 +31,15 @@ export const WebSearchNode = memo(({ id, data, selected }: WebSearchNodeProps) =
   const connections = useWorkflowStore(state => state.connections)
   const nodeState = executionState?.nodeStates[id]
   const nodeData = data as WebSearchNodeData
+
+  // Docking support for checkpoint handle
+  const dockedToCheckpoint = useDockedNodes(id, 'onCheckpoint')
+  const checkpointHandleConfig = DOCKABLE_HANDLES.find(
+    h => h.nodeType === 'web-search' && h.handleId === 'onCheckpoint'
+  )
+  const dockingState = useWorkflowStore(state => state.dockingState)
+  const isCheckpointDockTarget = dockingState?.hoveredDockTarget?.nodeId === id &&
+    dockingState?.hoveredDockTarget?.handleId === 'onCheckpoint'
 
   // Node color from central definition
   const nodeColor = getNodeColor('web-search')
@@ -291,6 +302,36 @@ export const WebSearchNode = memo(({ id, data, selected }: WebSearchNodeProps) =
           top: '50%',
         }}
       />
+
+      {/* onCheckpoint Handle - yellow, for checkpoint/callback docking (bottom) */}
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="onCheckpoint"
+        style={{
+          width: isCheckpointDockTarget ? 16 : 12,
+          height: isCheckpointDockTarget ? 16 : 12,
+          background: 'var(--node-amber, #f59e0b)',
+          border: '2px solid var(--panel)',
+          left: '50%',
+          boxShadow: isCheckpointDockTarget ? '0 0 0 4px color-mix(in srgb, var(--node-amber) 50%, transparent), 0 0 12px var(--node-amber)' : undefined,
+          transition: 'width 0.15s, height 0.15s, box-shadow 0.15s',
+        }}
+        title="Checkpoint events (connect to Checkpoint or Callback node)"
+      />
+
+      {/* Render docked nodes near checkpoint handle */}
+      {checkpointHandleConfig && dockedToCheckpoint.map((dockedNode, index) => (
+        <DockedNodePreview
+          key={dockedNode.id}
+          dockedNodeId={dockedNode.id}
+          dockedNodeType={dockedNode.type as WorkflowNodeType}
+          dockedNodeLabel={(dockedNode.data as BaseNodeData).label}
+          handleConfig={{ side: 'bottom', topPercent: 50 }}
+          targetNodeCollapsed={true}
+          index={index}
+        />
+      ))}
     </div>
   )
 })

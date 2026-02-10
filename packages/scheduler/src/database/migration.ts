@@ -188,7 +188,7 @@ function migrateSchedule(db: Database.Database, schedule: ScheduleRecord, result
     schedule.workflowId,
     packagePath,
     packageHash,
-    workflow.metadata?.version || '1.0.0',
+    workflow.version || '1.0.0',
     schedule.enabled ? 'enabled' : 'disabled',
     schedule.createdAt,
     JSON.stringify(workflow.metadata || {}),

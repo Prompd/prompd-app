@@ -10,6 +10,7 @@ import { memo, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { X, ArrowDownLeft, ArrowUpRight } from 'lucide-react'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
+import { JsonTreeViewer, tryParseJsonValue } from '../../common/JsonTreeViewer'
 
 interface NodeInspectModalProps {
   nodeId: string
@@ -163,22 +164,40 @@ export const NodeInspectModal = memo(({ nodeId, onClose }: NodeInspectModalProps
                       <span style={{ opacity: 0.7 }}> ({input.sourceHandle})</span>
                     )}
                   </div>
-                  <pre style={{
-                    padding: '8px 12px',
-                    background: 'var(--bg)',
-                    borderRadius: '4px',
-                    fontSize: '11px',
-                    color: 'var(--text)',
-                    fontFamily: 'monospace',
-                    margin: 0,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    maxHeight: '200px',
-                    overflow: 'auto',
-                    border: '1px solid var(--border)',
-                  }}>
-                    {formatValue(input.value)}
-                  </pre>
+                  {(() => { const parsed = tryParseJsonValue(input.value); return parsed !== null ? (
+                    <div style={{
+                      padding: '8px 12px',
+                      background: 'var(--bg)',
+                      borderRadius: '4px',
+                      maxHeight: '200px',
+                      overflow: 'auto',
+                      border: '1px solid var(--border)',
+                    }}>
+                      <JsonTreeViewer
+                        data={parsed}
+                        rootPath={`${input.sourceId}.output`}
+                        defaultExpandDepth={2}
+                        maxStringPreview={60}
+                      />
+                    </div>
+                  ) : (
+                    <pre style={{
+                      padding: '8px 12px',
+                      background: 'var(--bg)',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      color: 'var(--text)',
+                      fontFamily: 'monospace',
+                      margin: 0,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      maxHeight: '200px',
+                      overflow: 'auto',
+                      border: '1px solid var(--border)',
+                    }}>
+                      {formatValue(input.value)}
+                    </pre>
+                  ) })()}
                 </div>
               ))
             )}
@@ -218,22 +237,40 @@ export const NodeInspectModal = memo(({ nodeId, onClose }: NodeInspectModalProps
                 {error}
               </pre>
             ) : output !== undefined ? (
-              <pre style={{
-                padding: '8px 12px',
-                background: 'var(--bg)',
-                borderRadius: '4px',
-                fontSize: '11px',
-                color: 'var(--text)',
-                fontFamily: 'monospace',
-                margin: 0,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                maxHeight: '300px',
-                overflow: 'auto',
-                border: '1px solid var(--border)',
-              }}>
-                {formatValue(output)}
-              </pre>
+              (() => { const parsed = tryParseJsonValue(output); return parsed !== null ? (
+                <div style={{
+                  padding: '8px 12px',
+                  background: 'var(--bg)',
+                  borderRadius: '4px',
+                  maxHeight: '300px',
+                  overflow: 'auto',
+                  border: '1px solid var(--border)',
+                }}>
+                  <JsonTreeViewer
+                    data={parsed}
+                    rootPath={`${nodeId}.output`}
+                    defaultExpandDepth={2}
+                    maxStringPreview={80}
+                  />
+                </div>
+              ) : (
+                <pre style={{
+                  padding: '8px 12px',
+                  background: 'var(--bg)',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  color: 'var(--text)',
+                  fontFamily: 'monospace',
+                  margin: 0,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  maxHeight: '300px',
+                  overflow: 'auto',
+                  border: '1px solid var(--border)',
+                }}>
+                  {formatValue(output)}
+                </pre>
+              ) })()
             ) : (
               <div style={{
                 padding: '8px 12px',

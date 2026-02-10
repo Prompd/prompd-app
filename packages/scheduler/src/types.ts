@@ -5,7 +5,6 @@
 export interface WorkflowMetadata {
   id?: string
   name?: string
-  version?: string
   [key: string]: unknown
 }
 
@@ -17,6 +16,7 @@ export interface WorkflowNode {
 }
 
 export interface ParsedWorkflow {
+  version?: string
   nodes?: WorkflowNode[]
   metadata?: WorkflowMetadata
   parameters?: WorkflowParameter[]

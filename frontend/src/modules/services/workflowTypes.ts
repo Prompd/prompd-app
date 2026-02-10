@@ -23,7 +23,6 @@ export interface WorkflowMetadata {
   name: string
   description?: string
   author?: string
-  version?: string
   tags?: string[]
 }
 
@@ -175,6 +174,9 @@ export const DOCKABLE_HANDLES: Array<{
 
   // Transformer node - accepts callback for transform logging
   { nodeType: 'transformer', handleId: 'onTransform', position: { side: 'bottom', topPercent: 100 }, acceptsTypes: ['callback'] },
+
+  // Web Search node - accepts checkpoint/callback for search event logging
+  { nodeType: 'web-search', handleId: 'onCheckpoint', position: { side: 'bottom', topPercent: 100 }, acceptsTypes: ['callback', 'checkpoint'] },
 
   // Tool Call Router node - accepts tool nodes for docking
   { nodeType: 'tool-call-router', handleId: 'ai-input', position: { side: 'left', topPercent: 35 }, acceptsTypes: ['tool'] },
@@ -817,6 +819,15 @@ export interface CallbackNodeData extends BaseNodeData {
   promptCaptureCompiled?: boolean
   /** Include token usage stats */
   promptCaptureTokens?: boolean
+
+  // === Web Search-specific options (shown when source is 'web-search') ===
+
+  /** Include the search query that was executed */
+  webSearchCaptureQuery?: boolean
+  /** Include the provider used and result count */
+  webSearchCaptureProvider?: boolean
+  /** Include the full search results returned */
+  webSearchCaptureResults?: boolean
 
   // ============================================================================
   // Legacy/Deprecated (for backwards compatibility)

@@ -291,10 +291,14 @@ async function packageWorkflow(workflowPath, options = {}, getPrompdCli) {
     }
 
     // Build the packaging prompd.json with ALL traced files
+    // Prefer: explicit options.name > workflow metadata name > workflow filename
+    // Never fall back to workspace prompd.json name (that's the package name, not the workflow)
+    const workflowMetadataName = workflow.metadata?.name || workflow.name
+    const resolvedName = options.name || workflowMetadataName || path.basename(workflowPath, '.pdflow')
     const packagingPrompdJson = {
-      name: options.name || existingPrompdJson?.name || path.basename(workflowPath, '.pdflow'),
+      name: resolvedName,
       version: options.version || existingPrompdJson?.version || '1.0.0',
-      description: existingPrompdJson?.description || `Deployed workflow: ${options.name || path.basename(workflowPath, '.pdflow')}`,
+      description: workflow.metadata?.description || existingPrompdJson?.description || `Deployed workflow: ${resolvedName}`,
       type: existingPrompdJson?.type || 'workflow',
       main: workflowRelativePath,
       files: referencedFiles,

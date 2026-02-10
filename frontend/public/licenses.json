@@ -97,7 +97,7 @@
     "publisher": "Prompd LLC",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend"
   },
-  "@prompd/cli@0.4.8": {
+  "@prompd/cli@0.4.9": {
     "licenses": "MIT",
     "publisher": "Logikbug",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli",
