@@ -37,7 +37,7 @@ backend/
 ```
 
 ## Environment Variables
-- `PORT` - Server port (default: 3001)
+- `PORT` - Server port (default: 3010)
 - `MONGODB_URI` - MongoDB connection string
 - `JWT_SECRET` - JWT signing secret
 - `PROMPD_REGISTRY_URL` - Prompd registry URL (shared with @prompd/cli)

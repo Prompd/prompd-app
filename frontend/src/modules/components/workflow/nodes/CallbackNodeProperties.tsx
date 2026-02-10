@@ -3,7 +3,7 @@
  */
 
 import { useMemo } from 'react'
-import { ShieldCheck, Webhook, Bot, RotateCcw, MessageSquare, Activity } from 'lucide-react'
+import { ShieldCheck, Webhook, Bot, RotateCcw, MessageSquare, Activity, Search } from 'lucide-react'
 import type { CallbackNodeData, AgentCheckpointEventType } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
@@ -36,6 +36,7 @@ export function CallbackNodeProperties({ data, onChange, nodeId }: CallbackNodeP
   const isConnectedToPrompt = sourceNodeType === 'prompt'
   const isConnectedToGuardrail = sourceNodeType === 'guardrail'
   const isConnectedToChatAgent = sourceNodeType === 'chat-agent'
+  const isConnectedToWebSearch = sourceNodeType === 'web-search'
 
   // Checkbox style helper
   const checkboxRowStyle = {
@@ -481,6 +482,55 @@ export function CallbackNodeProperties({ data, onChange, nodeId }: CallbackNodeP
         </div>
       )}
 
+      {/* Pre-Node Aware: Web Search options */}
+      {isConnectedToWebSearch && (
+        <div style={{
+          marginTop: '8px',
+          padding: '12px',
+          background: 'color-mix(in srgb, var(--node-cyan) 10%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--node-cyan) 30%, transparent)',
+          borderRadius: '6px',
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            marginBottom: '8px',
+          }}>
+            <Search style={{ width: 14, height: 14, color: 'var(--node-cyan)' }} />
+            <label style={{ ...labelStyle, margin: 0, color: 'var(--node-cyan)' }}>
+              Web Search Data Capture
+            </label>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={data.webSearchCaptureQuery ?? false}
+                onChange={(e) => onChange('webSearchCaptureQuery', e.target.checked)}
+              />
+              Search query executed
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={data.webSearchCaptureProvider ?? false}
+                onChange={(e) => onChange('webSearchCaptureProvider', e.target.checked)}
+              />
+              Provider & result count
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={data.webSearchCaptureResults ?? false}
+                onChange={(e) => onChange('webSearchCaptureResults', e.target.checked)}
+              />
+              Full search results
+            </label>
+          </div>
+        </div>
+      )}
+
       {/* Event Subscription - shown when connected to ANY node's onCheckpoint handle */}
       {isConnectedToCheckpointHandle && (
         <div style={{
@@ -676,6 +726,59 @@ export function CallbackNodeProperties({ data, onChange, nodeId }: CallbackNodeP
               { value: 'iteration', label: 'Before Execution', desc: 'Before prompt is sent to LLM' },
               { value: 'error', label: 'Errors', desc: 'When execution fails' },
               { value: 'complete', label: 'Complete', desc: 'LLM response received' },
+            ].map(eventType => {
+              const currentListenTo = data.listenTo || []
+              const isAllEvents = currentListenTo.length === 0
+              const isChecked = isAllEvents || currentListenTo.includes(eventType.value as AgentCheckpointEventType)
+
+              return (
+                <label
+                  key={eventType.value}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={(e) => {
+                      const allTypes = ['iteration', 'error', 'complete']
+                      let newListenTo: AgentCheckpointEventType[]
+
+                      if (isAllEvents) {
+                        newListenTo = e.target.checked
+                          ? []
+                          : allTypes.filter(t => t !== eventType.value) as AgentCheckpointEventType[]
+                      } else {
+                        if (e.target.checked) {
+                          newListenTo = [...currentListenTo, eventType.value as AgentCheckpointEventType]
+                          if (newListenTo.length === allTypes.length) newListenTo = []
+                        } else {
+                          newListenTo = currentListenTo.filter(t => t !== eventType.value)
+                        }
+                      }
+
+                      onChange('listenTo', newListenTo.length > 0 ? newListenTo : undefined)
+                    }}
+                    style={{ marginTop: '2px' }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 500 }}>{eventType.label}</div>
+                    <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{eventType.desc}</div>
+                  </div>
+                </label>
+              )
+            })}
+
+            {/* Web Search Node Events */}
+            {sourceNodeType === 'web-search' && [
+              { value: 'iteration', label: 'Before Search', desc: 'Before search request is sent' },
+              { value: 'error', label: 'Errors', desc: 'When search fails' },
+              { value: 'complete', label: 'Complete', desc: 'Search results received' },
             ].map(eventType => {
               const currentListenTo = data.listenTo || []
               const isAllEvents = currentListenTo.length === 0

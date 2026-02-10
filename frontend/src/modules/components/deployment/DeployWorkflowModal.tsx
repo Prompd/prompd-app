@@ -9,8 +9,9 @@
  */
 
 import { useState, useEffect } from 'react'
-import { X, Package, FileText, Link, AlertCircle, CheckCircle, Loader, Download, FolderOpen } from 'lucide-react'
-import type { ParsedWorkflow } from '@/modules/services/workflowParser'
+import { X, Package, FileText, Link, AlertCircle, CheckCircle, Loader, Download, FolderOpen, Info } from 'lucide-react'
+import type { WorkflowFile } from '@/modules/services/workflowTypes'
+import type { DeploymentInfo } from '../../../electron'
 import { useEditorStore } from '../../../stores/editorStore'
 import { useUIStore } from '../../../stores/uiStore'
 import VersionInput from '../VersionInput'
@@ -19,7 +20,7 @@ import './DeployWorkflowModal.css'
 interface DeployWorkflowModalProps {
   open: boolean
   onClose: () => void
-  workflow: ParsedWorkflow | null
+  workflow: WorkflowFile | null
   workflowPath: string | null
 }
 
@@ -50,7 +51,9 @@ export function DeployWorkflowModal({ open, onClose, workflow, workflowPath }: D
   const [analysis, setAnalysis] = useState<WorkflowAnalysis | null>(null)
   const [deploymentName, setDeploymentName] = useState('')
   const [version, setVersion] = useState('1.0.0')
+  const [description, setDescription] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [existingDeployment, setExistingDeployment] = useState<DeploymentInfo | null>(null)
 
   // Export tab states
   const [exporting, setExporting] = useState(false)
@@ -72,12 +75,51 @@ export function DeployWorkflowModal({ open, onClose, workflow, workflowPath }: D
   // Get workspace path for resolving workspace-relative file paths
   const workspacePath = useEditorStore(state => state.explorerDirPath)
 
-  // Analyze workflow when modal opens
+  // Analyze workflow and look up existing deployment when modal opens
   useEffect(() => {
     if (open && workflow) {
       analyzeWorkflow()
+      lookupExistingDeployment()
+    }
+    if (!open) {
+      setExistingDeployment(null)
     }
   }, [open, workflow])
+
+  const lookupExistingDeployment = async () => {
+    if (!workflow) return
+    try {
+      // Try to find existing deployment by workflow ID first
+      const workflowId = workflow.metadata?.id
+      if (workflowId && window.electronAPI?.deployment?.list) {
+        const result = await window.electronAPI.deployment.list({ workflowId })
+        if (result?.success && result.deployments && result.deployments.length > 0) {
+          // Find the active (non-deleted) deployment
+          const active = result.deployments.find(d => d.status !== 'deleted')
+          if (active) {
+            setExistingDeployment(active)
+            return
+          }
+        }
+      }
+
+      // Fallback: list all and match by name
+      if (window.electronAPI?.deployment?.list) {
+        const result = await window.electronAPI.deployment.list()
+        if (result?.success && result.deployments) {
+          const workflowName = workflow.metadata?.name
+          if (workflowName) {
+            const match = result.deployments.find(d => d.name === workflowName && d.status !== 'deleted')
+            if (match) {
+              setExistingDeployment(match)
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[DeployWorkflowModal] Failed to look up existing deployment:', err)
+    }
+  }
 
   const analyzeWorkflow = async () => {
     if (!workflow) return
@@ -179,9 +221,12 @@ export function DeployWorkflowModal({ open, onClose, workflow, workflowPath }: D
       }
       setDeploymentName(defaultName)
 
-      // Set version from workflow metadata
-      const defaultVersion = workflow.metadata?.version || '1.0.0'
+      // Set version from workflow (top-level field)
+      const defaultVersion = workflow.version || '1.0.0'
       setVersion(defaultVersion)
+
+      // Set description from workflow metadata
+      setDescription(workflow.metadata?.description || '')
 
       console.log('[DeployWorkflowModal] Workflow analysis:', {
         hasMetadata: !!workflow.metadata,
@@ -241,13 +286,13 @@ export function DeployWorkflowModal({ open, onClose, workflow, workflowPath }: D
             const fileResult = await window.electronAPI.readFile(workflowPath)
             if (fileResult.success && fileResult.content) {
               const wf = JSON.parse(fileResult.content)
-              const versionChanged = wf.version !== version ||
-                (wf.metadata && wf.metadata.version !== version)
+              const versionChanged = wf.version !== version
 
               if (versionChanged) {
                 wf.version = version
+                // Clean up legacy metadata.version if present
                 if (wf.metadata) {
-                  wf.metadata.version = version
+                  delete wf.metadata.version
                 }
                 const updatedContent = JSON.stringify(wf, null, 2)
 
@@ -455,6 +500,66 @@ export function DeployWorkflowModal({ open, onClose, workflow, workflowPath }: D
           </button>
         </div>
 
+        {/* Shared workflow info — above tabs, shared between Deploy and Export */}
+        <div style={{
+          padding: '16px 24px',
+          borderBottom: '1px solid var(--border)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+        }}>
+          {/* Name + Version row */}
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+            <div style={{ flex: '1 1 0', minWidth: 0 }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                Name
+              </label>
+              <input
+                type="text"
+                value={deploymentName}
+                onChange={(e) => setDeploymentName(e.target.value)}
+                placeholder="Enter deployment name"
+                className="deploy-input"
+              />
+            </div>
+            <div style={{ flex: '0 0 200px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                Version
+              </label>
+              <VersionInput
+                value={version}
+                onChange={setVersion}
+                placeholder="1.0.0"
+                compact={true}
+                hideHelperText={true}
+                colors={{
+                  input: 'var(--panel-2)',
+                  border: 'var(--border)',
+                  text: 'var(--text)',
+                  textSecondary: 'var(--muted)',
+                  primary: 'var(--accent)',
+                  bgSecondary: 'var(--panel)'
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+              Description
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Brief description of this workflow"
+              className="deploy-input"
+              rows={2}
+              style={{ resize: 'vertical', fontFamily: 'inherit' }}
+            />
+          </div>
+        </div>
+
         <div className="deploy-tabs">
           <button
             className={`tab ${activeTab === 'deploy' ? 'active' : ''}`}
@@ -481,38 +586,58 @@ export function DeployWorkflowModal({ open, onClose, workflow, workflowPath }: D
               </div>
             ) : analysis ? (
             <>
+              {/* Existing deployment banner */}
+              {existingDeployment && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  color: 'var(--text-secondary)',
+                  marginBottom: '16px',
+                }}>
+                  <Info size={14} style={{ flexShrink: 0, color: 'var(--accent)' }} />
+                  <span>
+                    Existing deployment found:{' '}
+                    <span style={{ fontWeight: 600, color: 'var(--text)' }}>{existingDeployment.name}</span>
+                    {existingDeployment.version && (
+                      <span style={{ fontFamily: 'monospace', marginLeft: '6px', color: 'var(--accent)' }}>
+                        v{existingDeployment.version}
+                      </span>
+                    )}
+                    <span style={{
+                      marginLeft: '8px',
+                      padding: '1px 6px',
+                      borderRadius: '4px',
+                      fontSize: '10px',
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      background: existingDeployment.status === 'enabled'
+                        ? 'color-mix(in srgb, var(--success) 15%, transparent)'
+                        : existingDeployment.status === 'failed'
+                          ? 'color-mix(in srgb, var(--error) 15%, transparent)'
+                          : 'var(--panel-2)',
+                      color: existingDeployment.status === 'enabled'
+                        ? 'var(--success)'
+                        : existingDeployment.status === 'failed'
+                          ? 'var(--error)'
+                          : 'var(--muted)',
+                    }}>
+                      {existingDeployment.status}
+                    </span>
+                    {' '} — deploying will update this deployment
+                  </span>
+                </div>
+              )}
+
               {/* Workflow Info */}
               <section className="deploy-section">
-                <h3>Workflow Information</h3>
+                <h3>Deployment Details</h3>
                 <div className="deploy-info-grid">
-                  <div className="deploy-info-item">
-                    <label>Deployment Name</label>
-                    <input
-                      type="text"
-                      value={deploymentName}
-                      onChange={(e) => setDeploymentName(e.target.value)}
-                      placeholder="Enter deployment name"
-                      className="deploy-input"
-                    />
-                  </div>
-                  <div className="deploy-info-item">
-                    <label>Version</label>
-                    <VersionInput
-                      value={version}
-                      onChange={setVersion}
-                      placeholder="1.0.0"
-                      compact={true}
-                      hideHelperText={true}
-                      colors={{
-                        input: 'var(--panel-2)',
-                        border: 'var(--border)',
-                        text: 'var(--text)',
-                        textSecondary: 'var(--muted)',
-                        primary: 'var(--accent)',
-                        bgSecondary: 'var(--panel)'
-                      }}
-                    />
-                  </div>
                   <div className="deploy-info-item">
                     <label>Workflow File</label>
                     <div className="deploy-info-value">

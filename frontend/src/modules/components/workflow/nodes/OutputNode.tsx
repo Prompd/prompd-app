@@ -168,6 +168,7 @@ export const OutputNode = memo(({ id, data, selected }: OutputNodeProps) => {
         <OutputViewDialog
           output={output}
           nodeLabel={nodeData.label || 'Output'}
+          nodeId={id}
           onClose={() => setShowOutputDialog(false)}
         />
       )}

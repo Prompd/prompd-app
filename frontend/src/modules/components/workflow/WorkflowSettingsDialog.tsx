@@ -7,6 +7,7 @@
 import { useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { X, FileJson } from 'lucide-react'
+import VersionInput from '../VersionInput'
 
 interface WorkflowSettingsDialogProps {
   /** Current workflow name */
@@ -86,7 +87,6 @@ export function WorkflowSettingsDialog({
           width: '520px',
           maxWidth: '90vw',
           maxHeight: '90vh',
-          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
@@ -142,7 +142,7 @@ export function WorkflowSettingsDialog({
         <div
           style={{
             padding: '20px',
-            overflowY: 'auto',
+            overflow: 'visible',
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
@@ -256,19 +256,19 @@ export function WorkflowSettingsDialog({
             >
               Version
             </label>
-            <input
-              type="text"
+            <VersionInput
               value={editedVersion}
-              onChange={(e) => setEditedVersion(e.target.value)}
-              placeholder="1.0"
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                border: '1px solid var(--input-border)',
-                borderRadius: '6px',
-                background: 'var(--input-bg)',
-                color: 'var(--text)',
-                fontSize: '14px',
+              onChange={setEditedVersion}
+              placeholder="1.0.0"
+              compact={true}
+              hideHelperText={true}
+              colors={{
+                input: 'var(--input-bg)',
+                border: 'var(--input-border, var(--border))',
+                text: 'var(--text)',
+                textSecondary: 'var(--muted)',
+                primary: 'var(--accent)',
+                bgSecondary: 'var(--panel)',
               }}
             />
           </div>

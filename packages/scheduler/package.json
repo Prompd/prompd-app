@@ -20,7 +20,7 @@
   "author": "Prompd Team",
   "license": "MIT",
   "dependencies": {
-    "@prompd/cli": "file:../../../../Logikbug/prompd-cli/cli/npm",
+    "@prompd/cli": "^0.4.9",
     "adm-zip": "^0.5.10",
     "better-sqlite3": "^12.6.2",
     "chokidar": "^3.6.0",

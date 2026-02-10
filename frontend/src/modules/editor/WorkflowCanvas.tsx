@@ -859,18 +859,18 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
       // Parse current workflow JSON
       const workflow = JSON.parse(content)
 
-      // Update metadata
-      workflow.metadata = {
-        ...workflow.metadata,
-        name: settings.name,
-        description: settings.description,
+      // Ensure metadata object exists
+      if (!workflow.metadata) {
+        workflow.metadata = { id: `workflow-${Date.now()}` }
       }
 
-      // Update version (both top-level and metadata)
+      // Update metadata fields
+      workflow.metadata.name = settings.name
+      workflow.metadata.description = settings.description
+
+      // Version lives at top level only
       workflow.version = settings.version
-      if (workflow.metadata) {
-        workflow.metadata.version = settings.version
-      }
+      delete workflow.metadata.version
 
       // Update timestamp
       workflow.metadata.modified = Date.now()
@@ -1668,9 +1668,9 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
       {/* Workflow Settings Dialog */}
       {showWorkflowSettings && workflowFile && (
         <WorkflowSettingsDialog
-          name={workflowFile.metadata?.name || 'New Workflow'}
-          description={workflowFile.metadata?.description || ''}
-          version={workflowFile.version || '1.0'}
+          name={workflowFile.metadata?.name || (workflowFile as unknown as { name?: string }).name || 'New Workflow'}
+          description={workflowFile.metadata?.description || (workflowFile as unknown as { description?: string }).description || ''}
+          version={workflowFile.version || '1.0.0'}
           workflowId={workflowFile.metadata?.id || 'unknown'}
           onSave={handleSaveWorkflowSettings}
           onClose={() => setShowWorkflowSettings(false)}

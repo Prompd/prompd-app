@@ -5396,8 +5396,7 @@ Write your prompt here...
             console.log('[App.tsx] Parsed workflow for deployment:', {
               hasMetadata: !!parsed.metadata,
               metadataName: parsed.metadata?.name,
-              metadataVersion: parsed.metadata?.version,
-              name: parsed.name,
+              version: parsed.version,
               workflowPath: activeTab?.filePath
             })
             return parsed

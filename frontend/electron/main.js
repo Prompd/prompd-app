@@ -1135,7 +1135,7 @@ app.whenReady().then(() => {
 app.on('before-quit', async () => {
   trayManager.setQuitting(true)
   if (deploymentService) {
-    await deploymentService.stop()
+    deploymentService.close()
   }
 })
 
@@ -2762,8 +2762,8 @@ ipcMain.handle('slashCommand:execute', async (_event, commandId, args, context) 
             explanation.push(`**Description:** ${parsed.metadata.description}\n`)
           }
 
-          if (parsed.metadata?.version) {
-            explanation.push(`**Version:** ${parsed.metadata.version}`)
+          if (parsed.version) {
+            explanation.push(`**Version:** ${parsed.version}`)
           }
 
           if (parsed.metadata?.parameters?.length > 0) {
@@ -5003,6 +5003,21 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
                 return { success: false, error: 'Missing search query' }
               }
 
+              // Emit 'before search' checkpoint event for docked checkpoint nodes
+              sender.send('workflow:event', {
+                type: 'checkpoint-data',
+                executionId,
+                nodeId: request.nodeId,
+                data: {
+                  sourceNodeType: 'web-search',
+                  eventType: 'iteration',
+                  query,
+                  resultCount: resultCount || 5,
+                  provider: connectionConfig?.provider || 'langsearch',
+                  timestamp: Date.now()
+                }
+              })
+
               // Resolve connection config from workflow connections if not directly provided
               // Normalize legacy providers (e.g. 'searxng') to the default
               const knownProviders = ['langsearch', 'brave', 'tavily']
@@ -5122,9 +5137,23 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
 
                         // Check HTTP status before parsing
                         if (res.statusCode < 200 || res.statusCode >= 300) {
+                          const httpError = `Search provider returned HTTP ${res.statusCode}: ${responseData.slice(0, 200)}`
+                          sender.send('workflow:event', {
+                            type: 'checkpoint-data',
+                            executionId,
+                            nodeId: request.nodeId,
+                            data: {
+                              sourceNodeType: 'web-search',
+                              eventType: 'error',
+                              query,
+                              provider,
+                              error: httpError,
+                              timestamp: Date.now()
+                            }
+                          })
                           resolve({
                             success: false,
-                            error: `Search provider returned HTTP ${res.statusCode}: ${responseData.slice(0, 200)}`,
+                            error: httpError,
                             result: null
                           })
                           return
@@ -5156,11 +5185,42 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
                           }))
                         }
 
+                        // Emit 'complete' checkpoint event with search results
+                        sender.send('workflow:event', {
+                          type: 'checkpoint-data',
+                          executionId,
+                          nodeId: request.nodeId,
+                          data: {
+                            sourceNodeType: 'web-search',
+                            eventType: 'complete',
+                            query,
+                            provider,
+                            resultCount: results.length,
+                            results,
+                            timestamp: Date.now()
+                          }
+                        })
+
                         resolve({
                           success: true,
                           result: results
                         })
                       } catch (parseErr) {
+                        // Emit 'error' checkpoint event for parse failures
+                        sender.send('workflow:event', {
+                          type: 'checkpoint-data',
+                          executionId,
+                          nodeId: request.nodeId,
+                          data: {
+                            sourceNodeType: 'web-search',
+                            eventType: 'error',
+                            query,
+                            provider,
+                            error: parseErr.message,
+                            timestamp: Date.now()
+                          }
+                        })
+
                         resolve({
                           success: false,
                           error: `Failed to parse search response: ${parseErr.message}`,
@@ -5172,6 +5232,22 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
 
                   req.on('error', (err) => {
                     console.error('[Workflow Executor] Web search error:', err)
+
+                    // Emit 'error' checkpoint event for request failures
+                    sender.send('workflow:event', {
+                      type: 'checkpoint-data',
+                      executionId,
+                      nodeId: request.nodeId,
+                      data: {
+                        sourceNodeType: 'web-search',
+                        eventType: 'error',
+                        query,
+                        provider,
+                        error: err.message,
+                        timestamp: Date.now()
+                      }
+                    })
+
                     resolve({
                       success: false,
                       error: err.message,

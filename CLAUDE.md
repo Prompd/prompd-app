@@ -43,7 +43,7 @@ npm run dev:backend           # Start backend API server (:3010)
 npm run build                 # Build scheduler + react + frontend (production)
 npm run build:react           # Build only @prompd/react package
 npm run build:scheduler       # Build only @prompd/scheduler package
-npm run electron:dev          # Launch Electron app (Vite must be running)
+npm run electron:dev          # Launch Electron app (auto-starts Vite via concurrently)
 npm run electron:build:win    # Windows installer (NSIS + portable)
 ```
 
@@ -51,7 +51,7 @@ npm run electron:build:win    # Windows installer (NSIS + portable)
 ```bash
 cd frontend
 npm run dev                    # Vite dev server on :5173
-npm run electron:dev           # Electron with hot reload (starts Vite automatically)
+npm run electron:dev           # Electron with hot reload (auto-starts Vite via concurrently + wait-on)
 npm run build                  # Production build (license generation + tsc + vite)
 npx tsc --noEmit               # TypeScript validation only
 npm run clean                  # Remove dist/ and dist-electron/
@@ -110,10 +110,10 @@ prompd.app/
 
 ### Critical Dependencies
 
-- **`@prompd/cli@^0.4.7`** - Prompt compiler (Node.js only)
+- **`@prompd/cli`** - Prompt compiler (Node.js only). All packages use local `file:` symlink to `../../../Logikbug/prompd-cli/cli/npm`.
   - **Main export** (`@prompd/cli`): Node.js only — accessed via Electron IPC bridge, excluded from Vite bundling, unpacked from asar at runtime
   - **Subpath exports** (`@prompd/cli/parser`, `/types`, `/validator`): Browser-compatible, can be bundled by Vite if needed
-- **`@prompd/react@^0.2.0`** - Chat UI (local via `file:../packages/react`) - must build before frontend. Dual ESM + CJS output.
+- **`@prompd/react@0.2.0`** - Chat UI (local via `file:../packages/react`) - must build before frontend. Dual ESM + CJS output.
 - **`@prompd/scheduler@0.1.0`** - Deployment service (local via `file:../packages/scheduler`). **CommonJS output only** — consumers must use `require()` or Node.js CJS interop.
 
 ### Execution Model - Local-First
@@ -282,7 +282,7 @@ Key rules:
 - **`@prompd/react` not found**: Build `packages/react` first
 - **`@prompd/cli` compilation failing**: It's Node.js only - uses IPC in Electron, excluded from Vite bundling
 - **Import `@/...` resolution errors**: Ensure `vite.config.ts` has the `@` path alias configured
-- **Electron not starting**: Vite dev server must be running first on `:5173`
+- **Electron not starting**: Use `npm run electron:dev` from frontend/ (auto-starts Vite). If running Electron manually, Vite must already be serving on `:5173`.
 - **IPC not available**: Guard with `window.electronAPI?.isElectron` check
 - **Icons not showing in build**: Run `npm run generate-icons` before `electron:build`
 - **Windows CRLF breaks regex parsing**: When parsing `.prmd` frontmatter with regex (e.g., `/^---\n([\s\S]*?)\n---/`), always normalize first: `content.replace(/\r\n/g, '\n')`. The `PrompdParser.parse()` from `@prompd/cli` handles this, but manual regex does not.

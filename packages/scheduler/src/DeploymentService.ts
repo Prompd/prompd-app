@@ -294,7 +294,7 @@ export class DeploymentService {
         if (existingDeployment) {
           this.db.deployments.update(deploymentId, {
             name: options.name || workflow.metadata?.name || existingDeployment.name,
-            version: manifest?.version || workflow.metadata?.version || '1.0.0',
+            version: manifest?.version || workflow.version || '1.0.0',
             status: options.enabled !== false ? 'enabled' : 'disabled',
             metadata: workflow.metadata || {}
           })
@@ -306,7 +306,7 @@ export class DeploymentService {
           workflowId,
           packagePath: deploymentDir,
           packageHash,
-          version: manifest?.version || workflow.metadata?.version || '1.0.0',
+          version: manifest?.version || workflow.version || '1.0.0',
           status: options.enabled !== false ? 'enabled' : 'disabled',
           metadata: workflow.metadata || {},
           createdBy: options.createdBy || 'user'

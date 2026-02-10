@@ -29,6 +29,7 @@ import { useEditorStore } from '../../../stores/editorStore'
 import type { WorkflowResult } from '../../services/workflowTypes'
 import type { CheckpointEvent, ExecutionTrace, TraceEntry } from '../../services/workflowExecutor'
 import { getTraceSummary } from '../../services/workflowExecutor'
+import { JsonTreeViewer, tryParseJsonValue } from '../common/JsonTreeViewer'
 
 /** Captured prompt info for debugging */
 export interface PromptSentInfo {
@@ -256,21 +257,36 @@ export function WorkflowExecutionPanel({
                       )}
                     </button>
                   </div>
-                  <pre style={{
-                    margin: 0,
-                    padding: '12px',
-                    background: 'var(--panel-2)',
-                    borderRadius: '6px',
-                    fontSize: '11px',
-                    lineHeight: 1.5,
-                    color: 'var(--text-secondary)',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word'
-                  }}>
-                    {typeof result.output === 'string'
-                      ? result.output
-                      : JSON.stringify(result.output, null, 2)}
-                  </pre>
+                  {(() => { const parsed = tryParseJsonValue(result.output); return parsed !== null ? (
+                    <div style={{
+                      padding: '12px',
+                      background: 'var(--panel-2)',
+                      borderRadius: '6px',
+                    }}>
+                      <JsonTreeViewer
+                        data={parsed}
+                        rootPath="output"
+                        defaultExpandDepth={3}
+                        maxStringPreview={80}
+                      />
+                    </div>
+                  ) : (
+                    <pre style={{
+                      margin: 0,
+                      padding: '12px',
+                      background: 'var(--panel-2)',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      lineHeight: 1.5,
+                      color: 'var(--text-secondary)',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word'
+                    }}>
+                      {typeof result.output === 'string'
+                        ? result.output
+                        : JSON.stringify(result.output, null, 2)}
+                    </pre>
+                  ) })()}
                   {result.errors && result.errors.length > 0 && (
                     <div style={{
                       marginTop: '12px',
@@ -333,9 +349,14 @@ export function WorkflowExecutionPanel({
                           <summary style={{ fontSize: '11px', color: 'var(--muted)', cursor: 'pointer' }}>
                             Parameters ({Object.keys(prompt.params).length})
                           </summary>
-                          <pre style={{ marginTop: '6px', fontSize: '10px' }}>
-                            {JSON.stringify(prompt.params, null, 2)}
-                          </pre>
+                          <div style={{ marginTop: '6px' }}>
+                            <JsonTreeViewer
+                              data={prompt.params}
+                              rootPath={`${prompt.nodeId}.params`}
+                              defaultExpandDepth={2}
+                              maxStringPreview={60}
+                            />
+                          </div>
                         </details>
                       )}
                     </div>
@@ -529,18 +550,21 @@ export function WorkflowExecutionPanel({
                               }}>
                                 Trace Data:
                               </div>
-                              <pre style={{
-                                margin: 0,
+                              <div style={{
                                 padding: '10px',
                                 background: 'var(--input-bg)',
                                 borderRadius: '4px',
-                                fontSize: '11px',
-                                color: 'var(--text)',
-                                fontFamily: 'monospace',
-                                lineHeight: '1.5',
                               }}>
-                                {JSON.stringify(entry.data, null, 2)}
-                              </pre>
+                                <JsonTreeViewer
+                                  data={entry.data}
+                                  rootPath={entry.nodeId
+                                    ? `${entry.nodeId}.${entry.type === 'node_complete' ? 'output' : entry.type === 'node_error' ? 'error' : 'data'}`
+                                    : 'data'
+                                  }
+                                  defaultExpandDepth={2}
+                                  maxStringPreview={60}
+                                />
+                              </div>
                             </div>
                           ) : null}
                         </div>
@@ -781,18 +805,34 @@ function CheckpointCard({ checkpoint }: CheckpointCardProps) {
             <ChevronRight size={12} />
             Previous Output
           </summary>
-          <pre style={{
-            margin: '8px 0 0 0',
-            padding: '12px',
-            background: 'var(--panel)',
-            borderRadius: '8px',
-            fontSize: '10px',
-            color: 'var(--text-secondary)'
-          }}>
-            {typeof checkpoint.previousOutput === 'string'
-              ? checkpoint.previousOutput
-              : JSON.stringify(checkpoint.previousOutput, null, 2)}
-          </pre>
+          {(() => { const parsed = tryParseJsonValue(checkpoint.previousOutput); return parsed !== null ? (
+            <div style={{
+              margin: '8px 0 0 0',
+              padding: '12px',
+              background: 'var(--panel)',
+              borderRadius: '8px',
+            }}>
+              <JsonTreeViewer
+                data={parsed}
+                rootPath="previousOutput"
+                defaultExpandDepth={2}
+                maxStringPreview={60}
+              />
+            </div>
+          ) : (
+            <pre style={{
+              margin: '8px 0 0 0',
+              padding: '12px',
+              background: 'var(--panel)',
+              borderRadius: '8px',
+              fontSize: '10px',
+              color: 'var(--text-secondary)'
+            }}>
+              {typeof checkpoint.previousOutput === 'string'
+                ? checkpoint.previousOutput
+                : String(checkpoint.previousOutput)}
+            </pre>
+          ) })()}
         </details>
       )}
     </div>

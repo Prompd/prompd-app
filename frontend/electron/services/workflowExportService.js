@@ -59,6 +59,10 @@ class WorkflowExportService {
     const { workflow, workflowPath, outputDir } = options
 
     try {
+      // Derive workflow name from metadata (not the workspace package name)
+      const workflowName = workflow.metadata?.name || workflow.name || path.basename(workflowPath, '.pdflow')
+      options.name = workflowName
+
       // Detect providers used in workflow
       const { providers, hasOllama } = this.detectProviders(workflow)
 
@@ -189,7 +193,7 @@ const workflowPath = join(__dirname, '${workflowRelativePath}')
 let workflowData
 try {
   workflowData = JSON.parse(readFileSync(workflowPath, 'utf-8'))
-  console.log(\`Loaded workflow: \${workflowData.name || 'Unnamed'}\`)
+  console.log(\`Loaded workflow: \${workflowData.metadata?.name || workflowData.name || 'Unnamed'}\`)
 } catch (error) {
   console.error('Failed to load workflow:', error.message)
   process.exit(1)
@@ -199,7 +203,7 @@ try {
 app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
-    workflow: workflowData.name || 'Unnamed',
+    workflow: workflowData.metadata?.name || workflowData.name || 'Unnamed',
     timestamp: new Date().toISOString()
   })
 })
@@ -208,8 +212,8 @@ app.get('/health', (req, res) => {
 app.get('/status', (req, res) => {
   res.json({
     workflow: {
-      name: workflowData.name || 'Unnamed',
-      description: workflowData.description || '',
+      name: workflowData.metadata?.name || workflowData.name || 'Unnamed',
+      description: workflowData.metadata?.description || workflowData.description || '',
       nodeCount: workflowData.nodes?.length || 0
     },
     server: {
@@ -294,7 +298,7 @@ app.post('/webhook', async (req, res) => {
 // Start server
 app.listen(PORT, () => {
   console.log(\`Prompd Workflow Server running on port \${PORT}\`)
-  console.log(\`Workflow: \${workflowData.name || 'Unnamed'}\`)
+  console.log(\`Workflow: \${workflowData.metadata?.name || workflowData.name || 'Unnamed'}\`)
   console.log('Endpoints:')
   console.log(\`  POST http://localhost:\${PORT}/execute\`)
   console.log(\`  POST http://localhost:\${PORT}/webhook\`)
@@ -372,7 +376,8 @@ CMD ["node", "server.js"]
    * @returns {string}
    */
   generateDockerCompose(workflow) {
-    const serviceName = (workflow.name || 'prompd-workflow').toLowerCase().replace(/\s+/g, '-')
+    const workflowName = workflow.metadata?.name || workflow.name || 'prompd-workflow'
+    const serviceName = workflowName.toLowerCase().replace(/[^a-z0-9-]/g, '-')
 
     return `version: '3.8'
 
@@ -410,17 +415,19 @@ services:
    * @returns {string}
    */
   generatePackageJson(workflow) {
+    const workflowName = workflow.metadata?.name || workflow.name || 'prompd-workflow'
+    const imageName = workflowName.toLowerCase().replace(/[^a-z0-9-]/g, '-')
     return JSON.stringify({
-      name: (workflow.name || 'prompd-workflow').toLowerCase().replace(/\s+/g, '-'),
+      name: imageName,
       version: '1.0.0',
-      description: workflow.description || 'Prompd workflow deployment',
+      description: workflow.metadata?.description || workflow.description || 'Prompd workflow deployment',
       type: 'module',
       main: 'server.js',
       scripts: {
         start: 'node server.js',
         dev: 'node --watch server.js',
-        'docker:build': 'docker build -t prompd-workflow .',
-        'docker:run': 'docker run -p 3000:3000 --env-file .env prompd-workflow',
+        'docker:build': `docker build -t ${imageName} .`,
+        'docker:run': `docker run -p 3000:3000 --env-file .env ${imageName}`,
         'docker:compose': 'docker-compose up -d',
         'docker:logs': 'docker-compose logs -f',
         'docker:stop': 'docker-compose down'
@@ -509,11 +516,12 @@ LOG_LEVEL=info
    * @returns {string}
    */
   generateReadme(workflow, workflowFileName) {
-    const serviceName = (workflow.name || 'prompd-workflow').toLowerCase().replace(/\s+/g, '-')
+    const workflowName = workflow.metadata?.name || workflow.name || 'Prompd Workflow'
+    const serviceName = workflowName.toLowerCase().replace(/[^a-z0-9-]/g, '-')
 
-    return `# ${workflow.name || 'Prompd Workflow Deployment'}
+    return `# ${workflowName} - Deployment
 
-${workflow.description || 'Docker deployment for Prompd workflow'}
+${workflow.metadata?.description || workflow.description || 'Docker deployment for Prompd workflow'}
 
 ## Quick Start
 
@@ -676,6 +684,10 @@ For issues with Prompd workflows, visit:
     } = kubernetesOptions
 
     try {
+      // Derive workflow name from metadata (not the workspace package name)
+      const workflowName = workflow.metadata?.name || workflow.name || path.basename(workflowPath, '.pdflow')
+      options.name = workflowName
+
       // Detect providers used in workflow
       const { providers, hasOllama } = this.detectProviders(workflow)
 
@@ -737,7 +749,6 @@ For issues with Prompd workflows, visit:
       generatedFiles.push('.env.example')
 
       // 4. Generate Kubernetes manifests
-      const workflowName = workflow.metadata?.name || 'workflow'
       const appName = workflowName.toLowerCase().replace(/[^a-z0-9-]/g, '-')
 
       // Namespace
@@ -962,7 +973,7 @@ spec:
    */
   generateConfigMap(appName, namespace, workflow) {
     const workflowName = workflow.metadata?.name || 'Unnamed Workflow'
-    const workflowVersion = workflow.metadata?.version || '1.0.0'
+    const workflowVersion = workflow.version || '1.0.0'
 
     return `apiVersion: v1
 kind: ConfigMap
@@ -1137,7 +1148,7 @@ commonLabels:
    */
   generateHelmChart(workflow) {
     const workflowName = workflow.metadata?.name || 'prompd-workflow'
-    const workflowVersion = workflow.metadata?.version || '1.0.0'
+    const workflowVersion = workflow.version || '1.0.0'
     const description = workflow.metadata?.description || 'Prompd workflow deployment'
 
     return `apiVersion: v2
@@ -1410,7 +1421,7 @@ spec:
    */
   generateKubernetesReadme(workflow, appName, namespace, includeHelm, includeIngress, ingressDomain) {
     const workflowName = workflow.metadata?.name || 'Prompd Workflow'
-    const workflowVersion = workflow.metadata?.version || '1.0.0'
+    const workflowVersion = workflow.version || '1.0.0'
 
     return `# ${workflowName} - Kubernetes Deployment
 
