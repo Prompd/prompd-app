@@ -312,11 +312,16 @@ export function analyzeParameterUsage(
 
   // Built-in variables that shouldn't be flagged as undefined
   const builtInVars = new Set([
-    'env',      // Environment variables ({{ env.VAR }})
-    'loop',     // Nunjucks loop variable
-    'range',    // Nunjucks range function
-    'joiner',   // Nunjucks joiner function
-    'cycler'    // Nunjucks cycler function
+    'env',              // Environment variables ({{ env.VAR }})
+    'loop',             // Nunjucks loop variable
+    'range',            // Nunjucks range function
+    'joiner',           // Nunjucks joiner function
+    'cycler',           // Nunjucks cycler function
+    // Workflow runtime variables (injected by workflowExecutor.ts when .prmd runs in a workflow)
+    'workflow',         // Workflow parameters ({{ workflow.param_name }})
+    'previous_output',  // Output from connected upstream node
+    'previous_step',    // Alias for previous_output
+    'input',            // Alias for previous_output in code/transform nodes
   ])
 
   // Template-defined variables (from {% set %} and {% for %})

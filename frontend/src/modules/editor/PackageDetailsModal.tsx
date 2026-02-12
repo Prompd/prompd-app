@@ -12,13 +12,15 @@ interface Props {
   onClose: () => void
   onOpenInEditor?: (content: string, filename: string, packageId: string, filePath: string) => void
   onUseAsTemplate?: (content: string, filename: string, packageId: string, filePath: string) => void
+  /** If provided, opens directly to the Files tab and selects this file */
+  initialFile?: string
 }
 
 type TabKey = 'overview' | 'files' | 'versions'
 
-export default function PackageDetailsModal({ package: pkg, onClose, onOpenInEditor, onUseAsTemplate }: Props) {
+export default function PackageDetailsModal({ package: pkg, onClose, onOpenInEditor, onUseAsTemplate, initialFile }: Props) {
   const theme = useUIStore(selectTheme)
-  const [activeTab, setActiveTab] = useState<TabKey>('overview')
+  const [activeTab, setActiveTab] = useState<TabKey>(initialFile ? 'files' : 'overview')
   const [fileTree, setFileTree] = useState<FileNode[]>([])
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [fileContent, setFileContent] = useState<string | null>(null)
@@ -40,6 +42,20 @@ export default function PackageDetailsModal({ package: pkg, onClose, onOpenInEdi
       loadPackage()
     }
   }, [activeTab])
+
+  // Auto-select initialFile once the file tree is loaded
+  useEffect(() => {
+    if (initialFile && fileTree.length > 0 && !selectedFile) {
+      // Expand parent folders for the initial file
+      const parts = initialFile.split('/')
+      const foldersToExpand = new Set(expandedFolders)
+      for (let i = 1; i < parts.length; i++) {
+        foldersToExpand.add(parts.slice(0, i).join('/'))
+      }
+      setExpandedFolders(foldersToExpand)
+      handleFileClick(initialFile)
+    }
+  }, [fileTree, initialFile])
 
   // Load versions when Versions tab is opened
   useEffect(() => {

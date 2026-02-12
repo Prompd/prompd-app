@@ -18,6 +18,7 @@ import { useConfirmDialog } from '../ConfirmDialog'
 import { useUIStore } from '../../../stores/uiStore'
 import { useEditorStore } from '../../../stores/editorStore'
 import { ParameterInputModal, type WorkflowParameter } from './ParameterInputModal'
+import { JsonTreeViewer, tryParseJsonValue } from '../common/JsonTreeViewer'
 import './DeploymentModal.css'
 
 interface DeploymentModalProps {
@@ -983,11 +984,17 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                                   <ExternalLink size={12} />
                                                 </button>
                                               </h6>
-                                              <pre className="detail-exec-output">
-                                                {typeof result.output === 'string'
-                                                  ? result.output
-                                                  : JSON.stringify(result.output, null, 2)}
-                                              </pre>
+                                              {(() => { const parsed = tryParseJsonValue(result.output); return parsed !== null ? (
+                                                <div className="detail-exec-output">
+                                                  <JsonTreeViewer data={parsed} rootPath="output" defaultExpandDepth={2} maxStringPreview={80} />
+                                                </div>
+                                              ) : (
+                                                <pre className="detail-exec-output">
+                                                  {typeof result.output === 'string'
+                                                    ? result.output
+                                                    : JSON.stringify(result.output, null, 2)}
+                                                </pre>
+                                              ) })()}
                                             </div>
                                           )}
                                           {execution.error && (
@@ -999,9 +1006,9 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                           {execution.parameters && Object.keys(execution.parameters).length > 0 && (
                                             <div className="detail-exec-section">
                                               <h6>Parameters</h6>
-                                              <pre className="detail-exec-output">
-                                                {JSON.stringify(execution.parameters, null, 2)}
-                                              </pre>
+                                              <div className="detail-exec-output">
+                                                <JsonTreeViewer data={execution.parameters} rootPath="parameters" defaultExpandDepth={2} maxStringPreview={60} />
+                                              </div>
                                             </div>
                                           )}
                                         </div>
@@ -1271,9 +1278,9 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                           {execution.parameters && Object.keys(execution.parameters).length > 0 && (
                             <div className="execution-details-section">
                               <h5>Parameters</h5>
-                              <pre className="execution-json">
-                                {JSON.stringify(execution.parameters, null, 2)}
-                              </pre>
+                              <div className="execution-json">
+                                <JsonTreeViewer data={execution.parameters} rootPath="parameters" defaultExpandDepth={2} maxStringPreview={80} />
+                              </div>
                             </div>
                           )}
 
@@ -1295,11 +1302,17 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                           <ExternalLink size={12} />
                                         </button>
                                       </h5>
-                                      <pre className="execution-json execution-result">
-                                        {typeof (execution.result as Record<string, unknown>).output === 'string'
-                                          ? (execution.result as Record<string, unknown>).output as string
-                                          : JSON.stringify((execution.result as Record<string, unknown>).output, null, 2)}
-                                      </pre>
+                                      {(() => { const parsed = tryParseJsonValue((execution.result as Record<string, unknown>).output); return parsed !== null ? (
+                                        <div className="execution-json execution-result">
+                                          <JsonTreeViewer data={parsed} rootPath="output" defaultExpandDepth={3} maxStringPreview={100} />
+                                        </div>
+                                      ) : (
+                                        <pre className="execution-json execution-result">
+                                          {typeof (execution.result as Record<string, unknown>).output === 'string'
+                                            ? (execution.result as Record<string, unknown>).output as string
+                                            : JSON.stringify((execution.result as Record<string, unknown>).output, null, 2)}
+                                        </pre>
+                                      ) })()}
                                     </div>
                                   )}
 
@@ -1316,9 +1329,15 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                           <ExternalLink size={12} />
                                         </button>
                                       </h5>
-                                      <pre className="execution-json execution-result">
-                                        {JSON.stringify((execution.result as Record<string, unknown>).trace, null, 2)}
-                                      </pre>
+                                      {(() => { const parsed = tryParseJsonValue((execution.result as Record<string, unknown>).trace); return parsed !== null ? (
+                                        <div className="execution-json execution-result">
+                                          <JsonTreeViewer data={parsed} rootPath="trace" defaultExpandDepth={2} maxStringPreview={80} />
+                                        </div>
+                                      ) : (
+                                        <pre className="execution-json execution-result">
+                                          {JSON.stringify((execution.result as Record<string, unknown>).trace, null, 2)}
+                                        </pre>
+                                      ) })()}
                                     </div>
                                   )}
 
@@ -1335,9 +1354,15 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                           <ExternalLink size={12} />
                                         </button>
                                       </h5>
-                                      <pre className="execution-json">
-                                        {JSON.stringify((execution.result as Record<string, unknown>).nodeOutputs, null, 2)}
-                                      </pre>
+                                      {(() => { const parsed = tryParseJsonValue((execution.result as Record<string, unknown>).nodeOutputs); return parsed !== null ? (
+                                        <div className="execution-json">
+                                          <JsonTreeViewer data={parsed} rootPath="nodeOutputs" defaultExpandDepth={2} maxStringPreview={80} />
+                                        </div>
+                                      ) : (
+                                        <pre className="execution-json">
+                                          {JSON.stringify((execution.result as Record<string, unknown>).nodeOutputs, null, 2)}
+                                        </pre>
+                                      ) })()}
                                     </div>
                                   )}
 
@@ -1354,9 +1379,15 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                           <ExternalLink size={12} />
                                         </button>
                                       </h5>
-                                      <pre className="execution-json">
-                                        {JSON.stringify((execution.result as Record<string, unknown>).metrics, null, 2)}
-                                      </pre>
+                                      {(() => { const parsed = tryParseJsonValue((execution.result as Record<string, unknown>).metrics); return parsed !== null ? (
+                                        <div className="execution-json">
+                                          <JsonTreeViewer data={parsed} rootPath="metrics" defaultExpandDepth={2} maxStringPreview={60} />
+                                        </div>
+                                      ) : (
+                                        <pre className="execution-json">
+                                          {JSON.stringify((execution.result as Record<string, unknown>).metrics, null, 2)}
+                                        </pre>
+                                      ) })()}
                                     </div>
                                   )}
                                 </>
@@ -1375,11 +1406,17 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                       <ExternalLink size={12} />
                                     </button>
                                   </h5>
-                                  <pre className="execution-json execution-result">
-                                    {typeof execution.result === 'string'
-                                      ? execution.result
-                                      : JSON.stringify(execution.result, null, 2)}
-                                  </pre>
+                                  {(() => { const parsed = tryParseJsonValue(execution.result); return parsed !== null ? (
+                                    <div className="execution-json execution-result">
+                                      <JsonTreeViewer data={parsed} rootPath="result" defaultExpandDepth={3} maxStringPreview={100} />
+                                    </div>
+                                  ) : (
+                                    <pre className="execution-json execution-result">
+                                      {typeof execution.result === 'string'
+                                        ? execution.result
+                                        : JSON.stringify(execution.result, null, 2)}
+                                    </pre>
+                                  ) })()}
                                 </div>
                               )}
                             </>

@@ -152,7 +152,10 @@ function tryLenientParse(content: string): ParsedAgentResponse | undefined {
                 const editsWrapperMatch = paramsMatch[1].match(/<edits>([\s\S]*?)<\/edits>/i)
                 const editsContent = editsWrapperMatch ? editsWrapperMatch[1] : paramsMatch[1]
 
+                // Support multiple tag names: <item>, <edit>, <entry> (LLMs vary)
                 const editItems = editsContent.match(/<item>([\s\S]*?)<\/item>/gi)
+                  || editsContent.match(/<edit>([\s\S]*?)<\/edit>/gi)
+                  || editsContent.match(/<entry>([\s\S]*?)<\/entry>/gi)
 
                 if (editItems) {
                   for (const editBlock of editItems) {
@@ -175,6 +178,18 @@ function tryLenientParse(content: string): ParsedAgentResponse | undefined {
                   }
                   if (edits.length > 0) {
                     params.edits = edits
+                  }
+                }
+
+                // Fallback: if no edits were found but there are search/replace directly in params
+                // (some LLMs skip the wrapper tags entirely)
+                if (!params.edits) {
+                  const directSearch = editsContent.match(/<search><!\[CDATA\[([\s\S]*?)\]\]><\/search>/i)
+                    || editsContent.match(/<search>([\s\S]*?)<\/search>/i)
+                  const directReplace = editsContent.match(/<replace><!\[CDATA\[([\s\S]*?)\]\]><\/replace>/i)
+                    || editsContent.match(/<replace>([\s\S]*?)<\/replace>/i)
+                  if (directSearch && directReplace) {
+                    params.edits = [{ search: directSearch[1], replace: directReplace[1] }]
                   }
                 }
               }
@@ -444,10 +459,22 @@ export function parseAgentResponse(content: string): XmlParseResult {
  * Parse a parameter value, handling nested structures and arrays
  */
 function parseParamValue(element: Element): unknown {
-  // Check if it's an array (has multiple child elements with same tag or <item> elements)
+  // Check if it's an array (has child elements named <item>, <edit>, or <entry> — LLMs vary)
   const items = element.querySelectorAll(':scope > item')
-  if (items.length > 0) {
-    return Array.from(items).map(item => {
+    || element.querySelectorAll(':scope > edit')
+    || element.querySelectorAll(':scope > entry')
+  // Also detect arrays when all children share the same tag name (e.g., multiple <edit> tags)
+  const arrayItems = items.length > 0 ? items : (() => {
+    if (element.children.length > 1) {
+      const firstTag = element.children[0]?.tagName
+      const allSameTag = Array.from(element.children).every(c => c.tagName === firstTag)
+      if (allSameTag) return element.children
+    }
+    return null
+  })()
+
+  if (arrayItems && arrayItems.length > 0) {
+    return Array.from(arrayItems).map(item => {
       // Check if item has child elements (object) or just text
       if (item.children.length > 0) {
         const obj: Record<string, unknown> = {}

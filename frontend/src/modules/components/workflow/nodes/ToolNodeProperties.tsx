@@ -3,7 +3,7 @@
  */
 
 import { Editor } from '@monaco-editor/react'
-import { Code, Server, Globe, Wrench, Braces } from 'lucide-react'
+import { Code, Server, Globe, Wrench, Braces, Maximize2 } from 'lucide-react'
 import type { ToolNodeData } from '../../../services/workflowTypes'
 import { useUIStore } from '../../../../stores/uiStore'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
@@ -14,6 +14,7 @@ export interface ToolNodePropertiesProps {
   data: ToolNodeData
   onChange: (field: string, value: unknown) => void
   nodeId?: string
+  onExpandEditor?: (content: string, language: string, label: string, field: string) => void
 }
 
 // Helper function for code placeholders
@@ -32,7 +33,7 @@ function getCodePlaceholder(language: string): string {
   }
 }
 
-export function ToolNodeProperties({ data, onChange }: ToolNodePropertiesProps) {
+export function ToolNodeProperties({ data, onChange, onExpandEditor }: ToolNodePropertiesProps) {
   const theme = useUIStore(state => state.theme)
   const toolType = data.toolType || 'function'
 
@@ -326,11 +327,10 @@ export function ToolNodeProperties({ data, onChange }: ToolNodePropertiesProps) 
               <option value="csharp">C#</option>
             </select>
             <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-              {data.codeLanguage === 'typescript' && 'Executes via Node.js vm or temp file'}
-              {data.codeLanguage === 'javascript' && 'Executes via Node.js vm or temp file'}
-              {data.codeLanguage === 'python' && 'Executes via python -c or temp file'}
-              {data.codeLanguage === 'csharp' && 'Executes via dotnet-script'}
-              {!data.codeLanguage && 'Executes via Node.js vm or temp file'}
+              {(data.codeLanguage === 'typescript' || data.codeLanguage === 'javascript' || !data.codeLanguage)
+                && 'Inline execution via Node.js VM (isolated) or main process'}
+              {data.codeLanguage === 'python' && 'Subprocess via python -c (process-isolated, has OS access)'}
+              {data.codeLanguage === 'csharp' && 'Subprocess via dotnet run (process-isolated, has OS access)'}
             </div>
           </div>
 
@@ -363,15 +363,53 @@ export function ToolNodeProperties({ data, onChange }: ToolNodePropertiesProps) 
               </select>
               <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}>
                 {data.codeExecutionContext === 'main'
-                  ? 'Runs with full access (use with caution)'
-                  : 'Runs in sandboxed context for security'}
+                  ? 'Full Node.js access including require and file system (use with caution)'
+                  : 'Sandboxed — no require, process, or file system access'}
               </div>
+            </div>
+          )}
+
+          {/* Isolation note for Python/C# */}
+          {(data.codeLanguage === 'python' || data.codeLanguage === 'csharp') && (
+            <div style={{ padding: '8px 10px', background: 'var(--panel-2)', borderRadius: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+              Runs as a subprocess — isolated from the workflow engine but has full OS access (file system, network, environment variables).
             </div>
           )}
 
           {/* Code Editor */}
           <div>
-            <label style={labelStyle}>Code</label>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <label style={labelStyle}>Code</label>
+              {onExpandEditor && (
+                <button
+                  onClick={() => onExpandEditor(
+                    data.codeSnippet || '',
+                    getMonacoLanguage(),
+                    'Code Snippet',
+                    'codeSnippet'
+                  )}
+                  title="Open in expanded editor"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '2px 6px',
+                    background: 'transparent',
+                    border: '1px solid var(--border)',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    color: 'var(--text-secondary)',
+                    fontSize: '10px',
+                    transition: 'color 0.15s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+                >
+                  <Maximize2 size={11} />
+                  Expand
+                </button>
+              )}
+            </div>
             <div
               style={{
                 border: '1px solid var(--input-border)',

@@ -36,6 +36,16 @@ export interface DiffRegion {
  * Returns the modified content and information about which edits succeeded/failed
  */
 export function applyEdits(originalContent: string, edits: EditOperation[]): ApplyEditsResult {
+  if (!edits || !Array.isArray(edits) || edits.length === 0) {
+    return {
+      success: false,
+      modifiedContent: originalContent,
+      appliedCount: 0,
+      failedEdits: [],
+      error: 'No edits provided'
+    }
+  }
+
   let content = originalContent
   let appliedCount = 0
   const failedEdits: ApplyEditsResult['failedEdits'] = []

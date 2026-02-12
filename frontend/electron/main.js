@@ -1561,21 +1561,79 @@ ipcMain.handle('connection:testSSH', async (_event, config) => {
 // Test Database connection
 ipcMain.handle('connection:testDatabase', async (_event, config) => {
   try {
-    console.log('[Electron] Testing database connection to:', config.host)
+    // Parse connection string to extract host/port if provided
+    let host = config.host
+    let port = config.port
+
+    if (config.connectionString) {
+      try {
+        const connStr = config.connectionString
+        // Strip protocol prefix to extract host
+        const withoutProtocol = connStr.replace(/^[a-z+]+:\/\//, '')
+        // Strip credentials (user:pass@)
+        const afterAuth = withoutProtocol.includes('@')
+          ? withoutProtocol.split('@').slice(1).join('@')
+          : withoutProtocol
+        // Extract host:port (before /dbname or ?params)
+        const hostPart = afterAuth.split('/')[0].split('?')[0]
+        // Handle comma-separated hosts (replica sets) - use first host
+        const firstHost = hostPart.split(',')[0]
+
+        if (firstHost.includes(':')) {
+          host = firstHost.split(':')[0]
+          port = parseInt(firstHost.split(':')[1]) || port
+        } else {
+          host = firstHost
+        }
+
+        // mongodb+srv:// uses SRV DNS records - test DNS resolution instead of TCP
+        if (connStr.startsWith('mongodb+srv://')) {
+          const dns = require('dns')
+          return new Promise((resolve) => {
+            dns.resolveSrv(`_mongodb._tcp.${host}`, (err, addresses) => {
+              if (err) {
+                resolve({
+                  success: false,
+                  message: `SRV lookup failed for ${host}: ${err.message}`
+                })
+              } else if (addresses && addresses.length > 0) {
+                resolve({
+                  success: true,
+                  message: `SRV resolved to ${addresses.length} host(s): ${addresses[0].name}:${addresses[0].port}`
+                })
+              } else {
+                resolve({
+                  success: false,
+                  message: `No SRV records found for ${host}`
+                })
+              }
+            })
+          })
+        }
+      } catch (parseErr) {
+        console.warn('[Electron] Failed to parse connection string, falling back to host field:', parseErr.message)
+      }
+    }
+
+    if (!host) {
+      return { success: false, message: 'No host specified' }
+    }
+
+    console.log('[Electron] Testing database connection to:', host)
+
+    const defaultPorts = {
+      postgresql: 5432,
+      mysql: 3306,
+      mongodb: 27017,
+      redis: 6379
+    }
+    const resolvedPort = port || defaultPorts[config.type] || 5432
 
     // Use net module to test TCP connectivity
     return new Promise((resolve) => {
-      const defaultPorts = {
-        postgresql: 5432,
-        mysql: 3306,
-        mongodb: 27017,
-        redis: 6379
-      }
-      const port = config.port || defaultPorts[config.type] || 5432
-
       const socket = require('net').createConnection({
-        host: config.host,
-        port: port,
+        host: host,
+        port: resolvedPort,
         timeout: 5000
       })
 
@@ -1583,7 +1641,7 @@ ipcMain.handle('connection:testDatabase', async (_event, config) => {
         socket.end()
         resolve({
           success: true,
-          message: `Database port reachable at ${config.host}:${port}`
+          message: `Database port reachable at ${host}:${resolvedPort}`
         })
       })
 
@@ -5282,11 +5340,290 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               }
             }
 
+            // Handle database query execution
+            if (request.toolType === 'database-query') {
+              const dbConfig = request.databaseConfig
+              if (!dbConfig) {
+                return { success: false, error: 'Missing database configuration' }
+              }
+
+              // Resolve connection from workflow connections
+              const workflowFile = workflow.file || workflow
+              const wfConnections = workflowFile.connections || workflow.connections || []
+              const dbConnection = wfConnections.find(c => c.id === dbConfig.connectionId)
+
+              if (!dbConnection) {
+                return { success: false, error: `Database connection not found: ${dbConfig.connectionId}` }
+              }
+
+              const connConfig = dbConnection.config || {}
+              const dbType = dbConfig.dbType || connConfig.dbType || 'postgresql'
+
+              // Emit checkpoint event before query
+              sender.send('workflow:event', {
+                type: 'checkpoint-data',
+                executionId,
+                nodeId: request.nodeId,
+                data: {
+                  sourceNodeType: 'database-query',
+                  eventType: 'iteration',
+                  dbType,
+                  queryType: dbConfig.queryType,
+                  query: (dbConfig.query || '').slice(0, 200),
+                  timestamp: Date.now()
+                }
+              })
+
+              try {
+                let result
+
+                // Build connection URI/options from connection config
+                const host = connConfig.host || 'localhost'
+                const port = connConfig.port
+                const database = connConfig.database || ''
+                const username = connConfig.username || ''
+                const connectionString = connConfig.connectionString || ''
+                const ssl = connConfig.ssl || false
+                // Password is resolved from the connection's secure store
+                const password = dbConnection.password || connConfig.password || ''
+                const timeoutMs = dbConfig.timeoutMs || 30000
+
+                if (dbType === 'postgresql') {
+                  try {
+                    const { Pool } = require('pg')
+                    const poolConfig = connectionString
+                      ? { connectionString, ssl: ssl ? { rejectUnauthorized: false } : undefined }
+                      : { host, port: port || 5432, database, user: username, password, ssl: ssl ? { rejectUnauthorized: false } : undefined }
+                    poolConfig.connectionTimeoutMillis = timeoutMs
+                    poolConfig.query_timeout = timeoutMs
+
+                    const pool = new Pool(poolConfig)
+                    try {
+                      // Parse parameters from JSON string
+                      let params = undefined
+                      if (dbConfig.parameters) {
+                        try { params = JSON.parse(dbConfig.parameters) } catch { /* ignore parse errors */ }
+                      }
+
+                      const queryResult = await pool.query(dbConfig.query, params)
+                      const maxRows = dbConfig.maxRows || 1000
+                      result = {
+                        rows: queryResult.rows.slice(0, maxRows),
+                        rowCount: queryResult.rowCount,
+                        fields: queryResult.fields?.map(f => ({ name: f.name, dataTypeID: f.dataTypeID })),
+                      }
+                    } finally {
+                      await pool.end()
+                    }
+                  } catch (pgErr) {
+                    if (pgErr.code === 'MODULE_NOT_FOUND') {
+                      return { success: false, error: 'PostgreSQL driver (pg) not installed. Run: npm install pg' }
+                    }
+                    throw pgErr
+                  }
+                } else if (dbType === 'mysql') {
+                  try {
+                    const mysql = require('mysql2/promise')
+                    const connOpts = connectionString
+                      ? { uri: connectionString }
+                      : { host, port: port || 3306, database, user: username, password, ssl: ssl ? {} : undefined, connectTimeout: timeoutMs }
+
+                    const conn = await mysql.createConnection(connOpts)
+                    try {
+                      let params = undefined
+                      if (dbConfig.parameters) {
+                        try { params = JSON.parse(dbConfig.parameters) } catch { /* ignore */ }
+                      }
+
+                      const [rows, fields] = await conn.execute(dbConfig.query, params)
+                      const maxRows = dbConfig.maxRows || 1000
+                      result = {
+                        rows: Array.isArray(rows) ? rows.slice(0, maxRows) : rows,
+                        rowCount: Array.isArray(rows) ? rows.length : 0,
+                        fields: fields?.map(f => ({ name: f.name, type: f.type })),
+                      }
+                    } finally {
+                      await conn.end()
+                    }
+                  } catch (mysqlErr) {
+                    if (mysqlErr.code === 'MODULE_NOT_FOUND') {
+                      return { success: false, error: 'MySQL driver (mysql2) not installed. Run: npm install mysql2' }
+                    }
+                    throw mysqlErr
+                  }
+                } else if (dbType === 'sqlite') {
+                  try {
+                    const Database = require('better-sqlite3')
+                    const dbPath = connectionString || database
+                    if (!dbPath) {
+                      return { success: false, error: 'SQLite requires a database file path' }
+                    }
+
+                    const db = new Database(dbPath, { readonly: dbConfig.queryType === 'select', timeout: timeoutMs })
+                    try {
+                      let params = undefined
+                      if (dbConfig.parameters) {
+                        try { params = JSON.parse(dbConfig.parameters) } catch { /* ignore */ }
+                      }
+
+                      const maxRows = dbConfig.maxRows || 1000
+                      if (dbConfig.queryType === 'select' || dbConfig.queryType === 'raw') {
+                        // Use .all() for queries that return rows
+                        const stmt = db.prepare(dbConfig.query)
+                        const rows = params ? stmt.all(...params) : stmt.all()
+                        result = {
+                          rows: rows.slice(0, maxRows),
+                          rowCount: rows.length,
+                        }
+                      } else {
+                        // Use .run() for INSERT/UPDATE/DELETE
+                        const stmt = db.prepare(dbConfig.query)
+                        const info = params ? stmt.run(...params) : stmt.run()
+                        result = {
+                          changes: info.changes,
+                          lastInsertRowid: info.lastInsertRowid,
+                        }
+                      }
+                    } finally {
+                      db.close()
+                    }
+                  } catch (sqliteErr) {
+                    if (sqliteErr.code === 'MODULE_NOT_FOUND') {
+                      return { success: false, error: 'SQLite driver (better-sqlite3) not installed. Run: npm install better-sqlite3' }
+                    }
+                    throw sqliteErr
+                  }
+                } else if (dbType === 'mongodb') {
+                  try {
+                    const { MongoClient } = require('mongodb')
+                    const uri = connectionString || `mongodb://${username}:${password}@${host}:${port || 27017}/${database}`
+
+                    const client = new MongoClient(uri, {
+                      serverSelectionTimeoutMS: timeoutMs,
+                      connectTimeoutMS: timeoutMs,
+                    })
+                    try {
+                      await client.connect()
+                      const db = client.db(database || undefined)
+                      const collection = dbConfig.collection || 'test'
+                      const coll = db.collection(collection)
+                      const maxRows = dbConfig.maxRows || 1000
+
+                      // Parse the query from JSON string
+                      let queryDoc = {}
+                      try {
+                        queryDoc = JSON.parse(dbConfig.query || '{}')
+                      } catch {
+                        return { success: false, error: 'Invalid MongoDB query JSON' }
+                      }
+
+                      if (dbConfig.queryType === 'select') {
+                        const docs = await coll.find(queryDoc).limit(maxRows).toArray()
+                        result = { rows: docs, rowCount: docs.length }
+                      } else if (dbConfig.queryType === 'insert') {
+                        const insertResult = Array.isArray(queryDoc)
+                          ? await coll.insertMany(queryDoc)
+                          : await coll.insertOne(queryDoc)
+                        result = { insertedCount: insertResult.insertedCount || 1, insertedId: insertResult.insertedId }
+                      } else if (dbConfig.queryType === 'update') {
+                        // Expect { filter: {...}, update: {...} }
+                        const filter = queryDoc.filter || {}
+                        const update = queryDoc.update || queryDoc
+                        const updateResult = await coll.updateMany(filter, update)
+                        result = { matchedCount: updateResult.matchedCount, modifiedCount: updateResult.modifiedCount }
+                      } else if (dbConfig.queryType === 'delete') {
+                        const deleteResult = await coll.deleteMany(queryDoc)
+                        result = { deletedCount: deleteResult.deletedCount }
+                      } else if (dbConfig.queryType === 'aggregate') {
+                        const pipeline = Array.isArray(queryDoc) ? queryDoc : [queryDoc]
+                        const docs = await coll.aggregate(pipeline).toArray()
+                        result = { rows: docs.slice(0, maxRows), rowCount: docs.length }
+                      } else {
+                        // Raw command
+                        const cmdResult = await db.command(queryDoc)
+                        result = cmdResult
+                      }
+                    } finally {
+                      await client.close()
+                    }
+                  } catch (mongoErr) {
+                    if (mongoErr.code === 'MODULE_NOT_FOUND') {
+                      return { success: false, error: 'MongoDB driver (mongodb) not installed. Run: npm install mongodb' }
+                    }
+                    throw mongoErr
+                  }
+                } else if (dbType === 'redis') {
+                  try {
+                    const Redis = require('ioredis')
+                    const redisOpts = connectionString
+                      ? connectionString
+                      : { host, port: port || 6379, password: password || undefined, db: parseInt(database) || 0, connectTimeout: timeoutMs }
+
+                    const redis = new Redis(redisOpts)
+                    try {
+                      // Parse Redis command: "GET mykey" -> ["GET", "mykey"]
+                      const parts = (dbConfig.query || '').trim().split(/\s+/)
+                      if (parts.length === 0 || !parts[0]) {
+                        return { success: false, error: 'Empty Redis command' }
+                      }
+
+                      const redisResult = await redis.call(parts[0], ...parts.slice(1))
+                      result = { result: redisResult }
+                    } finally {
+                      redis.disconnect()
+                    }
+                  } catch (redisErr) {
+                    if (redisErr.code === 'MODULE_NOT_FOUND') {
+                      return { success: false, error: 'Redis driver (ioredis) not installed. Run: npm install ioredis' }
+                    }
+                    throw redisErr
+                  }
+                } else {
+                  return { success: false, error: `Unsupported database type: ${dbType}` }
+                }
+
+                // Emit checkpoint event with query results
+                sender.send('workflow:event', {
+                  type: 'checkpoint-data',
+                  executionId,
+                  nodeId: request.nodeId,
+                  data: {
+                    sourceNodeType: 'database-query',
+                    eventType: 'complete',
+                    dbType,
+                    queryType: dbConfig.queryType,
+                    rowCount: result?.rows?.length || result?.rowCount || 0,
+                    timestamp: Date.now()
+                  }
+                })
+
+                return { success: true, result }
+              } catch (dbErr) {
+                console.error('[Workflow Executor] Database query error:', dbErr)
+
+                // Emit error checkpoint event
+                sender.send('workflow:event', {
+                  type: 'checkpoint-data',
+                  executionId,
+                  nodeId: request.nodeId,
+                  data: {
+                    sourceNodeType: 'database-query',
+                    eventType: 'error',
+                    dbType,
+                    error: dbErr.message,
+                    timestamp: Date.now()
+                  }
+                })
+
+                return { success: false, error: dbErr.message }
+              }
+            }
+
             // Handle command execution
             if (request.toolType !== 'command') {
               return {
                 success: false,
-                error: `Unsupported tool type: ${request.toolType}. Supported: 'command', 'http', 'web-search'.`
+                error: `Unsupported tool type: ${request.toolType}. Supported: 'command', 'http', 'web-search', 'database-query'.`
               }
             }
 

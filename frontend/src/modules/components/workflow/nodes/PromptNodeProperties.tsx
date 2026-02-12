@@ -4,7 +4,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { FileText, AlignLeft, Package, Search, Shield, ChevronDown, ChevronRight } from 'lucide-react'
+import { FileText, AlignLeft, Package, Search, Shield, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
 import type { PromptNodeData } from '../../../services/workflowTypes'
 import { useEditorStore } from '../../../../stores/editorStore'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
@@ -16,9 +16,10 @@ export interface PromptNodePropertiesProps {
   data: PromptNodeData
   onChange: (field: string, value: unknown) => void
   nodeId?: string
+  onOpenPrompd?: () => void
 }
 
-export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesProps) {
+export function PromptNodeProperties({ data, onChange, onOpenPrompd }: PromptNodePropertiesProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Array<{ name: string; version: string; description?: string }>>([])
   const [localFileResults, setLocalFileResults] = useState<string[]>([])
@@ -369,6 +370,27 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
             }}>
               {data.source}
             </code>
+            {onOpenPrompd && (
+              <button
+                onClick={onOpenPrompd}
+                title="Open in editor"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '4px',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  borderRadius: '3px',
+                  transition: 'color 0.15s'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+              >
+                <ExternalLink size={13} />
+              </button>
+            )}
             <button
               onClick={() => onChange('source', '')}
               style={{

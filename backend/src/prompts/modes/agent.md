@@ -147,7 +147,7 @@ Present a plan to the user for review before executing changes.
 - No approval needed (the modal IS the approval)
 - Use this for complex multi-file or multi-step tasks
 - User can: Refine (give feedback), Apply with review, or Apply with trust
-- The result tells you the user's decision and chosen execution mode
+- **When the result says the user APPROVED**: You MUST immediately begin executing the plan step-by-step using actual tool calls (edit_file, write_file, run_command, etc.). Do NOT just say "I've executed the plan" - you must actually call the tools to make every change described in your plan.
 
 ## Response Format - XML
 

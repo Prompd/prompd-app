@@ -81,6 +81,8 @@ export type WorkflowNodeType =
   | 'memory'          // Memory node: KV store, conversation history, or cache
   | 'output'
   | 'web-search'      // Web search node: search the web via configurable provider
+  | 'database-query'  // Database query execution node
+  // --- Add new node types here ---
 
 export interface WorkflowNode {
   id: string
@@ -189,6 +191,10 @@ export const DOCKABLE_HANDLES: Array<{
 
   // Loop node - accepts tool-call-router nodes for container-to-container docking
   { nodeType: 'loop', handleId: 'toolResult', position: { side: 'left', topPercent: 50 }, acceptsTypes: ['tool-call-router'] },
+
+  // Database Query node - accepts memory for state, callback for logging
+  { nodeType: 'database-query', handleId: 'onExecute', position: { side: 'bottom', topPercent: 100 }, acceptsTypes: ['memory', 'callback'] },
+  // --- Add new dockable handle entries here ---
 ]
 
 // ============================================================================
@@ -921,6 +927,38 @@ export interface CommandNodeData extends BaseNodeData {
 
   /** Description shown in approval dialog */
   approvalMessage?: string
+}
+
+/**
+ * DatabaseQueryNodeData - Execute queries against a database connection
+ *
+ * Uses the connection system to select which database to query.
+ * Supports SQL (PostgreSQL, MySQL, SQLite), MongoDB JSON queries, and Redis commands.
+ */
+export interface DatabaseQueryNodeData extends BaseNodeData {
+  /** Reference to a saved database connection */
+  connectionId: string
+
+  /** Type of query operation */
+  queryType: 'select' | 'insert' | 'update' | 'delete' | 'raw' | 'aggregate'
+
+  /** SQL query, MongoDB JSON query, or Redis command */
+  query: string
+
+  /** JSON-encoded parameter array for parameterized queries (e.g. ["value1", 42]) */
+  parameters?: string
+
+  /** MongoDB collection name (only used for MongoDB connections) */
+  collection?: string
+
+  /** Maximum number of result rows to return (default 1000) */
+  maxRows?: number
+
+  /** Query timeout in milliseconds (default 30000) */
+  timeoutMs?: number
+
+  /** Description of what this query does */
+  description?: string
 }
 
 /**

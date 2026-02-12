@@ -260,14 +260,53 @@ function SSHConfigForm({ config, onChange }: ConfigFormProps<SSHConnectionConfig
   )
 }
 
+/** Default ports per database type */
+const DB_DEFAULT_PORTS: Record<string, number> = {
+  postgresql: 5432,
+  mysql: 3306,
+  mongodb: 27017,
+  redis: 6379,
+}
+
+/** Placeholder text for the username field per db type */
+const DB_USERNAME_PLACEHOLDER: Record<string, string> = {
+  postgresql: 'postgres',
+  mysql: 'root',
+  mongodb: 'admin',
+  redis: '(optional)',
+}
+
 function DatabaseConfigForm({ config, onChange }: ConfigFormProps<DatabaseConnectionConfig>) {
+  const dbType = config.dbType || 'postgresql'
+  const isNetworkDb = dbType !== 'sqlite'
+  const showConnectionString = dbType === 'mongodb'
+  const showDatabase = dbType !== 'redis'
+  const showUsername = dbType !== 'redis' || !!config.username
+
+  /** Reset host/port/username/ssl when switching db type to keep config clean */
+  const handleDbTypeChange = (newType: DatabaseConnectionConfig['dbType']) => {
+    const base: Partial<DatabaseConnectionConfig> = {
+      type: 'database',
+      dbType: newType,
+      database: newType === 'sqlite' ? '' : config.database || '',
+    }
+    if (newType !== 'sqlite') {
+      base.host = config.host || ''
+      base.port = undefined
+    }
+    if (newType === 'mongodb') {
+      base.connectionString = config.connectionString || ''
+    }
+    onChange(base)
+  }
+
   return (
     <>
       <div style={{ marginBottom: '12px' }}>
         <label style={labelStyle}>Database Type</label>
         <select
-          value={config.dbType || 'postgresql'}
-          onChange={(e) => onChange({ ...config, dbType: e.target.value as DatabaseConnectionConfig['dbType'] })}
+          value={dbType}
+          onChange={(e) => handleDbTypeChange(e.target.value as DatabaseConnectionConfig['dbType'])}
           style={selectStyle}
         >
           <option value="postgresql">PostgreSQL</option>
@@ -277,65 +316,112 @@ function DatabaseConfigForm({ config, onChange }: ConfigFormProps<DatabaseConnec
           <option value="sqlite">SQLite</option>
         </select>
       </div>
-      {config.dbType !== 'sqlite' && (
-        <>
-          <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
-            <div style={{ flex: 2 }}>
-              <label style={labelStyle}>Host</label>
-              <input
-                type="text"
-                value={config.host || ''}
-                onChange={(e) => onChange({ ...config, host: e.target.value })}
-                placeholder="localhost"
-                style={inputStyle}
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Port</label>
-              <input
-                type="number"
-                value={config.port || ''}
-                onChange={(e) => onChange({ ...config, port: parseInt(e.target.value) || undefined })}
-                placeholder="5432"
-                style={inputStyle}
-              />
-            </div>
+
+      {/* MongoDB: connection string option */}
+      {showConnectionString && (
+        <div style={{ marginBottom: '12px' }}>
+          <label style={labelStyle}>Connection String (optional)</label>
+          <input
+            type="text"
+            value={config.connectionString || ''}
+            onChange={(e) => onChange({ ...config, connectionString: e.target.value })}
+            placeholder="mongodb+srv://user:pass@cluster.example.net/mydb"
+            style={{ ...inputStyle, fontFamily: 'monospace', fontSize: '12px' }}
+          />
+          <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+            If provided, host/port/database fields below are ignored.
           </div>
-          <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Database</label>
-              <input
-                type="text"
-                value={config.database || ''}
-                onChange={(e) => onChange({ ...config, database: e.target.value })}
-                placeholder="mydb"
-                style={inputStyle}
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Username</label>
-              <input
-                type="text"
-                value={config.username || ''}
-                onChange={(e) => onChange({ ...config, username: e.target.value })}
-                placeholder="postgres"
-                style={inputStyle}
-              />
-            </div>
-          </div>
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="checkbox"
-                checked={config.ssl || false}
-                onChange={(e) => onChange({ ...config, ssl: e.target.checked })}
-              />
-              Use SSL
-            </label>
-          </div>
-        </>
+        </div>
       )}
-      {config.dbType === 'sqlite' && (
+
+      {/* Network databases: host + port */}
+      {isNetworkDb && (
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+          <div style={{ flex: 2 }}>
+            <label style={labelStyle}>Host</label>
+            <input
+              type="text"
+              value={config.host || ''}
+              onChange={(e) => onChange({ ...config, host: e.target.value })}
+              placeholder="localhost"
+              style={inputStyle}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Port</label>
+            <input
+              type="number"
+              value={config.port || ''}
+              onChange={(e) => onChange({ ...config, port: parseInt(e.target.value) || undefined })}
+              placeholder={String(DB_DEFAULT_PORTS[dbType] || 5432)}
+              style={inputStyle}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Database name (not for Redis or SQLite) */}
+      {isNetworkDb && showDatabase && (
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Database</label>
+            <input
+              type="text"
+              value={config.database || ''}
+              onChange={(e) => onChange({ ...config, database: e.target.value })}
+              placeholder={dbType === 'mongodb' ? 'mydb' : dbType === 'mysql' ? 'mydb' : 'postgres'}
+              style={inputStyle}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Username</label>
+            <input
+              type="text"
+              value={config.username || ''}
+              onChange={(e) => onChange({ ...config, username: e.target.value })}
+              placeholder={DB_USERNAME_PLACEHOLDER[dbType] || 'user'}
+              style={inputStyle}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Redis: database number + optional username */}
+      {dbType === 'redis' && (
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Database Number</label>
+            <input
+              type="number"
+              min={0}
+              max={15}
+              value={config.database || '0'}
+              onChange={(e) => onChange({ ...config, database: e.target.value })}
+              placeholder="0"
+              style={inputStyle}
+            />
+            <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+              Redis databases are numbered 0-15
+            </div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Username (ACL)</label>
+            <input
+              type="text"
+              value={config.username || ''}
+              onChange={(e) => onChange({ ...config, username: e.target.value })}
+              placeholder="default"
+              style={inputStyle}
+            />
+            <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+              Only needed if Redis ACL is enabled
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SQLite: file path */}
+      {dbType === 'sqlite' && (
         <div style={{ marginBottom: '12px' }}>
           <label style={labelStyle}>Database File Path</label>
           <input
@@ -345,6 +431,20 @@ function DatabaseConfigForm({ config, onChange }: ConfigFormProps<DatabaseConnec
             placeholder="./data/mydb.sqlite"
             style={inputStyle}
           />
+        </div>
+      )}
+
+      {/* SSL (network databases only, not Redis) */}
+      {isNetworkDb && dbType !== 'redis' && (
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input
+              type="checkbox"
+              checked={config.ssl || false}
+              onChange={(e) => onChange({ ...config, ssl: e.target.checked })}
+            />
+            Use SSL
+          </label>
         </div>
       )}
     </>

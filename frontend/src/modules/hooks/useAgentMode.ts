@@ -395,6 +395,21 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
       // Handle present_plan specially
       if (call.tool === 'present_plan') {
         const planContent = call.params.content as string
+
+        // Reject empty/blank plans - tell model to try again with actual content
+        if (!planContent || !planContent.trim()) {
+          console.warn('[useAgentMode] present_plan called with empty content - rejecting')
+          autoResults.push({
+            id: toolId,
+            tool: call.tool,
+            result: {
+              success: false,
+              error: 'Plan content is empty. You MUST provide a detailed plan inside the <content> parameter using CDATA. Include specific files, changes, and steps. Do NOT put the plan in the <message> tag - it MUST go in <content><![CDATA[...plan...]]></content>.'
+            }
+          })
+          continue
+        }
+
         console.log('[useAgentMode] present_plan - showing plan review modal')
 
         // Add a running message
@@ -438,10 +453,17 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
         chatRef.current?.updateMessage(toolId, { metadata: planMeta })
         notifyToolMessage(toolId, planMeta)
 
+        // Build a descriptive result so the LLM knows to actually execute
+        const resultOutput = decision.action === 'apply'
+          ? `The user APPROVED your plan (mode: ${decision.mode}). You are now in AGENT mode with FULL tool access: read_file, write_file, edit_file, run_command, rename_file. EXECUTE your plan NOW - perform each step using the appropriate tools. Start with Step 1 immediately. Do NOT describe what you would do - actually call the tools.`
+          : decision.action === 'refine'
+            ? `The user wants you to REFINE the plan. Feedback: "${decision.feedback || 'No specific feedback'}". Please revise your plan based on this feedback and present it again using present_plan.`
+            : JSON.stringify(decision)
+
         autoResults.push({
           id: toolId,
           tool: call.tool,
-          result: { success: true, output: decision }
+          result: { success: true, output: resultOutput }
         })
         continue
       }

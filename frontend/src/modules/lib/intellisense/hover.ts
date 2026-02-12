@@ -25,6 +25,12 @@ const nunjucksHelp: Record<string, { description: string; example?: string; link
   'env': { description: 'Environment variables from .env files', example: '{{ env.API_KEY }} - {{ env.DATABASE_URL }}' },
   'renderBase': { description: 'Render parent template block content (template inheritance)', example: '{{ renderBase("block_name") }} or {{ renderBase() }}', link: 'https://docs.prompdhub.ai/templates/inheritance' },
 
+  // Workflow runtime variables (injected by workflowExecutor when .prmd runs in a workflow)
+  'workflow': { description: 'Workflow parameters object - access values passed when the workflow is triggered', example: '{{ workflow.api_key }} - {{ workflow.user_input }}' },
+  'previous_output': { description: 'Output from the connected upstream node in a workflow', example: '{{ previous_output }} or {{ previous_output.field }}' },
+  'previous_step': { description: 'Alias for previous_output - output from the connected upstream node', example: '{{ previous_step }} or {{ previous_step.result }}' },
+  'input': { description: 'Alias for previous_output - commonly used in code and transform nodes', example: '{{ input }} or {{ input.data }}' },
+
   // Operators
   'in': { description: 'Test if item is in array/object', example: '{% if "admin" in user.roles %}' },
   'not': { description: 'Logical NOT - negates expression', example: '{% if not user %}No user{% endif %}' },
@@ -90,6 +96,58 @@ export function registerHoverProvider(
         word.endColumn
       )
 
+      // Dynamic hover for 'workflow' — show "Prompd: workflow" with actual parameter list
+      if (wordText === 'workflow') {
+        const content = model.getValue()
+        const { parameters } = extractParametersWithMetadata(content)
+        const contents: monacoEditor.IMarkdownString[] = []
+
+        contents.push({ value: '**Prompd: `workflow`**' })
+        contents.push({ value: 'Workflow parameters object — access values passed when the workflow is triggered.' })
+
+        if (parameters.length > 0) {
+          // Build a TypeScript-like signature from frontmatter parameters
+          const frontmatter = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+          const paramEntries: string[] = []
+          for (const paramName of parameters) {
+            let paramType = 'string'
+            if (frontmatter) {
+              const yaml = frontmatter[1]
+              // Try object format: paramName: { type: integer }
+              const objMatch = yaml.match(new RegExp(`${paramName}:\\s*\\{[^}]*type:\\s*(\\w+)`))
+              if (objMatch) {
+                paramType = objMatch[1]
+              } else {
+                // Try array format: - name: paramName\n    type: integer
+                const lines = yaml.split(/\r?\n/)
+                let found = false
+                for (let i = 0; i < lines.length; i++) {
+                  if (lines[i].trim().match(new RegExp(`-\\s*name:\\s*["']?${paramName}["']?`))) {
+                    found = true
+                    continue
+                  }
+                  if (found) {
+                    const typeMatch = lines[i].match(/^\s+type:\s*(\w+)/)
+                    if (typeMatch) { paramType = typeMatch[1]; break }
+                    if (lines[i].trim().startsWith('-') || (lines[i].match(/^\w/) && lines[i].includes(':'))) break
+                  }
+                }
+              }
+            }
+            paramEntries.push(`${paramName}: ${paramType}`)
+          }
+          contents.push({ value: `\`\`\`typescript\nworkflow: { ${paramEntries.join(', ')} }\n\`\`\`` })
+        } else {
+          contents.push({ value: '_No parameters defined in frontmatter._' })
+        }
+
+        contents.push({ value: '---' })
+        contents.push({ value: '**Usage:** `{{ workflow.param_name }}`' })
+        contents.push({ value: 'When run outside a workflow, properties resolve to empty.' })
+
+        return { range, contents }
+      }
+
       // Nunjucks/Jinja2 syntax help - check if hovering over keywords
       if (wordText && nunjucksHelp[wordText]) {
         const help = nunjucksHelp[wordText]
@@ -147,6 +205,81 @@ export function registerHoverProvider(
 
           contents.push({ value: '---' })
           contents.push({ value: 'Loaded from selected .env file at compile time.' })
+        }
+
+        return { range, contents }
+      }
+
+      // Workflow variable hover — proxy to frontmatter parameter info
+      // When hovering over 'api_key' in {{ workflow.api_key }}, show the parameter definition
+      if (context.type === 'workflowvar') {
+        const content = model.getValue()
+        const { parameters } = extractParametersWithMetadata(content)
+        const paramName = context.value
+        const contents: monacoEditor.IMarkdownString[] = []
+
+        contents.push({ value: `**Workflow Proxy: workflow.${paramName}**` })
+
+        if (parameters.includes(paramName)) {
+          // Look up parameter definition in frontmatter (same logic as parameter hover)
+          const frontmatter = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+          let paramInfo: Record<string, unknown> | null = null
+
+          if (frontmatter) {
+            const yamlContent = frontmatter[1]
+            const objectMatch = yamlContent.match(new RegExp(`${paramName}:\\s*\\{([^}]+)\\}`))
+            if (objectMatch) {
+              try { paramInfo = JSON.parse(`{${objectMatch[1]}}`) } catch { /* ignore */ }
+            } else {
+              const lines = yamlContent.split(/\r?\n/)
+              let inParamBlock = false
+              let paramLines: string[] = []
+              let baseIndent = -1
+
+              for (const line of lines) {
+                const trimmed = line.trim()
+                if (trimmed.startsWith('- name:') && trimmed.includes(paramName)) {
+                  inParamBlock = true
+                  baseIndent = line.match(/^\s*/)![0].length
+                  continue
+                }
+                if (inParamBlock) {
+                  const currentIndent = line.match(/^\s*/)![0].length
+                  if (trimmed.startsWith('-') && currentIndent <= baseIndent) break
+                  if (currentIndent <= baseIndent && trimmed.length > 0) break
+                  if (trimmed.length > 0) paramLines.push(line)
+                }
+              }
+
+              if (paramLines.length > 0) {
+                paramInfo = {}
+                const paramBlock = paramLines.join('\n')
+                const typeMatch = paramBlock.match(/^\s*type:\s*(.+?)\s*$/m)
+                if (typeMatch) paramInfo.type = typeMatch[1].trim()
+                const descMatch = paramBlock.match(/^\s*description:\s*["'](.+?)["']\s*$/m)
+                if (descMatch) paramInfo.description = descMatch[1]
+                else {
+                  const descPlain = paramBlock.match(/^\s*description:\s*(.+?)\s*$/m)
+                  if (descPlain) paramInfo.description = descPlain[1].trim()
+                }
+                const defaultMatch = paramBlock.match(/^\s*default:\s*(.+?)\s*$/m)
+                if (defaultMatch) paramInfo.default = defaultMatch[1].trim()
+              }
+            }
+          }
+
+          if (paramInfo && Object.keys(paramInfo).length > 0) {
+            if (paramInfo.type) contents.push({ value: `**Type:** \`${paramInfo.type}\`` })
+            if (paramInfo.description) contents.push({ value: `**Description:** ${paramInfo.description}` })
+            if (paramInfo.default !== undefined) contents.push({ value: `**Default:** \`${JSON.stringify(paramInfo.default)}\`` })
+          }
+
+          contents.push({ value: '---' })
+          contents.push({ value: `Resolves to \`{{ ${paramName} }}\` at runtime. In a workflow, uses the workflow-level value; standalone, uses the frontmatter parameter.` })
+        } else {
+          contents.push({ value: `*Parameter \`${paramName}\` is not defined in frontmatter.*` })
+          contents.push({ value: '---' })
+          contents.push({ value: `Add \`${paramName}\` to the \`parameters:\` section for this proxy to resolve.` })
         }
 
         return { range, contents }
@@ -487,6 +620,80 @@ export function registerHoverProvider(
           contents.push({ value: '- `loop.last` - true if last iteration' })
           contents.push({ value: '- `loop.length` - total items in collection' })
 
+          return { range, contents }
+        }
+
+        // Workflow runtime built-in variables (injected by workflowExecutor when .prmd runs in a workflow)
+        const workflowBuiltins: Record<string, { title: string; desc: string; usage: string }> = {
+          'workflow': {
+            title: 'Workflow Parameters',
+            desc: 'Access parameters passed to the workflow at execution time. When run outside a workflow, resolves to empty.',
+            usage: '{{ workflow.api_key }} or {{ workflow.user_input }}'
+          },
+          'previous_output': {
+            title: 'Previous Node Output',
+            desc: 'The output from the connected upstream node. When run outside a workflow, resolves to empty.',
+            usage: '{{ previous_output }} or {{ previous_output.field }}'
+          },
+          'previous_step': {
+            title: 'Previous Step Output',
+            desc: 'Alias for previous_output \u2014 the output from the connected upstream node.',
+            usage: '{{ previous_step }} or {{ previous_step.result }}'
+          },
+          'input': {
+            title: 'Node Input',
+            desc: 'Alias for previous_output \u2014 commonly used in code and transform nodes.',
+            usage: '{{ input }} or {{ input.data }}'
+          }
+        }
+
+        if (workflowBuiltins[paramName]) {
+          const bi = workflowBuiltins[paramName]
+          const contents: monacoEditor.IMarkdownString[] = []
+
+          if (paramName === 'workflow') {
+            // Dynamic parameter list for workflow
+            contents.push({ value: '**Prompd: `workflow`**' })
+            contents.push({ value: bi.desc })
+
+            if (parameters.length > 0) {
+              const frontmatter = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+              const paramEntries: string[] = []
+              for (const pName of parameters) {
+                let paramType = 'string'
+                if (frontmatter) {
+                  const yaml = frontmatter[1]
+                  const objMatch = yaml.match(new RegExp(`${pName}:\\s*\\{[^}]*type:\\s*(\\w+)`))
+                  if (objMatch) {
+                    paramType = objMatch[1]
+                  } else {
+                    const lines = yaml.split(/\r?\n/)
+                    let found = false
+                    for (let i = 0; i < lines.length; i++) {
+                      if (lines[i].trim().match(new RegExp(`-\\s*name:\\s*["']?${pName}["']?`))) {
+                        found = true
+                        continue
+                      }
+                      if (found) {
+                        const typeMatch = lines[i].match(/^\s+type:\s*(\w+)/)
+                        if (typeMatch) { paramType = typeMatch[1]; break }
+                        if (lines[i].trim().startsWith('-') || (lines[i].match(/^\w/) && lines[i].includes(':'))) break
+                      }
+                    }
+                  }
+                }
+                paramEntries.push(`${pName}: ${paramType}`)
+              }
+              contents.push({ value: `\`\`\`typescript\nworkflow: { ${paramEntries.join(', ')} }\n\`\`\`` })
+            }
+          } else {
+            contents.push({ value: `**Workflow Built-in: ${paramName}**` })
+            contents.push({ value: bi.desc })
+          }
+
+          contents.push({ value: '---' })
+          contents.push({ value: `**Usage:** \`${bi.usage}\`` })
+          contents.push({ value: `Use \`{{ ${paramName} | default("fallback") }}\` to handle standalone execution.` })
           return { range, contents }
         }
 

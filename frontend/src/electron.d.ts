@@ -59,7 +59,7 @@ export interface ElectronAPI {
 
   // Connection testing (for workflow connections)
   testSSHConnection?: (config: { host: string; port?: number; username?: string }) => Promise<{ success: boolean; message: string }>
-  testDatabaseConnection?: (config: { host: string; port?: number; type?: string }) => Promise<{ success: boolean; message: string }>
+  testDatabaseConnection?: (config: { host?: string; port?: number; type?: string; connectionString?: string }) => Promise<{ success: boolean; message: string }>
   testMCPConnection?: (config: { serverUrl: string }) => Promise<{ success: boolean; message: string }>
 
   // Agent command execution (for workflow Command nodes and AI agent tool calls)

@@ -5,6 +5,7 @@
  * Each node type has its own properties file in the nodes/ directory.
  */
 
+import { useState, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import {
   X,
@@ -28,6 +29,7 @@ import {
   MessagesSquare,
   Settings,
   Database,
+  TableProperties,
   Play,
   Cpu,
   ShieldCheck,
@@ -37,6 +39,11 @@ import {
   Search,
 } from 'lucide-react'
 import { useWorkflowStore } from '../../../stores/workflowStore'
+import { useEditorStore } from '../../../stores/editorStore'
+import { PrompdViewerModal } from './PrompdViewerModal'
+import { FileEditorModal } from './FileEditorModal'
+import PackageDetailsModal from '../../editor/PackageDetailsModal'
+import { registryApi, type RegistryPackage } from '../../services/registryApi'
 import { ErrorHandlerSelector } from './shared/property-components/ErrorHandlerSelector'
 import { ConnectionSelector } from './shared/property-components/ConnectionSelector'
 import { labelStyle, inputStyle } from './shared/styles/propertyStyles'
@@ -67,6 +74,7 @@ import type {
   MemoryNodeData,
   GuardrailNodeData,
   WebSearchNodeData,
+  DatabaseQueryNodeData,
 } from '../../services/workflowTypes'
 
 // Import all property editors from node files
@@ -95,6 +103,8 @@ import { ChatAgentNodeProperties } from './nodes/ChatAgentNode'
 import { MemoryNodeProperties } from './nodes/MemoryNode'
 import { GuardrailNodeProperties } from './nodes/GuardrailNode'
 import { WebSearchNodeProperties } from './nodes/WebSearchNode'
+import { DatabaseQueryNodeProperties } from './nodes/DatabaseQueryNode'
+// --- Add new node property imports here ---
 
 export function WorkflowPropertiesPanel() {
   // Subscribe to selectedNodeId separately - this is a primitive and won't cause extra re-renders
@@ -110,6 +120,93 @@ export function WorkflowPropertiesPanel() {
 
   const updateNodeData = useWorkflowStore(state => state.updateNodeData)
   const selectNode = useWorkflowStore(state => state.selectNode)
+
+  // For resolving relative .prmd paths to absolute paths
+  const tabs = useEditorStore(state => state.tabs)
+  const activeTabId = useEditorStore(state => state.activeTabId)
+  const workspacePath = useEditorStore(state => state.explorerDirPath)
+
+  // Prompd viewer modal state (local files)
+  const [viewerOpen, setViewerOpen] = useState(false)
+  const [viewerSource, setViewerSource] = useState('')
+  const [viewerResolvedPath, setViewerResolvedPath] = useState<string | undefined>(undefined)
+
+  // File editor modal state (content mode for expand-to-editor)
+  const [fileEditorOpen, setFileEditorOpen] = useState(false)
+  const [fileEditorContent, setFileEditorContent] = useState('')
+  const [fileEditorLanguage, setFileEditorLanguage] = useState('plaintext')
+  const [fileEditorLabel, setFileEditorLabel] = useState('')
+  const [fileEditorField, setFileEditorField] = useState('')
+
+  // Package details modal state (registry packages)
+  const [selectedRegistryPackage, setSelectedRegistryPackage] = useState<RegistryPackage | null>(null)
+  const [packageInitialFile, setPackageInitialFile] = useState<string | undefined>(undefined)
+
+  const handleOpenPrompd = useCallback(async () => {
+    if (!selectedNode) return
+    const promptData = selectedNode.data as PromptNodeData
+    if (!promptData.source) return
+
+    const source = promptData.source
+
+    // Local file — open in read-only Monaco viewer
+    if (source.startsWith('.') || source.startsWith('/') || /^[a-zA-Z]:/.test(source)) {
+      const activeTab = tabs.find(t => t.id === activeTabId)
+      const workflowFilePath = activeTab?.filePath || null
+
+      if (workflowFilePath) {
+        const lastSlash = Math.max(workflowFilePath.lastIndexOf('/'), workflowFilePath.lastIndexOf('\\'))
+        const workflowDir = lastSlash > 0 ? workflowFilePath.substring(0, lastSlash) : workflowFilePath
+        const resolved = workflowDir.replace(/\\/g, '/') + '/' + source.replace(/\\/g, '/')
+        setViewerResolvedPath(resolved)
+      } else if (workspacePath) {
+        const resolved = workspacePath.replace(/\\/g, '/') + '/' + source.replace(/\\/g, '/')
+        setViewerResolvedPath(resolved)
+      } else {
+        setViewerResolvedPath(undefined)
+      }
+
+      setViewerSource(source)
+      setViewerOpen(true)
+      return
+    }
+
+    // Registry package — parse name from source and open PackageDetailsModal
+    // Source format: @scope/pkg@version/file.prmd or @scope/pkg@version
+    const atIdx = source.lastIndexOf('@')
+    if (atIdx > 0) {
+      const afterAt = source.substring(atIdx + 1) // "version/path/to/file.prmd" or "version"
+      const packageName = source.substring(0, atIdx)
+      const slashIdx = afterAt.indexOf('/')
+      const filePath = slashIdx >= 0 ? afterAt.substring(slashIdx + 1) : undefined
+
+      try {
+        const packageInfo = await registryApi.getPackageInfo(packageName)
+        if (packageInfo) {
+          setPackageInitialFile(filePath)
+          setSelectedRegistryPackage(packageInfo)
+        }
+      } catch (err) {
+        console.error('Failed to load package info:', err)
+      }
+    }
+  }, [selectedNode, tabs, activeTabId, workspacePath])
+
+  // Open inline content in expanded editor modal
+  const handleExpandEditor = useCallback((content: string, language: string, label: string, field: string) => {
+    setFileEditorContent(content)
+    setFileEditorLanguage(language)
+    setFileEditorLabel(label)
+    setFileEditorField(field)
+    setFileEditorOpen(true)
+  }, [])
+
+  // Save content back from expanded editor to the node data field
+  const handleEditorSaveContent = useCallback((content: string) => {
+    if (selectedNode && fileEditorField) {
+      updateNodeData(selectedNode.id, { [fileEditorField]: content })
+    }
+  }, [selectedNode, fileEditorField, updateNodeData])
 
   if (!selectedNode || !selectedNodeId) return null
 
@@ -175,6 +272,9 @@ export function WorkflowPropertiesPanel() {
         return <Play style={{ ...iconStyle, color: 'var(--node-green)' }} />
       case 'chat-agent':
         return <MessagesSquare style={{ ...iconStyle, color: 'var(--node-indigo)' }} />
+      case 'database-query':
+        return <TableProperties style={{ ...iconStyle, color: 'var(--node-teal)' }} />
+      // --- Add new node icon cases here ---
       default:
         return null
     }
@@ -360,6 +460,7 @@ export function WorkflowPropertiesPanel() {
           <PromptNodeProperties
             data={selectedNode.data as PromptNodeData}
             onChange={handleDataChange}
+            onOpenPrompd={handleOpenPrompd}
           />
         )}
 
@@ -434,6 +535,7 @@ export function WorkflowPropertiesPanel() {
           <ToolNodeProperties
             data={selectedNode.data as ToolNodeData}
             onChange={handleDataChange}
+            onExpandEditor={handleExpandEditor}
           />
         )}
 
@@ -491,6 +593,7 @@ export function WorkflowPropertiesPanel() {
           <CodeNodeProperties
             data={selectedNode.data as CodeNodeData}
             onChange={handleDataChange}
+            onExpandEditor={handleExpandEditor}
           />
         )}
 
@@ -519,6 +622,7 @@ export function WorkflowPropertiesPanel() {
           <TransformerNodeProperties
             data={selectedNode.data as TransformerNodeData}
             onChange={handleDataChange}
+            onExpandEditor={handleExpandEditor}
           />
         )}
 
@@ -543,6 +647,16 @@ export function WorkflowPropertiesPanel() {
           />
         )}
 
+        {selectedNode.type === 'database-query' && (
+          <DatabaseQueryNodeProperties
+            data={selectedNode.data as DatabaseQueryNodeData}
+            onChange={handleDataChange}
+            nodeId={selectedNode.id}
+            onExpandEditor={handleExpandEditor}
+          />
+        )}
+        {/* --- Add new node property dispatchers here --- */}
+
         {/* Node ID (read-only) */}
         <div style={{ paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
           <label style={{ ...labelStyle, fontSize: '11px', color: 'var(--text-secondary)' }}>
@@ -565,6 +679,36 @@ export function WorkflowPropertiesPanel() {
           </code>
         </div>
       </div>
+
+      {/* Local file viewer modal (read-only Monaco) */}
+      <PrompdViewerModal
+        isOpen={viewerOpen}
+        source={viewerSource}
+        resolvedPath={viewerResolvedPath}
+        onClose={() => setViewerOpen(false)}
+      />
+
+      {/* Expanded content editor modal (for code/template/snippet fields) */}
+      <FileEditorModal
+        isOpen={fileEditorOpen}
+        source={fileEditorLabel}
+        initialContent={fileEditorContent}
+        language={fileEditorLanguage}
+        onSaveContent={handleEditorSaveContent}
+        onClose={() => setFileEditorOpen(false)}
+      />
+
+      {/* Registry package viewer modal */}
+      {selectedRegistryPackage && (
+        <PackageDetailsModal
+          package={selectedRegistryPackage}
+          initialFile={packageInitialFile}
+          onClose={() => {
+            setSelectedRegistryPackage(null)
+            setPackageInitialFile(undefined)
+          }}
+        />
+      )}
     </div>
   )
 }

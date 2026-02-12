@@ -216,6 +216,13 @@ export function detectContext(text: string, lineNumber: number, column: number):
     return { type: 'envvar', query: envVarMatch[1] || '' }
   }
 
+  // Check for workflow var context: {{ workflow. or {{ workflow.PARAM
+  // Proxies to frontmatter parameters — workflow.X resolves to parameter X at runtime
+  const workflowVarMatch = beforeCursor.match(/\{\{\s*workflow\.(\w*)$/)
+  if (workflowVarMatch) {
+    return { type: 'workflowvar', query: workflowVarMatch[1] || '' }
+  }
+
   // Check for filter context (after | in template expressions)
   // Pattern: {{ variable | or {% for x in y |
   const filterMatch = beforeCursor.match(/\{\{[^}]*\|\s*(\w*)$/) ||
@@ -231,7 +238,8 @@ export function detectContext(text: string, lineNumber: number, column: number):
   }
 
   // Check for variable references - match text after { or {{
-  const braceMatch = beforeCursor.match(/\{+(\w*)$/)
+  // Allow optional whitespace between braces and variable name: {{ var }}, {{  }}, etc.
+  const braceMatch = beforeCursor.match(/\{+\s*(\w*)$/)
   if (braceMatch) {
     return { type: 'variable', query: braceMatch[1] || '' }
   }
@@ -301,6 +309,13 @@ export function detectHoverContext(line: string, word: monacoEditor.editor.IWord
   const envVarPattern = new RegExp(`\\{\\{[-~]?\\s*env\\.(${word.word})(?:\\s|\\||\\})`);
   if (envVarPattern.test(line)) {
     return { type: 'envvar', value: word.word }
+  }
+
+  // Check if word is a workflow variable reference ({{ workflow.PARAM }})
+  // workflow.X proxies to frontmatter parameter X at runtime
+  const workflowVarPattern = new RegExp(`\\{\\{[-~]?\\s*workflow\\.(${word.word})(?:\\s|\\||\\.|\\})`);
+  if (workflowVarPattern.test(line)) {
+    return { type: 'workflowvar', value: word.word }
   }
 
   // Check if word is inside a Jinja2 expression block {{ ... }}

@@ -84,6 +84,40 @@ export function registerCompletionProvider(
         }
       }
 
+      // Workflow variable suggestions (after {{ workflow.)
+      // Proxies to frontmatter parameters — workflow.X resolves to parameter X at runtime
+      if (context.type === 'workflowvar') {
+        const content = model.getValue()
+        const { parameters } = extractParametersWithMetadata(content)
+        const query = (context.query || '').toLowerCase()
+
+        parameters.forEach((paramName) => {
+          if (paramName.toLowerCase().includes(query)) {
+            suggestions.push({
+              label: paramName,
+              kind: monaco.languages.CompletionItemKind.Field,
+              insertText: paramName,
+              detail: `workflow parameter (proxy to ${paramName})`,
+              documentation: `**Workflow Parameter Proxy**\n\n\`{{ workflow.${paramName} }}\` resolves to the \`${paramName}\` parameter.\n\nIn a workflow: uses the workflow-level parameter value.\nStandalone: falls back to the frontmatter parameter value.`,
+              range,
+              sortText: `0_${paramName}`
+            })
+          }
+        })
+
+        if (parameters.length === 0) {
+          suggestions.push({
+            label: 'No parameters defined',
+            kind: monaco.languages.CompletionItemKind.Text,
+            insertText: '',
+            detail: 'Define parameters in frontmatter to see suggestions',
+            documentation: 'Add a `parameters:` section in the YAML frontmatter. Workflow parameter access proxies to these parameter definitions.',
+            range,
+            sortText: '9_noparam'
+          })
+        }
+      }
+
       // Version suggestions (after @namespace/package@)
       if (context.type === 'version' && context.packageName) {
         try {
@@ -611,19 +645,25 @@ export function registerCompletionProvider(
         const query = context.query || ''
 
         // Find how many opening braces the user typed by looking back from cursor
+        // Allow optional whitespace between braces and variable name ({{ var }})
         const lineText = model.getLineContent(position.lineNumber)
         const textBeforeCursor = lineText.substring(0, position.column - 1)
-        const braceMatch = textBeforeCursor.match(/(\{+)(\w*)$/)
+        const braceMatch = textBeforeCursor.match(/(\{+)(\s*)(\w*)$/)
         const openingBraces = braceMatch ? braceMatch[1] : '{'
+        const spacesAfterBraces = braceMatch ? braceMatch[2].length : 0
         const isHandlebars = openingBraces.length >= 2
 
-        // Range should cover the braces + any typed characters
-        const replaceStart = position.column - openingBraces.length - query.length
+        // Range should cover the braces + spaces + any typed characters + auto-closed braces after cursor
+        const replaceStart = position.column - openingBraces.length - spacesAfterBraces - query.length
+        const textAfterCursor = lineText.substring(position.column - 1)
+        // Consume optional trailing whitespace + closing braces after cursor
+        const closingBraceMatch = textAfterCursor.match(/^(\s*\}+)/)
+        const trailingChars = closingBraceMatch ? closingBraceMatch[1].length : 0
         const variableRange = {
           startLineNumber: position.lineNumber,
           endLineNumber: position.lineNumber,
           startColumn: replaceStart,
-          endColumn: position.column
+          endColumn: position.column + trailingChars
         }
 
         const { parameters, loopVariables } = extractParametersWithMetadata(model.getValue())
@@ -658,11 +698,14 @@ export function registerCompletionProvider(
             }
 
             if (isHandlebars) {
-              // User typed "{{" - replace with "{{param}}"
+              // Match the user's whitespace style: "{{ param }}" vs "{{param}}"
+              const sp = spacesAfterBraces > 0 ? ' ' : ''
+              const label = '{{' + sp + param + sp + '}}'
               suggestions.push({
-                label: '{{' + param + '}}',
+                label,
                 kind: monaco.languages.CompletionItemKind.Variable,
-                insertText: '{{' + param + '}}',
+                insertText: label,
+                filterText: label,
                 detail,
                 documentation,
                 range: variableRange,
@@ -682,9 +725,10 @@ export function registerCompletionProvider(
               // Also offer handlebars option
               if (!isLoopVar) {
                 suggestions.push({
-                  label: '{{' + param + '}}',
+                  label: '{{ ' + param + ' }}',
                   kind: monaco.languages.CompletionItemKind.Variable,
-                  insertText: '{{' + param + '}}',
+                  insertText: '{{ ' + param + ' }}',
+                  filterText: '{{ ' + param + ' }}',
                   detail: detail + ' (handlebars)',
                   documentation,
                   range: variableRange,
@@ -708,21 +752,49 @@ export function registerCompletionProvider(
             signatures: ['env.VARIABLE_NAME'],
             detail: 'Environment variables',
             documentation: '**Environment Variables**\n\nAccess .env file variables.\n\n**Usage:**\n- `{{ env.API_KEY }}`\n- `{{ env.DATABASE_URL }}`\n\nType `.` after `env` to see available variables.'
+          },
+          // Workflow runtime variables (injected by workflowExecutor.ts)
+          {
+            name: 'workflow',
+            signatures: ['workflow.PARAMETER_NAME'],
+            detail: 'Workflow parameters',
+            documentation: '**Workflow Parameters**\n\nAccess parameters passed to the workflow at execution time.\n\n**Usage:**\n- `{{ workflow.api_key }}`\n- `{{ workflow.user_input }}`\n\nParameters are defined in the workflow\'s parameter settings and passed when the workflow is triggered.'
+          },
+          {
+            name: 'previous_output',
+            signatures: ['previous_output'],
+            detail: 'Previous node output',
+            documentation: '**Previous Node Output**\n\nThe output from the directly connected upstream node.\n\n**Usage:**\n- `{{ previous_output }}` - Full output\n- `{{ previous_output.field }}` - Nested field access\n\nAvailable when this prompt is connected as a downstream node in a workflow.'
+          },
+          {
+            name: 'input',
+            signatures: ['input'],
+            detail: 'Node input (alias)',
+            documentation: '**Node Input**\n\nAlias for `previous_output` -- the output from the connected upstream node.\n\n**Usage:**\n- `{{ input }}` - Full input value\n- `{{ input.field }}` - Nested field access\n\nCommonly used in code nodes and transform nodes.'
+          },
+          {
+            name: 'previous_step',
+            signatures: ['previous_step'],
+            detail: 'Previous step output (alias)',
+            documentation: '**Previous Step Output**\n\nAlias for `previous_output` -- the output from the connected upstream node.\n\n**Usage:**\n- `{{ previous_step }}` - Full output\n- `{{ previous_step.field }}` - Nested field access'
           }
         ]
 
+        const builtinSp = spacesAfterBraces > 0 ? ' ' : ''
+
         builtInFunctions.forEach(func => {
           if (func.name.toLowerCase().includes(query.toLowerCase())) {
-            // Add all signatures as separate completions
             func.signatures.forEach((signature, idx) => {
-              const insertText = isHandlebars
-                ? `{{ ${signature} }}`
+              const label = isHandlebars
+                ? `{{${builtinSp}${signature}${builtinSp}}}`
                 : signature
+              const insertText = label
 
               suggestions.push({
-                label: isHandlebars ? `{{ ${signature} }}` : signature,
+                label,
                 kind: monaco.languages.CompletionItemKind.Function,
                 insertText,
+                filterText: label,
                 detail: func.detail,
                 documentation: func.documentation,
                 range: variableRange,
@@ -920,7 +992,7 @@ export function registerCompletionProvider(
         console.log('[IntelliSense] First 3 suggestions:', suggestions.slice(0, 3).map(s => s.label))
       }
 
-      return { suggestions }
+      return { suggestions, incomplete: true }
     }
   })
 }

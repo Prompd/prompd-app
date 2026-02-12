@@ -40,6 +40,7 @@ import {
   ShieldCheck,
   MessagesSquare,
   Database,
+  TableProperties,
   Search,
 } from 'lucide-react'
 import type { NodeExecutionStatus, WorkflowNodeType } from '../../../services/workflowTypes'
@@ -91,6 +92,7 @@ const NODE_TYPE_ICONS: Record<WorkflowNodeType, React.ComponentType<{ style?: Re
   memory: Database,
   output: FileOutput,
   'web-search': Search,
+  'database-query': TableProperties,
 }
 
 // Node type color mapping for mini previews

@@ -296,7 +296,7 @@ export function PlanApprovalDialog({ toolCalls, agentMessage, onApprove, onRejec
 
       if (tc.tool === 'edit_file') {
         // For edit_file, apply edits to compute modified content
-        const edits = tc.params.edits as EditOperation[]
+        const edits = tc.params.edits as EditOperation[] | undefined
         if (!result.success) {
           // File not accessible - can still show edit preview
           setFileContents(prev => new Map(prev).set(index, {
@@ -304,6 +304,16 @@ export function PlanApprovalDialog({ toolCalls, agentMessage, onApprove, onRejec
             modifiedContent: null,
             isLoading: false,
             error: result.error || 'Could not read file'
+          }))
+          return
+        }
+
+        if (!edits || !Array.isArray(edits) || edits.length === 0) {
+          setFileContents(prev => new Map(prev).set(index, {
+            originalContent: result.content,
+            modifiedContent: result.content,
+            isLoading: false,
+            error: 'No edits were parsed from the tool call'
           }))
           return
         }

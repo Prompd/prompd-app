@@ -3,7 +3,7 @@
  */
 
 import { Editor } from '@monaco-editor/react'
-import { Braces } from 'lucide-react'
+import { Braces, Maximize2 } from 'lucide-react'
 import type { CodeNodeData } from '../../../services/workflowTypes'
 import { useUIStore } from '../../../../stores/uiStore'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
@@ -14,24 +14,28 @@ export interface CodeNodePropertiesProps {
   data: CodeNodeData
   onChange: (field: string, value: unknown) => void
   nodeId?: string
+  onExpandEditor?: (content: string, language: string, label: string, field: string) => void
 }
 
-export function CodeNodeProperties({ data, onChange }: CodeNodePropertiesProps) {
+export function CodeNodeProperties({ data, onChange, onExpandEditor }: CodeNodePropertiesProps) {
   const theme = useUIStore(state => state.theme)
 
   // Check if code contains {{ }} variables (for template-style code)
   const codeHasVariables = hasVariables(data.code || '')
 
+  const language = data.language || 'typescript'
+  const isJsLang = language === 'typescript' || language === 'javascript'
+
   const languageOptions = [
-    { value: 'typescript', label: 'TypeScript', description: 'Executes via Node.js vm or temp file' },
-    { value: 'javascript', label: 'JavaScript', description: 'Executes via Node.js vm or temp file' },
-    { value: 'python', label: 'Python', description: 'Executes via python -c or temp file' },
-    { value: 'csharp', label: 'C#', description: 'Executes via dotnet-script' },
+    { value: 'typescript', label: 'TypeScript', description: 'Inline execution via Node.js VM (isolated) or main process' },
+    { value: 'javascript', label: 'JavaScript', description: 'Inline execution via Node.js VM (isolated) or main process' },
+    { value: 'python', label: 'Python', description: 'Subprocess via python -c (process-isolated, has OS access)' },
+    { value: 'csharp', label: 'C#', description: 'Subprocess via dotnet run (process-isolated, has OS access)' },
   ]
 
   const executionContextOptions = [
-    { value: 'isolated', label: 'Isolated (VM)', description: 'Runs in sandboxed context for security' },
-    { value: 'main', label: 'Main Process', description: 'Runs with full access (use with caution)' },
+    { value: 'isolated', label: 'Isolated (VM)', description: 'Sandboxed — no require, process, or file system access' },
+    { value: 'main', label: 'Main Process', description: 'Full Node.js access including require and file system (use with caution)' },
   ]
 
   // Get placeholder code based on language
@@ -115,7 +119,7 @@ return result;`
       </div>
 
       {/* Execution Context (TS/JS only) */}
-      {(data.language === 'typescript' || data.language === 'javascript' || !data.language) && (
+      {isJsLang && (
         <div>
           <label style={labelStyle}>Execution Context</label>
           <select
@@ -133,9 +137,47 @@ return result;`
         </div>
       )}
 
+      {/* Isolation note for Python/C# */}
+      {!isJsLang && (
+        <div style={{ padding: '8px 10px', background: 'var(--panel-2)', borderRadius: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+          Runs as a subprocess — isolated from the workflow engine but has full OS access (file system, network, environment variables).
+        </div>
+      )}
+
       {/* Code Editor */}
       <div>
-        <label style={labelStyle}>Code</label>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <label style={labelStyle}>Code</label>
+          {onExpandEditor && (
+            <button
+              onClick={() => onExpandEditor(
+                data.code || '',
+                getMonacoLanguage(),
+                'Code',
+                'code'
+              )}
+              title="Open in expanded editor"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '2px 6px',
+                background: 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                color: 'var(--text-secondary)',
+                fontSize: '10px',
+                transition: 'color 0.15s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+            >
+              <Maximize2 size={11} />
+              Expand
+            </button>
+          )}
+        </div>
         <div
           style={{
             border: '1px solid var(--input-border)',

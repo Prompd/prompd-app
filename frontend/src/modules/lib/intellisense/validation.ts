@@ -1297,8 +1297,13 @@ export async function validateModel(
         definedParams.add(setVar)
       }
 
-      // Add built-in 'env' namespace for environment variables ({{ env.VAR }})
-      definedParams.add('env')
+      // Add built-in namespaces that don't need to be declared in parameters
+      definedParams.add('env')              // Environment variables ({{ env.VAR }})
+      // Workflow runtime variables (injected by workflowExecutor.ts when .prmd runs in a workflow)
+      definedParams.add('workflow')         // Workflow parameters ({{ workflow.param_name }})
+      definedParams.add('previous_output')  // Output from connected upstream node
+      definedParams.add('previous_step')    // Alias for previous_output
+      definedParams.add('input')            // Alias for previous_output in code/transform nodes
 
       console.log('[intellisense] After loop/set extraction, definedParams:', Array.from(definedParams))
 

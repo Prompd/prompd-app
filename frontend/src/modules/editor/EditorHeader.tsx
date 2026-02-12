@@ -1,7 +1,7 @@
-import { Code2, Palette, Settings, Play, LogOut, User, Moon, Sun, SplitSquareHorizontal, HelpCircle } from 'lucide-react'
+import { Code2, Palette, Settings, Play, LogOut, User, Moon, Sun, HelpCircle } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { PrompdIcon } from '../components/PrompdIcon'
+import { PreviewToggle, ChatToggle } from './SplitViewToggles'
 import { useAuthenticatedUser, useElectronAuth, isElectron } from '../auth/ClerkWrapper'
 import { UserButton } from '@clerk/clerk-react'
 import { useUIStore } from '../../stores/uiStore'
@@ -625,56 +625,21 @@ export default function EditorHeader({
             </button>
             {/* Preview toggle - available in Code mode for .prmd files, visible but disabled in Design mode */}
             {isPrompdFile && onTogglePreview && (
-              <button
-                onClick={mode === 'code' ? onTogglePreview : undefined}
+              <PreviewToggle
+                active={showPreview && mode === 'code'}
+                onClick={onTogglePreview}
                 disabled={mode !== 'code'}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: isMediumCompact ? '0' : '4px',
-                  padding: isMediumCompact ? '4px 6px' : '4px 10px',
-                  fontSize: '11px',
-                  fontWeight: 500,
-                  border: 'none',
-                  borderRadius: '4px',
-                  // Use a muted/secondary accent color for Preview toggle
-                  background: showPreview && mode === 'code' ? 'rgba(99, 102, 241, 0.85)' : 'transparent',
-                  color: showPreview && mode === 'code' ? 'white' : 'var(--text-secondary)',
-                  cursor: mode === 'code' ? 'pointer' : 'not-allowed',
-                  opacity: mode === 'code' ? 1 : 0.4,
-                  transition: 'all 0.2s'
-                }}
-                title={mode !== 'code' ? 'Preview only available in Code mode' : (showPreview ? 'Hide preview panel' : 'Show compiled preview')}
-              >
-                <SplitSquareHorizontal size={14} />
-                {!isMediumCompact && <span>Preview</span>}
-              </button>
+                compact={isMediumCompact}
+              />
             )}
             {/* Chat toggle - opens AI chat in split view, available in Code mode for .prmd files */}
             {isPrompdFile && onToggleChat && (
-              <button
-                onClick={mode === 'code' ? onToggleChat : undefined}
+              <ChatToggle
+                active={showChat && mode === 'code'}
+                onClick={onToggleChat}
                 disabled={mode !== 'code'}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: isMediumCompact ? '0' : '4px',
-                  padding: isMediumCompact ? '4px 6px' : '4px 10px',
-                  fontSize: '11px',
-                  fontWeight: 500,
-                  border: 'none',
-                  borderRadius: '4px',
-                  background: showChat && mode === 'code' ? 'rgba(99, 102, 241, 0.85)' : 'transparent',
-                  color: showChat && mode === 'code' ? 'white' : 'var(--text-secondary)',
-                  cursor: mode === 'code' ? 'pointer' : 'not-allowed',
-                  opacity: mode === 'code' ? 1 : 0.4,
-                  transition: 'all 0.2s'
-                }}
-                title={mode !== 'code' ? 'Chat only available in Code mode' : (showChat ? 'Hide chat panel' : 'Open AI chat')}
-              >
-                <PrompdIcon size={14} />
-                {!isMediumCompact && <span>Chat</span>}
-              </button>
+                compact={isMediumCompact}
+              />
             )}
           </div>
         )}

@@ -148,12 +148,6 @@ export const TransformNode = memo(({ id, data, selected }: TransformNodeProps) =
         }}
       />
 
-      {/* Execution debug footer */}
-      <NodeExecutionFooter
-        nodeState={nodeState}
-        allNodeStates={executionState?.nodeStates}
-      />
-
       {/* Output Handle */}
       <Handle
         type="source"
@@ -313,6 +307,12 @@ export const TransformNode = memo(({ id, data, selected }: TransformNodeProps) =
           index={index}
         />
       ))}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+      />
     </div>
   )
 })

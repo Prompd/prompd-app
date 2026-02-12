@@ -11,7 +11,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Check, Zap, DollarSign } from 'lucide-react'
+import { ChevronDown, Check, Zap, DollarSign, FileText } from 'lucide-react'
 import type { ProviderWithPricing, ModelWithPricing } from '../../stores/uiStore'
 import { formatPricePerMillion } from '../lib/formatters'
 
@@ -26,6 +26,7 @@ interface ProviderModelSelectorProps {
   disabled?: boolean
   forceDropdown?: boolean  // Force provider selector to use dropdown even with <= 3 providers
   shrinkModel?: boolean    // Use a more compact model selector
+  onOpenPrompd?: () => void // Optional handler — shows a button that opens the .prmd editor modal
 }
 
 /**
@@ -64,7 +65,8 @@ export function ProviderModelSelector({
   showPricing = true,
   disabled = false,
   forceDropdown = false,
-  shrinkModel = false
+  shrinkModel = false,
+  onOpenPrompd
 }: ProviderModelSelectorProps) {
   const [showProviderDropdown, setShowProviderDropdown] = useState(false)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
@@ -598,6 +600,37 @@ export function ProviderModelSelector({
           )}
         </div>
       </div>
+
+      {/* Open .prmd editor button — only shown when handler is provided */}
+      {onOpenPrompd && (
+        <button
+          onClick={onOpenPrompd}
+          title="Open prompt editor"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: shrinkModel ? '4px' : '6px',
+            background: 'var(--panel-2)',
+            border: '1px solid var(--border)',
+            borderRadius: '6px',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            flexShrink: 0,
+            transition: 'all 0.15s'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'var(--accent)'
+            e.currentTarget.style.borderColor = 'var(--accent)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--text-secondary)'
+            e.currentTarget.style.borderColor = 'var(--border)'
+          }}
+        >
+          <FileText size={shrinkModel ? 12 : 14} />
+        </button>
+      )}
 
       {/* Cost estimate badge (compact layout only) */}
       {layout === 'compact' && showPricing && estimatedCostPer1K !== null && (

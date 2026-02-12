@@ -122,9 +122,18 @@ export function createWorkflowExecutor(
       customCommands: workflowCustomCommands
     }
 
+    // Inject connections into the workflow so the executor can resolve connectionIds
+    // Connections live in workflowStore state but aren't part of the .pdflow file format (yet)
+    const connections = useWorkflowStore.getState().connections
+    const workflowWithConnections = {
+      ...workflow,
+      connections,
+      file: workflow.file ? { ...workflow.file, connections } : workflow.file,
+    }
+
     // Start execution (returns immediately with executionId)
     const { executionId: newExecutionId } = await window.electronAPI.workflow.execute(
-      workflow,
+      workflowWithConnections,
       params,
       serializableOptions
     )

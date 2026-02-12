@@ -3,7 +3,7 @@
  */
 
 import { Editor } from '@monaco-editor/react'
-import { Braces } from 'lucide-react'
+import { Braces, Maximize2 } from 'lucide-react'
 import type { TransformerNodeData } from '../../../services/workflowTypes'
 import { useUIStore } from '../../../../stores/uiStore'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
@@ -14,9 +14,10 @@ export interface TransformerNodePropertiesProps {
   data: TransformerNodeData
   onChange: (field: string, value: unknown) => void
   nodeId?: string
+  onExpandEditor?: (content: string, language: string, label: string, field: string) => void
 }
 
-export function TransformerNodeProperties({ data, onChange }: TransformerNodePropertiesProps) {
+export function TransformerNodeProperties({ data, onChange, onExpandEditor }: TransformerNodePropertiesProps) {
   const theme = useUIStore(state => state.theme)
 
   const modeOptions = [
@@ -132,9 +133,40 @@ input.data.map(item => ({
 
       {/* Template/Expression Editor */}
       <div>
-        <label style={labelStyle}>
-          {mode === 'template' ? 'Template' : mode === 'expression' ? 'Expression' : 'Query'}
-        </label>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <label style={labelStyle}>
+            {mode === 'template' ? 'Template' : mode === 'expression' ? 'Expression' : 'Query'}
+          </label>
+          {onExpandEditor && (
+            <button
+              onClick={() => onExpandEditor(
+                content,
+                getMonacoLanguage(),
+                mode === 'template' ? 'Template' : mode === 'expression' ? 'Expression' : 'Query',
+                mode === 'template' ? 'template' : mode === 'expression' ? 'expression' : 'jqExpression'
+              )}
+              title="Open in expanded editor"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '2px 6px',
+                background: 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                color: 'var(--text-secondary)',
+                fontSize: '10px',
+                transition: 'color 0.15s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+            >
+              <Maximize2 size={11} />
+              Expand
+            </button>
+          )}
+        </div>
         <div
           style={{
             border: '1px solid var(--input-border)',
