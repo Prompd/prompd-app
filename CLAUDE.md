@@ -115,6 +115,7 @@ prompd.app/
   - **Subpath exports** (`@prompd/cli/parser`, `/types`, `/validator`): Browser-compatible, can be bundled by Vite if needed
 - **`@prompd/react@0.2.0`** - Chat UI (local via `file:../packages/react`) - must build before frontend. Dual ESM + CJS output.
 - **`@prompd/scheduler@0.1.0`** - Deployment service (local via `file:../packages/scheduler`). **CommonJS output only** — consumers must use `require()` or Node.js CJS interop.
+- **Database drivers** - Bundled in `frontend/` for the DatabaseQuery workflow node. All drivers are loaded at runtime via `require()` in Electron main process (`main.js`). Includes: `mongodb`, `pg` (PostgreSQL), `mysql2` (MySQL/MariaDB), `better-sqlite3` (SQLite), `ioredis` (Redis). These are bundled with the app so end users don't need to install them separately.
 
 ### Execution Model - Local-First
 

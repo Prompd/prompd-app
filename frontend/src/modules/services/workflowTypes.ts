@@ -180,6 +180,9 @@ export const DOCKABLE_HANDLES: Array<{
   // Web Search node - accepts checkpoint/callback for search event logging
   { nodeType: 'web-search', handleId: 'onCheckpoint', position: { side: 'bottom', topPercent: 100 }, acceptsTypes: ['callback', 'checkpoint'] },
 
+  // Error Handler node - accepts checkpoint/callback on error events
+  { nodeType: 'error-handler', handleId: 'onError', position: { side: 'bottom', topPercent: 100 }, acceptsTypes: ['callback', 'checkpoint'] },
+
   // Tool Call Router node - accepts tool nodes for docking
   { nodeType: 'tool-call-router', handleId: 'ai-input', position: { side: 'left', topPercent: 35 }, acceptsTypes: ['tool'] },
 
@@ -2112,11 +2115,14 @@ export type WorkflowConnectionStatus = 'disconnected' | 'connecting' | 'connecte
  * Stored separately from workflow nodes - connections are workflow-scoped resources
  * that can be referenced by multiple nodes via connectionId.
  */
+export type ConnectionScope = 'global' | 'workspace'
+
 export interface WorkflowConnection {
   id: string
   name: string
   type: WorkflowConnectionType
   status: WorkflowConnectionStatus
+  scope: ConnectionScope
   lastConnected?: number
   lastError?: string
   config: WorkflowConnectionConfig

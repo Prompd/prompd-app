@@ -361,8 +361,25 @@ function ConnectionGroup({
           }}
         >
           <StatusIndicator status={conn.status} />
-          <span style={{ flex: 1, fontSize: '12px', color: 'var(--text)' }}>
+          <span style={{ flex: 1, fontSize: '12px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
             {conn.name}
+            <span
+              style={{
+                fontSize: '9px',
+                padding: '1px 5px',
+                borderRadius: '3px',
+                fontWeight: 500,
+                background: conn.scope === 'global'
+                  ? 'color-mix(in srgb, var(--node-amber, #f59e0b) 15%, transparent)'
+                  : 'color-mix(in srgb, var(--accent) 15%, transparent)',
+                color: conn.scope === 'global'
+                  ? 'var(--node-amber, #f59e0b)'
+                  : 'var(--accent)',
+              }}
+              title={conn.scope === 'global' ? 'Saved in ~/.prompd/connections.json' : 'Saved in .prompd/connections.json'}
+            >
+              {conn.scope === 'global' ? 'Global' : 'Workspace'}
+            </span>
           </span>
           <button
             style={iconButtonStyle}

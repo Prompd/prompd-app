@@ -146,6 +146,9 @@ interface UIState {
 
   // Auto-save settings
   autoSaveEnabled: boolean
+
+  // Analytics (GA4) opt-in
+  analyticsEnabled: boolean
 }
 
 /**
@@ -232,6 +235,9 @@ interface UIActions {
 
   // Auto-save settings
   setAutoSaveEnabled: (enabled: boolean) => void
+
+  // Analytics (GA4) opt-in
+  setAnalyticsEnabled: (enabled: boolean) => void
 }
 
 type UIStore = UIState & UIActions
@@ -282,6 +288,7 @@ export const useUIStore = create<UIStore>()(
           bottomPanelPinned: false,
           bottomPanelMinimized: false,
           autoSaveEnabled: true, // Default to enabled
+          analyticsEnabled: false, // Default to disabled (opt-in)
 
           // View mode
           setMode: (mode) => set((state) => {
@@ -856,6 +863,13 @@ export const useUIStore = create<UIStore>()(
             state.autoSaveEnabled = enabled
           }),
 
+          // Analytics (GA4) opt-in
+          setAnalyticsEnabled: (enabled) => set((state) => {
+            state.analyticsEnabled = enabled
+            // Sync to main process immediately
+            window.electronAPI?.analytics?.setEnabled(enabled)
+          }),
+
           refreshLLMProviders: async (getToken) => {
             console.log('[uiStore] refreshLLMProviders called - resetting and re-initializing')
 
@@ -892,7 +906,8 @@ export const useUIStore = create<UIStore>()(
             bottomPanelHeight: state.bottomPanelHeight,
             bottomPanelPinned: state.bottomPanelPinned,
             bottomPanelMinimized: state.bottomPanelMinimized,
-            autoSaveEnabled: state.autoSaveEnabled
+            autoSaveEnabled: state.autoSaveEnabled,
+            analyticsEnabled: state.analyticsEnabled,
           }),
           // After hydration, set mode from defaultViewMode so the app opens in user's preferred view
           onRehydrateStorage: () => (state) => {
@@ -927,3 +942,4 @@ export const selectBuildPanelPinned = (state: UIStore) => state.buildPanelPinned
 export const selectShowWorkflowPanel = (state: UIStore) => state.showWorkflowPanel
 export const selectWorkflowPanelPinned = (state: UIStore) => state.workflowPanelPinned
 export const selectAutoSaveEnabled = (state: UIStore) => state.autoSaveEnabled
+export const selectAnalyticsEnabled = (state: UIStore) => state.analyticsEnabled

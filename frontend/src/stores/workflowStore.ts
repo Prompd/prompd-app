@@ -43,6 +43,19 @@ import {
   createWorkflowNode,
 } from '../modules/services/workflowParser'
 import { validateWorkflow } from '../modules/services/workflowValidator'
+import { debounce } from 'lodash-es'
+
+// ============================================================================
+// Debounced connection persistence — auto-saves to workspace on mutations
+// ============================================================================
+
+const debouncedSaveConnections = debounce(() => {
+  if (!window.electronAPI?.connections) return
+  const connections = useWorkflowStore.getState().connections
+  window.electronAPI.connections.save(connections).catch(err => {
+    console.error('[WorkflowStore] Failed to save connections:', err)
+  })
+}, 500)
 
 // ============================================================================
 // Undo/Redo History Management
@@ -498,6 +511,7 @@ interface WorkflowStoreState {
   setDirty: (dirty: boolean) => void
 
   // Connections (external services)
+  loadConnections: () => Promise<void>
   addConnection: (connection: Omit<WorkflowConnection, 'id'>) => string
   updateConnection: (connectionId: string, updates: Partial<WorkflowConnection>) => void
   deleteConnection: (connectionId: string) => void
@@ -1679,6 +1693,12 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
             return { source: hostNodeId, sourceHandle: 'onCheckpoint', target: nodeId, targetHandle: 'input' }
           }
 
+          // Callback/Checkpoint docking to ErrorHandler's onError
+          if ((dockedType === 'callback' || dockedType === 'checkpoint') &&
+              hostType === 'error-handler' && hostHandle === 'onError') {
+            return { source: hostNodeId, sourceHandle: 'onError', target: nodeId, targetHandle: 'input' }
+          }
+
           // Add more mappings as needed for other docking relationships
 
           return null
@@ -2157,10 +2177,33 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
     // ========================================================================
 
     /**
+     * Load connections from global (~/.prompd) and workspace (.prompd) via IPC
+     */
+    loadConnections: async () => {
+      if (!window.electronAPI?.connections) return
+      try {
+        const result = await window.electronAPI.connections.load()
+        if (result.success && result.connections) {
+          set(state => {
+            state.connections = result.connections as WorkflowConnection[]
+          })
+        }
+      } catch (err) {
+        console.error('[WorkflowStore] Failed to load connections:', err)
+      }
+    },
+
+    /**
      * Add a new connection
      */
     addConnection: (connection) => {
-      const id = `conn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      // Stable ID from connection name — matches connectionStorage.js so IDs survive reloads
+      const name = connection.name || ''
+      let hash = 0
+      for (let i = 0; i < name.length; i++) {
+        hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0
+      }
+      const id = `conn-${(hash >>> 0).toString(16).padStart(8, '0')}`
       set(state => {
         state.connections.push({
           ...connection,
@@ -2168,6 +2211,7 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         })
         state.isDirty = true
       })
+      debouncedSaveConnections()
       return id
     },
 
@@ -2185,6 +2229,7 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
           state.isDirty = true
         }
       })
+      debouncedSaveConnections()
     },
 
     /**
@@ -2195,6 +2240,7 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         state.connections = state.connections.filter(c => c.id !== connectionId)
         state.isDirty = true
       })
+      debouncedSaveConnections()
     },
 
     /**

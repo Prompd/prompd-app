@@ -28,7 +28,7 @@ const PARAM_HELP: Record<string, string> = {
   postgresql: 'Use $1, $2, $3 placeholders in SQL. Parameters: ["value1", 42]',
   mysql: 'Use ? placeholders in SQL. Parameters: ["value1", 42]',
   sqlite: 'Use ? placeholders in SQL. Parameters: ["value1", 42]',
-  mongodb: 'Query is a JSON document. No separate parameters needed.',
+  mongodb: 'Filter: { "key": "val" } | With projection: [{ filter }, { "field": 1 }]',
   redis: 'Arguments are part of the command. e.g. GET mykey',
 }
 
@@ -48,9 +48,10 @@ function getMonacoLanguage(dbType?: string): string {
 function getQueryPlaceholder(dbType?: string, queryType?: string): string {
   switch (dbType) {
     case 'mongodb':
-      return queryType === 'aggregate'
-        ? '[\n  { "$match": { "status": "active" } },\n  { "$group": { "_id": "$category", "count": { "$sum": 1 } } }\n]'
-        : '{\n  "name": "John",\n  "age": { "$gt": 25 }\n}'
+      if (queryType === 'aggregate') {
+        return '[\n  { "$match": { "status": "active" } },\n  { "$group": { "_id": "$category", "count": { "$sum": 1 } } }\n]'
+      }
+      return '{\n  "name": "John",\n  "age": { "$gt": 25 }\n}'
     case 'redis':
       return 'GET mykey'
     default:

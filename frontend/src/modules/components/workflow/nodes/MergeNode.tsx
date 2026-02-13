@@ -20,7 +20,6 @@ interface MergeNodeProps {
 
 // Node dimensions
 const NODE_WIDTH = 200
-const NODE_MIN_HEIGHT = 100
 
 // Layout constants
 const HEADER_HEIGHT = 35
@@ -65,7 +64,7 @@ export const MergeNode = memo(({ id, data, selected }: MergeNodeProps) => {
       className={nodeData.disabled ? 'workflow-node-disabled' : ''}
       style={{
         width: NODE_WIDTH,
-        height: nodeHeight,
+        minHeight: nodeHeight,
         borderRadius: '8px',
         background: 'var(--panel)',
         border: `2px solid ${selected ? 'var(--node-emerald)' : 'var(--border)'}`,
@@ -122,12 +121,6 @@ export const MergeNode = memo(({ id, data, selected }: MergeNodeProps) => {
           />
         </>
       )}
-
-      {/* Execution debug footer */}
-      <NodeExecutionFooter
-        nodeState={nodeState}
-        allNodeStates={executionState?.nodeStates}
-      />
 
       {/* Output Handle - single merged output */}
       <Handle
@@ -243,6 +236,14 @@ export const MergeNode = memo(({ id, data, selected }: MergeNodeProps) => {
         }}>
           {mergeAs}
         </div>
+      </div>
+
+      {/* Execution debug footer — renders below the fixed layout, grows node height */}
+      <div style={{ padding: '0 8px 4px' }}>
+        <NodeExecutionFooter
+          nodeState={nodeState}
+          allNodeStates={executionState?.nodeStates}
+        />
       </div>
     </div>
   )

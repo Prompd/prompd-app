@@ -1,9 +1,0 @@
----
-id: base
-name: "Base Prompd"
-version: 0.0.1
-description: "This base prompd serves as a foundational template for creating other prompds. It consolidates essential guidelines and security practices to ensure that all derived prompds maintain high standards of input validation and security, thereby fostering a consistent structure across the project."
----
-
-# Security Instructions
-Ensure all prompts follow security best practices. It is crucial to validate input and follow the specifications closely.

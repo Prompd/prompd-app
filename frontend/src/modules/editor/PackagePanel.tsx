@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Package, Download, ExternalLink, RefreshCw, Calendar, User, Tag, Star } from 'lucide-react'
+import { Search, Package, Download, ExternalLink, RefreshCw, Calendar, User, Tag, Star, Loader2 } from 'lucide-react'
 import { registryApi, type RegistryPackage } from '../services/registryApi'
 import PackageDetailsModal from './PackageDetailsModal'
 import { useAuthenticatedUser } from '../auth/ClerkWrapper'
@@ -13,9 +13,11 @@ interface Props {
   onUseAsTemplate?: (content: string, filename: string, packageId: string, filePath: string) => void
   initialSearchQuery?: string  // Allow external search trigger
   onCollapse?: () => void  // Collapse panel callback
+  workspacePath?: string | null
+  onShowNotification?: (message: string, type?: 'info' | 'warning' | 'error') => void
 }
 
-export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTemplate, initialSearchQuery, onCollapse }: Props) {
+export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTemplate, initialSearchQuery, onCollapse, workspacePath, onShowNotification }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>('search')
   const [highlightSearch, setHighlightSearch] = useState(false)
   const { isAuthenticated: isSignedIn } = useAuthenticatedUser()
@@ -129,6 +131,28 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
   const handlePackageClick = (pkg: RegistryPackage) => {
     setSelectedPackage(pkg)
   }
+
+  const handleInstallPackage = useCallback(async (pkg: RegistryPackage) => {
+    if (!workspacePath) {
+      onShowNotification?.('No workspace open. Open a folder first.', 'warning')
+      return
+    }
+    if (!window.electronAPI?.package?.install) {
+      onShowNotification?.('Install requires Electron environment', 'error')
+      return
+    }
+    const ref = `${pkg.name}@${pkg.version}`
+    try {
+      const result = await window.electronAPI.package.install(ref, workspacePath)
+      if (result.success) {
+        onShowNotification?.(`Installed ${ref}`, 'info')
+      } else {
+        onShowNotification?.(result.error || 'Install failed', 'error')
+      }
+    } catch (err) {
+      onShowNotification?.(err instanceof Error ? err.message : 'Install failed', 'error')
+    }
+  }, [workspacePath, onShowNotification])
 
   return (
     <div style={{
@@ -285,6 +309,7 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
                     key={`${pkg.name}@${pkg.version}`}
                     package={pkg}
                     onClick={() => handlePackageClick(pkg)}
+                    onInstall={handleInstallPackage}
                   />
                 ))}
               </div>
@@ -515,10 +540,12 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
 interface PackageCardProps {
   package: RegistryPackage
   onClick: () => void
+  onInstall?: (pkg: RegistryPackage) => Promise<void>
 }
 
-function PackageCard({ package: pkg, onClick }: PackageCardProps) {
+function PackageCard({ package: pkg, onClick, onInstall }: PackageCardProps) {
   const [isHovered, setIsHovered] = useState(false)
+  const [installing, setInstalling] = useState(false)
 
   // Format publish date
   const publishedDate = pkg.publishedAt ? new Date(pkg.publishedAt).toLocaleDateString('en-US', {
@@ -609,12 +636,46 @@ function PackageCard({ package: pkg, onClick }: PackageCardProps) {
             v{pkg.version}
           </div>
         </div>
-        {/* Hover indicator */}
+        {/* Install button + hover indicator */}
         <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
           opacity: isHovered ? 1 : 0,
           transform: isHovered ? 'translateX(0)' : 'translateX(4px)',
           transition: 'all 0.2s'
         }}>
+          {onInstall && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                if (installing) return
+                setInstalling(true)
+                onInstall(pkg).finally(() => setInstalling(false))
+              }}
+              title={`Install ${pkg.name}@${pkg.version}`}
+              style={{
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: '1px solid var(--accent)',
+                background: 'color-mix(in srgb, var(--accent) 15%, transparent)',
+                color: 'var(--accent)',
+                cursor: installing ? 'default' : 'pointer',
+                fontSize: '11px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                opacity: installing ? 0.7 : 1,
+              }}
+            >
+              {installing
+                ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                : <Download size={12} />
+              }
+              {installing ? 'Installing' : 'Install'}
+            </button>
+          )}
           <ExternalLink size={18} color="var(--accent)" />
         </div>
       </div>

@@ -15,9 +15,11 @@
 import { memo, useMemo } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import { AlertTriangle, RefreshCw, ArrowRight, Bell, XCircle, RotateCcw } from 'lucide-react'
-import type { ErrorHandlerNodeData, BaseNodeData } from '../../../services/workflowTypes'
+import type { ErrorHandlerNodeData, BaseNodeData, WorkflowNodeType } from '../../../services/workflowTypes'
+import { DOCKABLE_HANDLES } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { getNodeColor } from '../nodeColors'
+import { DockedNodePreview, useDockedNodes } from './DockedNodePreview'
 import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 // Handle style constants
@@ -38,6 +40,17 @@ export const ErrorHandlerNode = memo(({ id, data, selected }: ErrorHandlerNodePr
 
   // Node color from central definition
   const nodeColor = getNodeColor('error-handler')
+
+  // Get nodes docked to the onError handle
+  const dockedToOnError = useDockedNodes(id, 'onError')
+  const onErrorHandleConfig = DOCKABLE_HANDLES.find(
+    h => h.nodeType === 'error-handler' && h.handleId === 'onError'
+  )
+
+  // Check if this handle is being targeted for docking
+  const dockingState = useWorkflowStore(state => state.dockingState)
+  const isOnErrorDockTarget = dockingState?.hoveredDockTarget?.nodeId === id &&
+    dockingState?.hoveredDockTarget?.handleId === 'onError'
 
   // Count nodes that reference this error handler
   const referencingNodes = useMemo(() => {
@@ -318,14 +331,28 @@ export const ErrorHandlerNode = memo(({ id, data, selected }: ErrorHandlerNodePr
         position={Position.Bottom}
         id="onError"
         style={{
-          width: handleSize,
-          height: handleSize,
-          background: 'var(--node-amber, #f59e0b)', // Orange like Checkpoint
+          width: isOnErrorDockTarget ? 16 : handleSize,
+          height: isOnErrorDockTarget ? 16 : handleSize,
+          background: 'var(--node-amber, #f59e0b)',
           border: handleBorder,
           left: '50%',
+          boxShadow: isOnErrorDockTarget ? '0 0 0 4px color-mix(in srgb, var(--node-amber) 50%, transparent), 0 0 12px var(--node-amber)' : undefined,
+          transition: 'width 0.15s, height 0.15s, box-shadow 0.15s',
         }}
         title="Error events (connect to Checkpoint node)"
       />
+
+      {/* Render docked nodes near onError handle */}
+      {onErrorHandleConfig && dockedToOnError.map((dockedNode, index) => (
+        <DockedNodePreview
+          key={dockedNode.id}
+          dockedNodeId={dockedNode.id}
+          dockedNodeType={dockedNode.type as WorkflowNodeType}
+          dockedNodeLabel={(dockedNode.data as BaseNodeData).label}
+          handleConfig={{ side: 'bottom', topPercent: 50 }}
+          index={index}
+        />
+      ))}
     </div>
   )
 })

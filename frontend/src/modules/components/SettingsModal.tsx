@@ -240,6 +240,10 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
   // Usage tracking
   const { events, stats, clearUsage, getSessionStats, getTodayStats } = usePrompdUsage()
 
+  // Analytics opt-in
+  const analyticsEnabled = useUIStore(state => state.analyticsEnabled)
+  const setAnalyticsEnabled = useUIStore(state => state.setAnalyticsEnabled)
+
   // Add key state
   const [showAddKeyFor, setShowAddKeyFor] = useState<string | null>(null)
   const [newApiKey, setNewApiKey] = useState('')
@@ -2869,6 +2873,57 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
                       No activity yet. Usage will appear here after your first LLM call.
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* Analytics Opt-in */}
+              <div style={{
+                padding: '16px',
+                background: colors.bgSecondary,
+                border: `1px solid ${colors.border}`,
+                borderRadius: '8px',
+                marginBottom: '16px',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: colors.text }}>Anonymous Analytics</div>
+                    <div style={{ fontSize: '12px', color: colors.textMuted, marginTop: '4px' }}>
+                      Help improve Prompd by sharing anonymous usage data. No prompts, files, or personal information is ever sent.
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const next = !analyticsEnabled
+                      setAnalyticsEnabled(next)
+                    }}
+                    style={{
+                      width: 44,
+                      height: 24,
+                      borderRadius: 12,
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: analyticsEnabled ? colors.primary : colors.border,
+                      position: 'relative',
+                      transition: 'background 0.2s',
+                      flexShrink: 0,
+                      marginLeft: 16,
+                    }}
+                  >
+                    <div style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: '50%',
+                      background: 'white',
+                      position: 'absolute',
+                      top: 3,
+                      left: analyticsEnabled ? 23 : 3,
+                      transition: 'left 0.2s',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    }} />
+                  </button>
+                </div>
+                <div style={{ fontSize: '11px', color: colors.textMuted }}>
+                  Only event names and high-level counts are tracked (e.g., "workflow executed", "package installed"). Your client ID is a random identifier not linked to your account.
                 </div>
               </div>
 

@@ -263,6 +263,9 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
           rememberProject({ mode: 'fs', name: pseudoHandle.name, top: pseudoHandle.name })
           // Set workspace path in Electron main process (for file reading during execution)
           await (window as any).electronAPI.setWorkspacePath?.(folderPath)
+          // Load persisted connections for this workspace
+          const { useWorkflowStore } = await import('../../stores/workflowStore')
+          useWorkflowStore.getState().loadConnections()
           // Notify about workspace path change (for window title)
           onWorkspacePathChanged?.(folderPath)
         }

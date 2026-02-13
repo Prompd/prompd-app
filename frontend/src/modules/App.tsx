@@ -358,6 +358,7 @@ export default function App() {
 
   // Command palette state
   const [showCommandPalette, setShowCommandPalette] = useState(false)
+  const [commandPaletteInitialQuery, setCommandPaletteInitialQuery] = useState('')
 
   // First-time setup wizard state - show if user hasn't dismissed it
   const [showFirstTimeWizard, setShowFirstTimeWizard] = useState(() => !isWizardDismissed())
@@ -460,6 +461,19 @@ export default function App() {
     }
   }, [])
 
+  // Sync analytics opt-in state to main process on mount
+  const analyticsEnabled = useUIStore(state => state.analyticsEnabled)
+  useEffect(() => {
+    const electronAPI = (window as any).electronAPI
+    if (!electronAPI?.analytics) return
+    // Sync persisted preference to main process
+    electronAPI.analytics.setEnabled(analyticsEnabled)
+    // Track app_open if opted in
+    if (analyticsEnabled) {
+      electronAPI.analytics.trackEvent('app_open', { event_category: 'app' })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-restore workspace on startup (Electron only)
   // If we have a persisted explorerDirPath but no handle, restore it
   const hasRestoredWorkspace = useRef(false)
@@ -495,6 +509,9 @@ export default function App() {
 
         // Set workspace path in Electron main process
         await (window as any).electronAPI.setWorkspacePath?.(explorerDirPath)
+
+        // Load persisted connections for this workspace
+        useWorkflowStore.getState().loadConnections()
 
         console.log('[App] Workspace restored successfully:', explorerDirPath)
       } catch (error) {
@@ -1346,6 +1363,8 @@ version: 1.0.0
           if ((window as any).electronAPI?.setWorkspacePath) {
             (window as any).electronAPI.setWorkspacePath(workspacePath)
           }
+          // Load persisted connections for this workspace
+          useWorkflowStore.getState().loadConnections()
           console.log(`✓ Restored workspace path: ${workspacePath}`)
         }
       } else {
@@ -1370,6 +1389,8 @@ version: 1.0.0
         if (electronAPI.setWorkspacePath) {
           electronAPI.setWorkspacePath(project.workspacePath)
         }
+        // Load persisted connections for this workspace
+        useWorkflowStore.getState().loadConnections()
         console.log(`✓ Restored Electron workspace for project: ${name} at ${project.workspacePath}`)
       } else {
         console.log(`No directory handle found for project: ${name} (not in Electron)`)
@@ -1385,12 +1406,14 @@ version: 1.0.0
         const file = files.find(f => f.path === tabState.path)
         if (!file) return null
 
+        // Workflow files (.pdflow) always open in design view regardless of persisted state
+        const isWorkflow = file.path.toLowerCase().endsWith('.pdflow')
         return {
           id: `storage-${projectId}-${index}`,
           name: file.path,
           text: file.content,
           dirty: false,
-          viewMode: tabState.viewMode
+          viewMode: isWorkflow ? 'design' : tabState.viewMode
         }
       }).filter(Boolean) as Tab[]
 
@@ -2455,6 +2478,12 @@ version: 1.0.0
           console.warn('[App.tsx] Failed to record execution to IndexedDB:', err)
         })
 
+        // GA4 analytics (anonymous)
+        ;(window as any).electronAPI?.analytics?.trackEvent('prompt_execute', {
+          event_category: 'execution',
+          provider: result.metadata?.provider || executionConfig.provider,
+        })
+
         // Show bottom panel with Prompds tab, expand if minimized
         setShowBottomPanel(true)
         setActiveBottomTab('prompds')
@@ -3157,6 +3186,8 @@ Write your prompt here...
       }
       setExplorerDirHandle(pseudoHandle as any)
       electronAPI.setWorkspacePath?.(folderPath)
+      // Load persisted connections for this workspace
+      useWorkflowStore.getState().loadConnections()
     })
     if (unsubOpenFolder) cleanups.push(unsubOpenFolder)
 
@@ -3224,11 +3255,10 @@ Write your prompt here...
     })
     if (unsubDeploymentManage) cleanups.push(unsubDeploymentManage)
 
-    // Menu: Install Package
+    // Menu: Install Package → command palette with /install pre-filled
     const unsubPackageInstall = electronAPI.onMenuPackageInstall?.(() => {
-      console.log('[App.tsx] Menu package install')
-      setActiveSide('packages')
-      setShowSidebar(true)
+      setCommandPaletteInitialQuery('/install ')
+      setShowCommandPalette(true)
     })
     if (unsubPackageInstall) cleanups.push(unsubPackageInstall)
 
@@ -3788,6 +3818,8 @@ Write your prompt here...
         onExecuteWorkflow={() => {
           // Dispatch event for WorkflowCanvas to handle
           window.dispatchEvent(new CustomEvent('execute-workflow'))
+          // GA4 analytics (anonymous)
+          ;(window as any).electronAPI?.analytics?.trackEvent('workflow_execute', { event_category: 'execution' })
         }}
         workspacePath={explorerDirPath}
         showPreview={getActiveTab()?.showPreview || false}
@@ -3998,6 +4030,8 @@ Write your prompt here...
             onUseAsTemplate={onUsePackageAsTemplate}
             initialSearchQuery={packageSearchQuery}
             onCollapse={() => setShowSidebar(false)}
+            workspacePath={explorerDirPath}
+            onShowNotification={aiShowNotification}
           />
         </div>
         <div style={{
@@ -5548,9 +5582,10 @@ Write your prompt here...
       {/* Command Palette */}
       <CommandPalette
         isOpen={showCommandPalette}
-        onClose={() => setShowCommandPalette(false)}
+        onClose={() => { setShowCommandPalette(false); setCommandPaletteInitialQuery('') }}
         workspacePath={explorerDirPath}
         onShowNotification={aiShowNotification}
+        initialQuery={commandPaletteInitialQuery}
       />
     </div>
   )

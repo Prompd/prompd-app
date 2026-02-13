@@ -9,6 +9,7 @@ import type {
   WorkflowConnection,
   WorkflowConnectionType,
   WorkflowConnectionConfig,
+  ConnectionScope,
   SSHConnectionConfig,
   DatabaseConnectionConfig,
   HttpApiConnectionConfig,
@@ -592,6 +593,7 @@ function WebSearchConfigForm({ config, onChange }: ConfigFormProps<WebSearchConn
 
 export function ConnectionSettingsDialog({ connection, onClose }: ConnectionSettingsDialogProps) {
   const [name, setName] = useState(connection.name)
+  const [scope, setScope] = useState<ConnectionScope>(connection.scope || 'workspace')
   const [config, setConfig] = useState<WorkflowConnectionConfig>(connection.config)
   const [testStatus, setTestStatus] = useState<TestStatus>('idle')
   const [testMessage, setTestMessage] = useState('')
@@ -607,10 +609,11 @@ export function ConnectionSettingsDialog({ connection, onClose }: ConnectionSett
   const handleSave = useCallback(() => {
     updateConnection(connection.id, {
       name: name.trim(),
+      scope,
       config,
     })
     onClose()
-  }, [connection.id, name, config, updateConnection, onClose])
+  }, [connection.id, name, scope, config, updateConnection, onClose])
 
   const handleTest = useCallback(async () => {
     setTestStatus('testing')
@@ -707,6 +710,57 @@ export function ConnectionSettingsDialog({ connection, onClose }: ConnectionSett
               onChange={(e) => setName(e.target.value)}
               style={inputStyle}
             />
+          </div>
+
+          {/* Scope toggle */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>Save Location</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setScope('workspace')}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: `1px solid ${scope === 'workspace' ? 'var(--accent)' : 'var(--border)'}`,
+                  background: scope === 'workspace' ? 'color-mix(in srgb, var(--accent) 10%, var(--bg))' : 'var(--bg)',
+                  color: scope === 'workspace' ? 'var(--accent)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: scope === 'workspace' ? 600 : 400,
+                  textAlign: 'left',
+                  transition: 'all 0.15s',
+                }}
+              >
+                <div>Workspace</div>
+                <div style={{ fontSize: '10px', fontWeight: 400, marginTop: '2px', opacity: 0.7 }}>
+                  .prompd/connections.json
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setScope('global')}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: `1px solid ${scope === 'global' ? 'var(--accent)' : 'var(--border)'}`,
+                  background: scope === 'global' ? 'color-mix(in srgb, var(--accent) 10%, var(--bg))' : 'var(--bg)',
+                  color: scope === 'global' ? 'var(--accent)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: scope === 'global' ? 600 : 400,
+                  textAlign: 'left',
+                  transition: 'all 0.15s',
+                }}
+              >
+                <div>Global</div>
+                <div style={{ fontSize: '10px', fontWeight: 400, marginTop: '2px', opacity: 0.7 }}>
+                  ~/.prompd/connections.json
+                </div>
+              </button>
+            </div>
           </div>
 
           {/* Config Form */}

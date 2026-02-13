@@ -37,9 +37,10 @@ interface CommandPaletteProps {
   onClose: () => void
   workspacePath?: string | null
   onShowNotification?: (message: string, type?: 'info' | 'warning' | 'error') => void
+  initialQuery?: string
 }
 
-export function CommandPalette({ isOpen, onClose, workspacePath, onShowNotification }: CommandPaletteProps) {
+export function CommandPalette({ isOpen, onClose, workspacePath, onShowNotification, initialQuery }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [parsedArgs, setParsedArgs] = useState<string>('') // Arguments extracted from query
@@ -319,12 +320,12 @@ export function CommandPalette({ isOpen, onClose, workspacePath, onShowNotificat
   // Focus input when opened, reset state when closed
   useEffect(() => {
     if (isOpen) {
-      setQuery('')
+      setQuery(initialQuery || '')
       setSelectedIndex(0)
       setParsedArgs('')
       setTimeout(() => inputRef.current?.focus(), 50)
     }
-  }, [isOpen])
+  }, [isOpen, initialQuery])
 
   // Reset selection when query changes
   useEffect(() => {

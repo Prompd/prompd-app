@@ -8,6 +8,7 @@ import { useWorkflowStore } from '../../../../stores/workflowStore'
 import type {
   WorkflowConnectionType,
   WorkflowConnectionConfig,
+  ConnectionScope,
   SSHConnectionConfig,
   DatabaseConnectionConfig,
   HttpApiConnectionConfig,
@@ -658,6 +659,7 @@ export function AddConnectionDialog({ onClose, initialType }: AddConnectionDialo
   const [selectedType, setSelectedType] = useState<WorkflowConnectionType | null>(initialType || null)
   const [name, setName] = useState('')
   const [config, setConfig] = useState<Partial<WorkflowConnectionConfig>>({})
+  const [scope, setScope] = useState<ConnectionScope>('workspace')
 
   const addConnection = useWorkflowStore(state => state.addConnection)
 
@@ -676,11 +678,12 @@ export function AddConnectionDialog({ onClose, initialType }: AddConnectionDialo
       name: name.trim(),
       type: selectedType,
       status: 'disconnected',
+      scope,
       config: fullConfig,
     })
 
     onClose()
-  }, [selectedType, name, config, addConnection, onClose])
+  }, [selectedType, name, config, scope, addConnection, onClose])
 
   const handleBack = useCallback(() => {
     setStep('type')
@@ -808,6 +811,58 @@ export function AddConnectionDialog({ onClose, initialType }: AddConnectionDialo
                   autoFocus
                 />
               </div>
+
+              {/* Scope toggle: global vs workspace */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={labelStyle}>Save Location</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setScope('workspace')}
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      border: `1px solid ${scope === 'workspace' ? 'var(--accent)' : 'var(--border)'}`,
+                      background: scope === 'workspace' ? 'color-mix(in srgb, var(--accent) 10%, var(--bg))' : 'var(--bg)',
+                      color: scope === 'workspace' ? 'var(--accent)' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: scope === 'workspace' ? 600 : 400,
+                      textAlign: 'left',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <div>Workspace</div>
+                    <div style={{ fontSize: '10px', fontWeight: 400, marginTop: '2px', opacity: 0.7 }}>
+                      .prompd/connections.json
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScope('global')}
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      border: `1px solid ${scope === 'global' ? 'var(--accent)' : 'var(--border)'}`,
+                      background: scope === 'global' ? 'color-mix(in srgb, var(--accent) 10%, var(--bg))' : 'var(--bg)',
+                      color: scope === 'global' ? 'var(--accent)' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: scope === 'global' ? 600 : 400,
+                      textAlign: 'left',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <div>Global</div>
+                    <div style={{ fontSize: '10px', fontWeight: 400, marginTop: '2px', opacity: 0.7 }}>
+                      ~/.prompd/connections.json
+                    </div>
+                  </button>
+                </div>
+              </div>
+
               {renderConfigForm()}
             </>
           )}

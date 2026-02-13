@@ -355,12 +355,35 @@ async function executeInstall(args: string, workspacePath?: string): Promise<Sla
     }
   }
 
-  // Specific package installation - for now, return instructions
-  // TODO: Implement single package install via IPC when available
-  return {
-    success: true,
-    output: `To install **${packageRef}**:\n\n1. Add it to your \`prompd.json\` dependencies\n2. Run \`/install\` to install all dependencies\n\nOr run \`prompd install ${packageRef}\` in your terminal.`,
-    data: { packageRef }
+  // Single package install via IPC
+  if (!window.electronAPI?.package?.install) {
+    return {
+      success: false,
+      output: '',
+      error: 'Install requires Electron environment'
+    }
+  }
+
+  try {
+    const result = await window.electronAPI.package.install(packageRef, workspacePath!)
+    if (result.success) {
+      return {
+        success: true,
+        output: `Installed **${packageRef}** successfully.`,
+        data: result
+      }
+    }
+    return {
+      success: false,
+      output: '',
+      error: result.error || 'Install failed'
+    }
+  } catch (err) {
+    return {
+      success: false,
+      output: '',
+      error: err instanceof Error ? err.message : 'Failed to install package'
+    }
   }
 }
 

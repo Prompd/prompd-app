@@ -1,10 +1,11 @@
-import { Code2, Palette, Settings, Play, LogOut, User, Moon, Sun, HelpCircle } from 'lucide-react'
+import { Code2, Palette, Settings, Play, Square, LogOut, User, Moon, Sun, HelpCircle } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { PreviewToggle, ChatToggle } from './SplitViewToggles'
 import { useAuthenticatedUser, useElectronAuth, isElectron } from '../auth/ClerkWrapper'
 import { UserButton } from '@clerk/clerk-react'
 import { useUIStore } from '../../stores/uiStore'
+import { useWorkflowStore } from '../../stores/workflowStore'
 import { ProviderModelSelector } from '../components/ProviderModelSelector'
 import { EnvFileSelector } from '../components/EnvFileSelector'
 
@@ -323,6 +324,11 @@ export default function EditorHeader({
   const [isVeryCompact, setIsVeryCompact] = useState(false)
   const isFirstMeasure = useRef(true)
 
+  // Workflow execution state for play/stop button behavior
+  const isExecuting = useWorkflowStore(state => state.isExecuting)
+  const executionStatus = useWorkflowStore(state => state.executionState?.status)
+  const isPaused = isExecuting && executionStatus === 'paused'
+
   // Responsive breakpoints based on container width
   // Priority: Right side controls (Design/Code, Execute) should hide LAST
   // Breakpoints with hysteresis to prevent flickering at edges:
@@ -522,36 +528,78 @@ export default function EditorHeader({
             <Play size={14} />
           </button>
         )}
-        {/* Show for .pdflow workflow files */}
+        {/* Show for .pdflow workflow files — play/continue + stop */}
         {isWorkflowFile && onExecuteWorkflow && (
-          <button
-            onClick={onExecuteWorkflow}
-            data-hint-target="execute-workflow-button"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: isVeryCompact ? '4px 8px' : '5px 10px',
-              border: '1px solid #10b981',
-              borderRadius: '6px',
-              background: 'transparent',
-              color: '#10b981',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              flexShrink: 0
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.background = '#10b981'
-              e.currentTarget.style.color = 'white'
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.background = 'transparent'
-              e.currentTarget.style.color = '#10b981'
-            }}
-            title="Run workflow (F5)"
-          >
-            <Play size={14} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+            {/* Play / Continue button */}
+            <button
+              onClick={() => {
+                if (isPaused) {
+                  window.dispatchEvent(new CustomEvent('resume-workflow'))
+                } else if (!isExecuting) {
+                  onExecuteWorkflow()
+                }
+              }}
+              disabled={isExecuting && !isPaused}
+              data-hint-target="execute-workflow-button"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: isVeryCompact ? '4px 8px' : '5px 10px',
+                border: `1px solid ${isExecuting && !isPaused ? 'var(--border)' : '#10b981'}`,
+                borderRadius: '6px',
+                background: 'transparent',
+                color: isExecuting && !isPaused ? 'var(--text-secondary)' : '#10b981',
+                cursor: isExecuting && !isPaused ? 'default' : 'pointer',
+                transition: 'all 0.2s',
+                opacity: isExecuting && !isPaused ? 0.5 : 1,
+                flexShrink: 0,
+              }}
+              onMouseOver={(e) => {
+                if (isExecuting && !isPaused) return
+                e.currentTarget.style.background = '#10b981'
+                e.currentTarget.style.color = 'white'
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = 'transparent'
+                e.currentTarget.style.color = isExecuting && !isPaused ? 'var(--text-secondary)' : '#10b981'
+              }}
+              title={isPaused ? 'Continue execution' : isExecuting ? 'Running...' : 'Run workflow (F5)'}
+            >
+              <Play size={14} />
+            </button>
+            {/* Stop button — only visible while executing */}
+            {isExecuting && (
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('stop-workflow'))}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: isVeryCompact ? '4px 8px' : '5px 10px',
+                  border: '1px solid #ef4444',
+                  borderRadius: '6px',
+                  background: 'transparent',
+                  color: '#ef4444',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  flexShrink: 0,
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = '#ef4444'
+                  e.currentTarget.style.color = 'white'
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.color = '#ef4444'
+                }}
+                title="Stop execution"
+              >
+                <Square size={14} />
+              </button>
+            )}
+          </div>
         )}
 
         {/* Env File Selector - Show when workspace is open (visible on execution tabs too) */}

@@ -31,6 +31,7 @@ const { DeploymentService } = require('@prompd/scheduler')
 const { spawn } = require('child_process')
 const { Worker } = require('worker_threads')
 const yaml = require('yaml')
+const analytics = require('./services/analytics')
 
 // Lazy-loaded @prompd/cli compiler (ESM module, loaded on first use)
 let prompdCliModule = null
@@ -765,6 +766,17 @@ app.whenReady().then(() => {
     getAutoUpdater().checkForUpdatesAndNotify()
   }
 
+  // Initialize GA4 analytics (opt-in, anonymous)
+  // These are write-only credentials (can only send events, not read data).
+  // Safe to ship with the app — same as any website's GA tracking snippet.
+  // User preference is sent from renderer via analytics:setEnabled IPC
+  analytics.init({
+    measurementId: process.env.GA4_MEASUREMENT_ID || 'G-J7DDP24RMN',
+    apiSecret: process.env.GA4_API_SECRET || 'av2bdFP6QkCSyw8lWqMq5A',
+    appVersion: app.getVersion(),
+    enabled: false, // Always start disabled; renderer sends opt-in state
+  })
+
   // Power monitor events - notify renderer about sleep/wake to prevent unwanted reloads
   powerMonitor.on('suspend', () => {
     console.log('[Electron] System suspending')
@@ -1131,8 +1143,10 @@ app.whenReady().then(() => {
   })
 })
 
-// Handle app quitting - ensure deployment service shuts down cleanly
+// Handle app quitting - ensure deployment service and analytics shut down cleanly
 app.on('before-quit', async () => {
+  analytics.trackAppClose()
+  analytics.shutdown()
   trayManager.setQuitting(true)
   if (deploymentService) {
     deploymentService.close()
@@ -3261,6 +3275,30 @@ ipcMain.handle('config:clearCache', async () => {
   return { success: true }
 })
 
+// ============================================================================
+// Connection Storage (global + workspace persistence with safeStorage encryption)
+// ============================================================================
+
+ipcMain.handle('connections:load', async (_event, workspacePath) => {
+  try {
+    const { loadConnections } = require('./services/connectionStorage')
+    return await loadConnections(workspacePath || currentWorkspacePath)
+  } catch (error) {
+    console.error('[Connections] Load error:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('connections:save', async (_event, connections, workspacePath) => {
+  try {
+    const { saveConnections } = require('./services/connectionStorage')
+    return await saveConnections(connections, workspacePath || currentWorkspacePath)
+  } catch (error) {
+    console.error('[Connections] Save error:', error)
+    return { success: false, error: error.message }
+  }
+})
+
 // Get API key for a specific provider
 // Checks: env vars > config file (with hierarchy)
 ipcMain.handle('config:getApiKey', async (_event, provider, workspacePath) => {
@@ -3994,6 +4032,50 @@ ipcMain.handle('package:installAll', async (_event, workspacePath) => {
   }
 })
 
+// Install a single package by reference (e.g. "@prompd/core@0.0.1" or "@prompd/core")
+ipcMain.handle('package:install', async (_event, packageRef, workspacePath) => {
+  console.log('[Package] Installing single package:', packageRef, 'to:', workspacePath)
+
+  if (!packageRef || typeof packageRef !== 'string') {
+    return { success: false, error: 'No package reference provided' }
+  }
+  if (!workspacePath || typeof workspacePath !== 'string') {
+    return { success: false, error: 'No workspace folder open' }
+  }
+
+  try {
+    const { RegistryClient } = await import('@prompd/cli')
+    const client = new RegistryClient()
+    await client.install(packageRef, {
+      workspaceRoot: workspacePath,
+      skipCache: false
+    })
+
+    console.log('[Package] Installed:', packageRef)
+    analytics.trackPackageInstall(packageRef)
+    return { success: true, name: packageRef }
+  } catch (error) {
+    console.error('[Package] Install failed:', packageRef, error.message)
+    return { success: false, error: error.message || 'Installation failed' }
+  }
+})
+
+// ============================================================================
+// Analytics IPC Handlers (GA4 Measurement Protocol)
+// ============================================================================
+
+ipcMain.handle('analytics:trackEvent', async (_event, eventName, params) => {
+  analytics.trackEvent(eventName, params || {})
+})
+
+ipcMain.handle('analytics:setEnabled', async (_event, enabled) => {
+  analytics.setEnabled(enabled)
+})
+
+ipcMain.handle('analytics:isEnabled', async () => {
+  return analytics.isEnabled()
+})
+
 // ============================================================================
 // Trigger Service IPC Handlers
 // ============================================================================
@@ -4053,6 +4135,7 @@ ipcMain.handle('deployment:deploy', async (_event, workflowPath, options = {}) =
     }
 
     const deploymentId = await deploymentService.deploy(packagePath, deployOptions)
+    analytics.trackDeploymentCreate()
     return { success: true, deploymentId }
   } catch (err) {
     console.error('[Electron] Deployment failed:', err)
@@ -5357,7 +5440,9 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               }
 
               const connConfig = dbConnection.config || {}
-              const dbType = dbConfig.dbType || connConfig.dbType || 'postgresql'
+              // Connection config is the source of truth for database type.
+              // The CLI may send a placeholder dbType — always prefer the actual connection config.
+              const dbType = connConfig.dbType || dbConfig.dbType || 'postgresql'
 
               // Emit checkpoint event before query
               sender.send('workflow:event', {
@@ -5518,7 +5603,15 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
                       }
 
                       if (dbConfig.queryType === 'select') {
-                        const docs = await coll.find(queryDoc).limit(maxRows).toArray()
+                        // Support projection via array syntax: [filter, projection]
+                        let filter = queryDoc
+                        let projection = undefined
+                        if (Array.isArray(queryDoc)) {
+                          filter = queryDoc[0] || {}
+                          projection = queryDoc[1] || undefined
+                        }
+                        const findOptions = projection ? { projection } : {}
+                        const docs = await coll.find(filter, findOptions).limit(maxRows).toArray()
                         result = { rows: docs, rowCount: docs.length }
                       } else if (dbConfig.queryType === 'insert') {
                         const insertResult = Array.isArray(queryDoc)

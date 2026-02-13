@@ -236,6 +236,27 @@ export interface ElectronAPI {
     ) => Promise<DiagnosticsResult>
   }
 
+  // Connection storage (global + workspace persistence with safeStorage encryption)
+  connections?: {
+    load: (workspacePath?: string) => Promise<{
+      success: boolean
+      connections?: Array<{
+        id: string
+        name: string
+        type: string
+        status: string
+        scope: 'global' | 'workspace'
+        config: unknown
+      }>
+      sources?: { globalPath: string; workspacePath: string | null }
+      error?: string
+    }>
+    save: (
+      connections: Array<{ name: string; type: string; scope?: 'global' | 'workspace'; config: unknown }>,
+      workspacePath?: string
+    ) => Promise<{ success: boolean; results?: unknown; error?: string }>
+  }
+
   // Local package creation using @prompd/cli library
   package?: {
     // Create package from prompd.json in workspace
@@ -243,6 +264,9 @@ export interface ElectronAPI {
       workspacePath: string,
       outputDir?: string
     ) => Promise<CreatePackageResult>
+
+    // Install a single package by reference (e.g. "@prompd/core@0.0.1")
+    install: (packageRef: string, workspacePath: string) => Promise<{ success: boolean; name?: string; error?: string }>
 
     // Install all dependencies from prompd.json
     installAll: (workspacePath: string) => Promise<InstallAllResult>
@@ -506,6 +530,13 @@ export interface ElectronAPI {
   // Registry API (for package management)
   registry?: {
     getConfig: () => Promise<{ success: boolean; config?: RegistryConfig; error?: string }>
+  }
+
+  // Analytics - GA4 event tracking (opt-in, anonymous)
+  analytics?: {
+    trackEvent: (eventName: string, params?: Record<string, unknown>) => Promise<void>
+    setEnabled: (enabled: boolean) => Promise<void>
+    isEnabled: () => Promise<boolean>
   }
 }
 

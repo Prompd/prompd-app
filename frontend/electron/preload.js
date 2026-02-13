@@ -294,6 +294,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearCache: () => ipcRenderer.invoke('config:clearCache')
   },
 
+  // Connection storage (workspace-level persistence with safeStorage encryption)
+  connections: {
+    load: (workspacePath) => ipcRenderer.invoke('connections:load', workspacePath),
+    save: (connections, workspacePath) =>
+      ipcRenderer.invoke('connections:save', connections, workspacePath),
+  },
+
   // Local compilation using @prompd/cli library
   // Compiles prompts without needing the backend
   compiler: {
@@ -328,6 +335,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Returns: { success, outputPath?, fileName?, size?, fileCount?, message?, error? }
     createLocal: (workspacePath, outputDir) =>
       ipcRenderer.invoke('package:createLocal', workspacePath, outputDir),
+
+    // Install a single package by reference (e.g. "@prompd/core@0.0.1")
+    install: (packageRef, workspacePath) =>
+      ipcRenderer.invoke('package:install', packageRef, workspacePath),
 
     // Install all dependencies from prompd.json
     // Returns: { success, message, installed: [{name, version, status}], failed?: [{name, version, error}] }
@@ -617,5 +628,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // options: { exportType: 'docker' | 'kubernetes', kubernetesOptions?: {...} }
     // Returns: Promise<{ success: boolean, outputDir?: string, files?: string[], error?: string }>
     exportToPath: (workflow, workflowPath, outputDir, prompdjson, options) => ipcRenderer.invoke('workflow:exportToPath', workflow, workflowPath, outputDir, prompdjson, options)
+  },
+
+  // Analytics - GA4 event tracking (opt-in, anonymous)
+  analytics: {
+    // Track a custom event
+    trackEvent: (eventName, params) => ipcRenderer.invoke('analytics:trackEvent', eventName, params),
+
+    // Enable or disable analytics
+    setEnabled: (enabled) => ipcRenderer.invoke('analytics:setEnabled', enabled),
+
+    // Check if analytics is currently enabled
+    isEnabled: () => ipcRenderer.invoke('analytics:isEnabled'),
   }
 })

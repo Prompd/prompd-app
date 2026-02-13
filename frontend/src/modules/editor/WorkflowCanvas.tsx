@@ -1319,7 +1319,30 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
       userInputResolveRef.current = null
     }
     executorRef.current?.stop()
-    // Keep executionState so node debug footers persist after stop
+
+    // Update execution state: mark as failed (cancelled) so isExecuting becomes false,
+    // but preserve node states so debug footers show what ran and what didn't.
+    const currentExecState = useWorkflowStore.getState().executionState
+    if (currentExecState) {
+      const updatedNodeStates = { ...currentExecState.nodeStates }
+      for (const [nid, ns] of Object.entries(updatedNodeStates)) {
+        if (ns.status === 'running' || ns.status === 'paused') {
+          updatedNodeStates[nid] = {
+            ...ns,
+            status: 'failed',
+            error: 'Cancelled by user',
+            endTime: Date.now(),
+          }
+        }
+      }
+      setExecutionState({
+        ...currentExecState,
+        status: 'failed',
+        nodeStates: updatedNodeStates,
+        endTime: Date.now(),
+      })
+    }
+
     setIsPaused(false)
     setPendingCheckpoint(null)
     setPendingUserInput(null)
@@ -1342,6 +1365,19 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
     setIsPaused(false)
     setPendingCheckpoint(null)
   }, [])
+
+  // Listen for resume/stop events from EditorHeader buttons
+  useEffect(() => {
+    const onResume = () => handleResume()
+    const onStop = () => handleStop()
+
+    window.addEventListener('resume-workflow', onResume)
+    window.addEventListener('stop-workflow', onStop)
+    return () => {
+      window.removeEventListener('resume-workflow', onResume)
+      window.removeEventListener('stop-workflow', onStop)
+    }
+  }, [handleResume, handleStop])
 
   const handleCloseExecutionPanel = useCallback(() => {
     // Clean up any pending checkpoint promise
