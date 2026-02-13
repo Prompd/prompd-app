@@ -301,6 +301,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('connections:save', connections, workspacePath),
   },
 
+  // MCP server management (config, connections, tool discovery, registry search)
+  mcp: {
+    listServers: () => ipcRenderer.invoke('mcp:listServers'),
+    addServer: (name, config) => ipcRenderer.invoke('mcp:addServer', name, config),
+    removeServer: (name) => ipcRenderer.invoke('mcp:removeServer', name),
+    connect: (serverName) => ipcRenderer.invoke('mcp:connect', serverName),
+    disconnect: (serverName) => ipcRenderer.invoke('mcp:disconnect', serverName),
+    listTools: (serverName) => ipcRenderer.invoke('mcp:listTools', serverName),
+    callTool: (serverName, toolName, args) => ipcRenderer.invoke('mcp:callTool', serverName, toolName, args),
+    searchRegistry: (query, limit) => ipcRenderer.invoke('mcp:searchRegistry', query, limit),
+  },
+
   // Local compilation using @prompd/cli library
   // Compiles prompts without needing the backend
   compiler: {

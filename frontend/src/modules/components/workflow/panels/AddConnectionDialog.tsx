@@ -5,6 +5,7 @@
 import { useState, useCallback } from 'react'
 import { X, Server, Database, Globe, MessageSquare, Link2, RefreshCw, Settings, Search } from 'lucide-react'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
+import { McpServerSetupFlow } from './McpServerSetupFlow'
 import type {
   WorkflowConnectionType,
   WorkflowConnectionConfig,
@@ -19,6 +20,7 @@ import type {
   CustomConnectionConfig,
   WebSearchConnectionConfig,
 } from '../../../services/workflowTypes'
+import type { McpServerConfig } from '../../../../electron.d'
 
 // ============================================================================
 // Types
@@ -685,6 +687,29 @@ export function AddConnectionDialog({ onClose, initialType }: AddConnectionDialo
     onClose()
   }, [selectedType, name, config, scope, addConnection, onClose])
 
+  // MCP-specific: dual-write to connections.json AND mcp-config.json
+  const handleMcpConfigReady = useCallback((
+    connectionConfig: Partial<McpServerConnectionConfig>,
+    mcpConfig: McpServerConfig
+  ) => {
+    const serverName = connectionConfig.serverName || 'mcp-server'
+
+    // Write to connections.json (via workflowStore)
+    addConnection({
+      name: serverName,
+      type: 'mcp-server',
+      status: 'disconnected',
+      scope,
+      config: { ...connectionConfig, type: 'mcp-server' } as WorkflowConnectionConfig,
+    })
+
+    // Write to mcp-config.json (already written during test step,
+    // but ensure it's there even if test was skipped)
+    window.electronAPI?.mcp?.addServer(serverName, mcpConfig)
+
+    onClose()
+  }, [scope, addConnection, onClose])
+
   const handleBack = useCallback(() => {
     setStep('type')
   }, [])
@@ -706,7 +731,8 @@ export function AddConnectionDialog({ onClose, initialType }: AddConnectionDialo
       case 'github':
         return <GitHubConfigForm config={config as Partial<GitHubConnectionConfig>} onChange={setConfig} />
       case 'mcp-server':
-        return <McpServerConfigForm config={config as Partial<McpServerConnectionConfig>} onChange={setConfig} />
+        // MCP uses McpServerSetupFlow which replaces the entire config section
+        return null
       case 'websocket':
         return <WebSocketConfigForm config={config as Partial<WebSocketConnectionConfig>} onChange={setConfig} />
       case 'web-search':
@@ -797,8 +823,14 @@ export function AddConnectionDialog({ onClose, initialType }: AddConnectionDialo
                 </button>
               ))}
             </div>
+          ) : selectedType === 'mcp-server' ? (
+            // MCP Server — uses dedicated multi-step setup flow
+            <McpServerSetupFlow
+              onConfigReady={handleMcpConfigReady}
+              onBack={!initialType ? handleBack : undefined}
+            />
           ) : (
-            // Configuration Form
+            // Configuration Form (all other connection types)
             <>
               <div style={{ marginBottom: '16px' }}>
                 <label style={labelStyle}>Connection Name</label>
@@ -868,11 +900,24 @@ export function AddConnectionDialog({ onClose, initialType }: AddConnectionDialo
           )}
         </div>
 
-        {/* Footer */}
-        <div style={footerStyle}>
-          {step === 'config' && !initialType && (
+        {/* Footer — hidden for MCP (setup flow has its own buttons) */}
+        {selectedType !== 'mcp-server' && (
+          <div style={footerStyle}>
+            {step === 'config' && !initialType && (
+              <button
+                onClick={handleBack}
+                style={{
+                  ...buttonStyle,
+                  background: 'transparent',
+                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                Back
+              </button>
+            )}
             <button
-              onClick={handleBack}
+              onClick={onClose}
               style={{
                 ...buttonStyle,
                 background: 'transparent',
@@ -880,36 +925,25 @@ export function AddConnectionDialog({ onClose, initialType }: AddConnectionDialo
                 border: '1px solid var(--border)',
               }}
             >
-              Back
+              Cancel
             </button>
-          )}
-          <button
-            onClick={onClose}
-            style={{
-              ...buttonStyle,
-              background: 'transparent',
-              color: 'var(--text-secondary)',
-              border: '1px solid var(--border)',
-            }}
-          >
-            Cancel
-          </button>
-          {step === 'config' && (
-            <button
-              onClick={handleCreate}
-              disabled={!isValid}
-              style={{
-                ...buttonStyle,
-                background: isValid ? 'var(--accent)' : 'var(--muted)',
-                color: 'white',
-                opacity: isValid ? 1 : 0.5,
-                cursor: isValid ? 'pointer' : 'not-allowed',
-              }}
-            >
-              Create Connection
-            </button>
-          )}
-        </div>
+            {step === 'config' && (
+              <button
+                onClick={handleCreate}
+                disabled={!isValid}
+                style={{
+                  ...buttonStyle,
+                  background: isValid ? 'var(--accent)' : 'var(--muted)',
+                  color: 'white',
+                  opacity: isValid ? 1 : 0.5,
+                  cursor: isValid ? 'pointer' : 'not-allowed',
+                }}
+              >
+                Create Connection
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -122,14 +122,27 @@ export const NodeQuickActions = memo(({ nodeId, position, readOnly = false }: No
         onClick={handleToggleLock}
         style={{
           ...buttonStyle,
-          color: isLocked ? 'var(--warning)' : 'var(--text-secondary)',
-          background: isLocked ? 'color-mix(in srgb, var(--warning) 15%, transparent)' : 'transparent',
+          ...(isLocked ? {
+            color: 'var(--warning)',
+            background: 'color-mix(in srgb, var(--warning) 18%, transparent)',
+            boxShadow: 'inset 0 0 0 1.5px color-mix(in srgb, var(--warning) 35%, transparent)',
+          } : {}),
         }}
         title={isLocked ? 'Unlock position (Ctrl+L)' : 'Lock position (Ctrl+L)'}
-        onMouseEnter={(e) => Object.assign(e.currentTarget.style, buttonHoverStyle('var(--warning)'))}
-        onMouseLeave={(e) => Object.assign(e.currentTarget.style, {
-          background: isLocked ? 'color-mix(in srgb, var(--warning) 15%, transparent)' : 'transparent',
-          color: isLocked ? 'var(--warning)' : 'var(--text-secondary)',
+        onMouseEnter={(e) => {
+          Object.assign(e.currentTarget.style, buttonHoverStyle('var(--warning)'))
+          e.currentTarget.style.boxShadow = isLocked
+            ? 'inset 0 0 0 1.5px color-mix(in srgb, var(--warning) 50%, transparent)'
+            : 'none'
+        }}
+        onMouseLeave={(e) => Object.assign(e.currentTarget.style, isLocked ? {
+          background: 'color-mix(in srgb, var(--warning) 18%, transparent)',
+          color: 'var(--warning)',
+          boxShadow: 'inset 0 0 0 1.5px color-mix(in srgb, var(--warning) 35%, transparent)',
+        } : {
+          background: 'transparent',
+          color: 'var(--text-secondary)',
+          boxShadow: 'none',
         })}
       >
         {isLocked ? <Lock style={{ width: 14, height: 14 }} /> : <Unlock style={{ width: 14, height: 14 }} />}

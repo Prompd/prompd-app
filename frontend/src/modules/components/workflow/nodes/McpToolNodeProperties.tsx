@@ -1,11 +1,17 @@
 /**
  * McpToolNodeProperties - Property editor for MCP Tool nodes
+ *
+ * Discovers available tools from the selected MCP server connection
+ * and generates schema-driven parameter fields from the tool's inputSchema.
  */
 
-import { useState } from 'react'
-import { Link2, Plus, Trash2 } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Link2, Plus, Trash2, RefreshCw, Loader2 } from 'lucide-react'
 import type { McpToolNodeData } from '../../../services/workflowTypes'
+import type { McpServerConnectionConfig } from '../../../services/workflowTypes'
+import type { McpToolDefinition } from '../../../../electron.d'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
+import { useMcpTools } from '../../../hooks'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
 
 export interface McpToolNodePropertiesProps {
@@ -14,9 +20,55 @@ export interface McpToolNodePropertiesProps {
   nodeId?: string
 }
 
+/** Extract the serverName from the selected MCP connection */
+function resolveServerName(
+  connectionId: string | undefined,
+  connections: { id: string; type: string; config: { serverName?: string } }[]
+): string | undefined {
+  if (!connectionId) return undefined
+  const conn = connections.find(c => c.id === connectionId)
+  if (!conn || conn.type !== 'mcp-server') return undefined
+  return (conn.config as McpServerConnectionConfig).serverName
+}
+
+/** Build parameter fields from a tool's JSON Schema inputSchema */
+function getSchemaProperties(tool: McpToolDefinition | undefined): {
+  name: string
+  type: string
+  description: string
+  required: boolean
+  enumValues?: string[]
+}[] {
+  if (!tool?.inputSchema) return []
+  const schema = tool.inputSchema as {
+    properties?: Record<string, { type?: string; description?: string; enum?: string[] }>
+    required?: string[]
+  }
+  if (!schema.properties) return []
+
+  const requiredSet = new Set(schema.required || [])
+  return Object.entries(schema.properties).map(([name, prop]) => ({
+    name,
+    type: prop.type || 'string',
+    description: prop.description || '',
+    required: requiredSet.has(name),
+    enumValues: prop.enum,
+  }))
+}
+
 export function McpToolNodeProperties({ data, onChange }: McpToolNodePropertiesProps) {
   const connections = useWorkflowStore(state => state.connections)
   const mcpConnections = connections.filter(c => c.type === 'mcp-server')
+
+  const serverName = resolveServerName(data.connectionId, connections as { id: string; type: string; config: { serverName?: string } }[])
+  const { tools, isLoading, error: toolsError, refresh } = useMcpTools(serverName)
+
+  const selectedTool = useMemo(
+    () => tools.find(t => t.name === data.toolName),
+    [tools, data.toolName]
+  )
+
+  const schemaProps = useMemo(() => getSchemaProperties(selectedTool), [selectedTool])
 
   const [paramKey, setParamKey] = useState('')
   const [paramValue, setParamValue] = useState('')
@@ -40,6 +92,13 @@ export function McpToolNodeProperties({ data, onChange }: McpToolNodePropertiesP
     const newParams = { ...parameters }
     delete newParams[key]
     onChange('parameters', newParams)
+  }
+
+  const handleSchemaParamChange = (name: string, value: string) => {
+    onChange('parameters', {
+      ...parameters,
+      [name]: value,
+    })
   }
 
   const handleServerConfigChange = (field: string, value: unknown) => {
@@ -165,71 +224,200 @@ export function McpToolNodeProperties({ data, onChange }: McpToolNodePropertiesP
         </>
       )}
 
-      {/* Tool Name */}
+      {/* Tool Selection */}
       <div>
-        <label style={labelStyle}>Tool Name</label>
-        <input
-          type="text"
-          value={data.toolName || ''}
-          onChange={(e) => onChange('toolName', e.target.value)}
-          style={inputStyle}
-          placeholder='search_web'
-        />
+        <label style={{
+          ...labelStyle,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+          <span>Tool Name</span>
+          {useConnection && serverName && (
+            <button
+              onClick={refresh}
+              disabled={isLoading}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: isLoading ? 'default' : 'pointer',
+                color: 'var(--muted)',
+                padding: '0 2px',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+              title="Refresh tools"
+            >
+              {isLoading
+                ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                : <RefreshCw size={12} />
+              }
+            </button>
+          )}
+        </label>
+
+        {useConnection && tools.length > 0 ? (
+          <select
+            value={data.toolName || ''}
+            onChange={(e) => onChange('toolName', e.target.value)}
+            style={selectStyle}
+          >
+            <option value="">Select tool...</option>
+            {tools.map(tool => (
+              <option key={tool.name} value={tool.name}>
+                {tool.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            value={data.toolName || ''}
+            onChange={(e) => onChange('toolName', e.target.value)}
+            style={inputStyle}
+            placeholder='search_web'
+          />
+        )}
+
+        {/* Tool description */}
+        {selectedTool?.description && (
+          <div style={{
+            fontSize: '11px',
+            color: 'var(--text-secondary)',
+            marginTop: '4px',
+            padding: '6px 8px',
+            background: 'var(--panel-2)',
+            borderRadius: '4px',
+            lineHeight: '1.4',
+          }}>
+            {selectedTool.description}
+          </div>
+        )}
+
+        {/* Error loading tools */}
+        {toolsError && (
+          <div style={{
+            fontSize: '11px',
+            color: 'var(--error, #ef4444)',
+            marginTop: '4px',
+          }}>
+            {toolsError}
+          </div>
+        )}
       </div>
 
-      {/* Parameters */}
+      {/* Schema-Driven Parameters */}
+      {schemaProps.length > 0 && (
+        <div>
+          <label style={labelStyle}>Parameters</label>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '6px',
+          }}>
+            {schemaProps.map(prop => (
+              <div key={prop.name}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '11px',
+                  color: 'var(--text-secondary)',
+                  marginBottom: '2px',
+                }}>
+                  <code style={{ color: 'var(--accent)', fontSize: '11px' }}>{prop.name}</code>
+                  {prop.required && <span style={{ color: 'var(--error, #ef4444)', marginLeft: '2px' }}>*</span>}
+                  {prop.description && (
+                    <span style={{ color: 'var(--muted)', marginLeft: '6px' }}>
+                      {prop.description.length > 60 ? prop.description.slice(0, 60) + '...' : prop.description}
+                    </span>
+                  )}
+                </label>
+                {prop.enumValues ? (
+                  <select
+                    value={String(parameters[prop.name] ?? '')}
+                    onChange={(e) => handleSchemaParamChange(prop.name, e.target.value)}
+                    style={selectStyle}
+                  >
+                    <option value="">Select...</option>
+                    {prop.enumValues.map(v => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type={prop.type === 'number' || prop.type === 'integer' ? 'text' : 'text'}
+                    value={String(parameters[prop.name] ?? '')}
+                    onChange={(e) => handleSchemaParamChange(prop.name, e.target.value)}
+                    style={inputStyle}
+                    placeholder={`{{ expression }} or value`}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Manual Parameters (always available for additional/dynamic params) */}
       <div>
-        <label style={labelStyle}>Parameters</label>
+        <label style={labelStyle}>
+          {schemaProps.length > 0 ? 'Additional Parameters' : 'Parameters'}
+        </label>
         <div style={{
           border: '1px solid var(--input-border)',
           borderRadius: '6px',
           overflow: 'hidden',
         }}>
-          {Object.entries(parameters).length > 0 ? (
-            <div style={{ maxHeight: '150px', overflowY: 'auto' }}>
-              {Object.entries(parameters).map(([key, value]) => (
-                <div
-                  key={key}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '8px 12px',
-                    borderBottom: '1px solid var(--border)',
-                    background: 'var(--input-bg)',
-                  }}
-                >
-                  <code style={{ fontSize: '11px', color: 'var(--accent)' }}>{key}</code>
-                  <span style={{ color: 'var(--muted)', fontSize: '11px' }}>=</span>
-                  <code style={{ fontSize: '11px', color: 'var(--text-secondary)', flex: 1 }}>
-                    {String(value).length > 30 ? String(value).slice(0, 30) + '...' : String(value)}
-                  </code>
-                  <button
-                    onClick={() => handleRemoveParameter(key)}
+          {(() => {
+            const schemaNames = new Set(schemaProps.map(p => p.name))
+            const manualEntries = Object.entries(parameters).filter(([key]) => !schemaNames.has(key))
+            return manualEntries.length > 0 ? (
+              <div style={{ maxHeight: '150px', overflowY: 'auto' }}>
+                {manualEntries.map(([key, value]) => (
+                  <div
+                    key={key}
                     style={{
-                      padding: '2px',
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: 'var(--muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 12px',
+                      borderBottom: '1px solid var(--border)',
+                      background: 'var(--input-bg)',
                     }}
                   >
-                    <Trash2 size={12} />
-                  </button>
+                    <code style={{ fontSize: '11px', color: 'var(--accent)' }}>{key}</code>
+                    <span style={{ color: 'var(--muted)', fontSize: '11px' }}>=</span>
+                    <code style={{ fontSize: '11px', color: 'var(--text-secondary)', flex: 1 }}>
+                      {String(value).length > 30 ? String(value).slice(0, 30) + '...' : String(value)}
+                    </code>
+                    <button
+                      onClick={() => handleRemoveParameter(key)}
+                      style={{
+                        padding: '2px',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--muted)',
+                      }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              schemaProps.length === 0 && (
+                <div style={{
+                  padding: '12px',
+                  textAlign: 'center',
+                  color: 'var(--muted)',
+                  fontSize: '11px',
+                  background: 'var(--input-bg)',
+                }}>
+                  No parameters defined
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{
-              padding: '12px',
-              textAlign: 'center',
-              color: 'var(--muted)',
-              fontSize: '11px',
-              background: 'var(--input-bg)',
-            }}>
-              No parameters defined
-            </div>
-          )}
+              )
+            )
+          })()}
 
           {/* Add Parameter */}
           <div style={{

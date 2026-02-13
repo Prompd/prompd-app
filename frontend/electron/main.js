@@ -24,6 +24,13 @@ function getAutoUpdater() {
   return autoUpdater
 }
 
+// Modular IPC registration (new pattern — migrate others here over time)
+const { McpIpcRegistration } = require('./ipc/McpIpcRegistration')
+const mcpService = require('./services/mcpService')
+const ipcModules = [
+  new McpIpcRegistration(),
+]
+
 // Tray and trigger services for background workflow execution
 const { trayManager } = require('./tray')
 const { DeploymentService } = require('@prompd/scheduler')
@@ -1151,6 +1158,10 @@ app.on('before-quit', async () => {
   if (deploymentService) {
     deploymentService.close()
   }
+  // Cleanup modular IPC modules (e.g., disconnect MCP servers)
+  for (const m of ipcModules) {
+    if (m.cleanup) await m.cleanup()
+  }
 })
 
 // Quit when all windows are closed (except on macOS or when minimizing to tray)
@@ -1165,6 +1176,9 @@ app.on('window-all-closed', () => {
     // Otherwise, the app stays running in the tray
   }
 })
+
+// Register modular IPC handlers
+ipcModules.forEach(m => m.register(ipcMain))
 
 // IPC Handlers for native file system operations
 ipcMain.handle('dialog:openFile', async () => {
@@ -4016,11 +4030,27 @@ ipcMain.handle('package:installAll', async (_event, workspacePath) => {
       }
     }
 
+    // Check for MCP dependencies in the workspace prompd.json
+    let missingMcps = []
+    try {
+      if (prompdJson.mcps && Array.isArray(prompdJson.mcps) && prompdJson.mcps.length > 0) {
+        const mcpConfig = mcpService.loadMcpConfig()
+        const configuredNames = new Set(Object.keys(mcpConfig.mcpServers || {}))
+        missingMcps = prompdJson.mcps.filter(name => !configuredNames.has(name))
+        if (missingMcps.length > 0) {
+          console.log('[Package] Workspace requires MCP servers not yet configured:', missingMcps)
+        }
+      }
+    } catch (mcpCheckErr) {
+      console.warn('[Package] MCP dependency check failed (non-fatal):', mcpCheckErr.message)
+    }
+
     return {
       success: failed.length === 0,
       message: `Installed ${installed.length} of ${depEntries.length} packages`,
       installed,
-      failed: failed.length > 0 ? failed : undefined
+      failed: failed.length > 0 ? failed : undefined,
+      missingMcps: missingMcps.length > 0 ? missingMcps : undefined
     }
 
   } catch (error) {
@@ -4053,7 +4083,47 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath) => {
 
     console.log('[Package] Installed:', packageRef)
     analytics.trackPackageInstall(packageRef)
-    return { success: true, name: packageRef }
+
+    // Check installed package for MCP dependencies
+    let missingMcps = []
+    try {
+      // Find the installed package's prompd.json in the cache
+      const cacheDir = path.join(workspacePath, '.prompd', 'cache')
+      if (fs.existsSync(cacheDir)) {
+        // packageRef may be "@scope/name@version" or "name@version" or just "@scope/name"
+        const entries = fs.readdirSync(cacheDir)
+        // Match entries that start with the package name (before the @ version separator)
+        const pkgName = packageRef.includes('@') && !packageRef.startsWith('@')
+          ? packageRef.split('@')[0]
+          : packageRef.startsWith('@')
+            ? packageRef.substring(0, packageRef.lastIndexOf('@') > 0 ? packageRef.lastIndexOf('@') : packageRef.length)
+            : packageRef
+        const matchingDir = entries.find(e => e.startsWith(pkgName + '@') || e === pkgName)
+        if (matchingDir) {
+          const pkgJsonPath = path.join(cacheDir, matchingDir, 'prompd.json')
+          if (fs.existsSync(pkgJsonPath)) {
+            const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'))
+            if (pkgJson.mcps && Array.isArray(pkgJson.mcps) && pkgJson.mcps.length > 0) {
+              // Check which MCP servers are not configured
+              const mcpConfig = mcpService.loadMcpConfig()
+              const configuredNames = new Set(Object.keys(mcpConfig.mcpServers || {}))
+              missingMcps = pkgJson.mcps.filter(name => !configuredNames.has(name))
+              if (missingMcps.length > 0) {
+                console.log('[Package] Package requires MCP servers not yet configured:', missingMcps)
+              }
+            }
+          }
+        }
+      }
+    } catch (mcpCheckErr) {
+      console.warn('[Package] MCP dependency check failed (non-fatal):', mcpCheckErr.message)
+    }
+
+    return {
+      success: true,
+      name: packageRef,
+      missingMcps: missingMcps.length > 0 ? missingMcps : undefined
+    }
   } catch (error) {
     console.error('[Package] Install failed:', packageRef, error.message)
     return { success: false, error: error.message || 'Installation failed' }
@@ -5712,11 +5782,101 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               }
             }
 
+            // Handle MCP tool execution
+            if (request.toolType === 'mcp') {
+              const toolName = request.toolName
+              if (!toolName) {
+                return { success: false, error: 'MCP tool name is required' }
+              }
+
+              // Resolve server name: first from mcpConfig (inline), then from connectionId on the node
+              let serverName = request.mcpConfig?.serverName
+              if (!serverName && request.nodeId) {
+                const workflowFile = workflow.file || workflow
+                const wfNodes = workflowFile.nodes || workflow.nodes || []
+                const node = wfNodes.find(n => n.id === request.nodeId)
+                if (node && node.data?.connectionId) {
+                  const wfConnections = workflowFile.connections || workflow.connections || []
+                  const mcpConn = wfConnections.find(c => c.id === node.data.connectionId)
+                  if (mcpConn && mcpConn.config) {
+                    serverName = mcpConn.config.serverName
+                  }
+                }
+              }
+
+              if (!serverName) {
+                return { success: false, error: 'MCP server name could not be resolved. Check the connection configuration.' }
+              }
+
+              // Emit checkpoint event before MCP call
+              sender.send('workflow:event', {
+                type: 'checkpoint-data',
+                executionId,
+                nodeId: request.nodeId,
+                data: {
+                  sourceNodeType: 'mcp-tool',
+                  eventType: 'iteration',
+                  serverName,
+                  toolName,
+                  timestamp: Date.now()
+                }
+              })
+
+              try {
+                // Connect first (no-op if already connected)
+                const connectResult = await mcpService.connect(serverName)
+                if (!connectResult.success) {
+                  return { success: false, error: `Failed to connect to MCP server '${serverName}': ${connectResult.error || 'Unknown error'}` }
+                }
+
+                // Call the tool with resolved parameters from the CLI
+                const toolArgs = request.parameters || {}
+                const callResult = await mcpService.callTool(serverName, toolName, toolArgs)
+
+                if (!callResult.success) {
+                  sender.send('workflow:event', {
+                    type: 'checkpoint-data',
+                    executionId,
+                    nodeId: request.nodeId,
+                    data: {
+                      sourceNodeType: 'mcp-tool',
+                      eventType: 'error',
+                      serverName,
+                      toolName,
+                      error: callResult.error,
+                      timestamp: Date.now()
+                    }
+                  })
+                  return { success: false, error: callResult.error || 'MCP tool call failed' }
+                }
+
+                return { success: true, result: callResult.result }
+              } catch (mcpErr) {
+                console.error('[Workflow Executor] MCP tool call error:', mcpErr)
+
+                sender.send('workflow:event', {
+                  type: 'checkpoint-data',
+                  executionId,
+                  nodeId: request.nodeId,
+                  data: {
+                    sourceNodeType: 'mcp-tool',
+                    eventType: 'error',
+                    serverName,
+                    toolName,
+                    error: mcpErr.message,
+                    timestamp: Date.now()
+                  }
+                })
+
+                return { success: false, error: mcpErr.message }
+              }
+            }
+
             // Handle command execution
             if (request.toolType !== 'command') {
               return {
                 success: false,
-                error: `Unsupported tool type: ${request.toolType}. Supported: 'command', 'http', 'web-search', 'database-query'.`
+                error: `Unsupported tool type: ${request.toolType}. Supported: 'command', 'http', 'web-search', 'database-query', 'mcp'.`
               }
             }
 

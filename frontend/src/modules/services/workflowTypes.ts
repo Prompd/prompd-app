@@ -2184,9 +2184,13 @@ export interface GitHubConnectionConfig {
 
 export interface McpServerConnectionConfig {
   type: 'mcp-server'
-  serverUrl: string
+  serverUrl?: string
   serverName: string
-  transport: 'stdio' | 'http' | 'websocket'
+  transport: 'stdio' | 'http' | 'websocket' | 'streamable-http'
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  registryRef?: string
 }
 
 export interface WebSocketConnectionConfig {

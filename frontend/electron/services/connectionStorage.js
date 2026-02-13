@@ -31,7 +31,7 @@ const SENSITIVE_FIELDS = {
   'ssh': [],
   'slack': [],
   'github': [],
-  'mcp-server': [],
+  'mcp-server': ['env'],
   'custom': [],
 }
 

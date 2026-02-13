@@ -266,7 +266,7 @@ export interface ElectronAPI {
     ) => Promise<CreatePackageResult>
 
     // Install a single package by reference (e.g. "@prompd/core@0.0.1")
-    install: (packageRef: string, workspacePath: string) => Promise<{ success: boolean; name?: string; error?: string }>
+    install: (packageRef: string, workspacePath: string) => Promise<{ success: boolean; name?: string; error?: string; missingMcps?: string[] }>
 
     // Install all dependencies from prompd.json
     installAll: (workspacePath: string) => Promise<InstallAllResult>
@@ -538,6 +538,47 @@ export interface ElectronAPI {
     setEnabled: (enabled: boolean) => Promise<void>
     isEnabled: () => Promise<boolean>
   }
+
+  // MCP server management (config, connections, tool discovery, registry search)
+  mcp?: {
+    listServers: () => Promise<{
+      success: boolean
+      servers?: McpServerEntry[]
+      error?: string
+    }>
+    addServer: (name: string, config: McpServerConfig) => Promise<{
+      success: boolean
+      error?: string
+    }>
+    removeServer: (name: string) => Promise<{
+      success: boolean
+      error?: string
+    }>
+    connect: (serverName: string) => Promise<{
+      success: boolean
+      tools?: McpToolDefinition[]
+      error?: string
+    }>
+    disconnect: (serverName: string) => Promise<{
+      success: boolean
+      error?: string
+    }>
+    listTools: (serverName: string) => Promise<{
+      success: boolean
+      tools?: McpToolDefinition[]
+      error?: string
+    }>
+    callTool: (serverName: string, toolName: string, args?: Record<string, unknown>) => Promise<{
+      success: boolean
+      result?: McpToolResult
+      error?: string
+    }>
+    searchRegistry: (query: string, limit?: number) => Promise<{
+      success: boolean
+      servers?: McpRegistryServer[]
+      error?: string
+    }>
+  }
 }
 
 // Workflow execution event types (single event channel with type-based routing)
@@ -670,6 +711,7 @@ export interface InstallAllResult {
     version: string
     error: string
   }>
+  missingMcps?: string[]  // MCP servers required but not configured
   error?: string
 }
 
@@ -897,6 +939,60 @@ export interface ProviderInfo {
   configured: boolean
   baseUrl?: string
   models: string[]
+}
+
+// MCP (Model Context Protocol) types
+export interface McpServerConfig {
+  command?: string              // e.g., 'npx'
+  args?: string[]               // e.g., ['-y', '@package/mcp-server']
+  env?: Record<string, string>  // Environment variables (encrypted at rest)
+  transport?: 'stdio' | 'http' | 'streamable-http'
+  serverUrl?: string            // For HTTP transport
+  serverName?: string           // Display name
+  registryRef?: string          // Official MCP registry name
+}
+
+export interface McpServerEntry {
+  name: string
+  config: McpServerConfig
+  status: 'connected' | 'disconnected' | 'connecting' | 'error'
+  toolCount: number
+}
+
+export interface McpToolDefinition {
+  name: string
+  description: string
+  inputSchema: Record<string, unknown> // JSON Schema
+}
+
+export interface McpToolResult {
+  content?: Array<{
+    type: string
+    text?: string
+    data?: string
+    mimeType?: string
+  }>
+  isError?: boolean
+}
+
+export interface McpRegistryServer {
+  name: string
+  description?: string
+  version?: string
+  packages?: Array<{
+    registry_name: string
+    name: string
+    version?: string
+    runtime?: string
+    transport_type?: string  // e.g., 'stdio', 'sse'
+    environment_variables?: Array<{
+      name: string
+      description?: string
+      required?: boolean
+    }>
+  }>
+  // Additional fields from registry API
+  [key: string]: unknown
 }
 
 declare global {
