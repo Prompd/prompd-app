@@ -105,12 +105,13 @@ prompd.app/
 ├── backend/                # Optional REST API (Express + MongoDB)
 ├── prompd-service/         # Standalone workflow scheduler service (runs independently of Electron)
 ├── scheduler-shared/       # Legacy shared scheduler logic (being replaced by packages/scheduler)
+├── deployment/             # Cloud deployment configs (Cloud Build YAML, secret setup scripts)
 └── docs/                   # Documentation and guides
 ```
 
 ### Critical Dependencies
 
-- **`@prompd/cli`** - Prompt compiler (Node.js only). All packages use local `file:` symlink to `../../../Logikbug/prompd-cli/cli/npm`.
+- **`@prompd/cli`** - Prompt compiler (Node.js only). Local dev uses `file:` symlink to `../../../Logikbug/prompd-cli/cli/npm` (see frontend and backend package.json). Cloud Run deployment uses `@prompd/cli@^0.4.9` from npm (lockfile must be in sync before deploying).
   - **Main export** (`@prompd/cli`): Node.js only — accessed via Electron IPC bridge, excluded from Vite bundling, unpacked from asar at runtime
   - **Subpath exports** (`@prompd/cli/parser`, `/types`, `/validator`): Browser-compatible, can be bundled by Vite if needed
 - **`@prompd/react@0.2.0`** - Chat UI (local via `file:../packages/react`) - must build before frontend. Dual ESM + CJS output.
@@ -261,7 +262,7 @@ Vite dev server binds to `127.0.0.1` (IPv4 only) for Electron compatibility. Fro
 
 ## Code Style
 
-No linter/formatter config - follow existing patterns. See [AGENTS.md](AGENTS.md) for detailed coding guidelines including import organization, component patterns, error handling, and naming conventions.
+No linter/formatter config - follow existing patterns. See [AGENTS.md](AGENTS.md) for detailed coding guidelines including import organization, component patterns, error handling, and naming conventions. Note: AGENTS.md largely duplicates this file's content — when updating build commands, architecture, or gotchas, update CLAUDE.md (the canonical source) and keep AGENTS.md for agent-specific coding patterns only.
 
 Key rules:
 - 2-space indentation for TypeScript/JSX

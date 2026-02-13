@@ -1387,6 +1387,64 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
                 </div>
               )}
 
+              {/* Anonymous Analytics */}
+              <div style={{ marginBottom: '32px' }}>
+                <h3 style={{ marginTop: 0, marginBottom: '12px', fontSize: '16px', fontWeight: 600, color: colors.text }}>
+                  Anonymous Analytics
+                </h3>
+                <p style={{ marginBottom: '16px', color: colors.textSecondary, fontSize: '14px' }}>
+                  Help improve Prompd by sharing anonymous usage data.
+                </p>
+                <div style={{
+                  padding: '16px',
+                  background: colors.bgSecondary,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '8px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <div>
+                      <div style={{ fontWeight: 500, color: colors.text, marginBottom: '4px' }}>
+                        Share Usage Data
+                      </div>
+                      <div style={{ fontSize: '13px', color: colors.textSecondary }}>
+                        No prompts, files, or personal information is ever sent
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const next = !analyticsEnabled
+                        setAnalyticsEnabled(next)
+                      }}
+                      style={{
+                        width: '48px',
+                        height: '26px',
+                        borderRadius: '13px',
+                        border: 'none',
+                        background: analyticsEnabled ? colors.success : colors.bgTertiary,
+                        cursor: 'pointer',
+                        position: 'relative',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <div style={{
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '11px',
+                        background: 'white',
+                        position: 'absolute',
+                        top: '2px',
+                        left: analyticsEnabled ? '24px' : '2px',
+                        transition: 'all 0.2s ease',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                      }} />
+                    </button>
+                  </div>
+                  <div style={{ fontSize: '12px', color: colors.textMuted }}>
+                    Only event names and high-level counts are tracked (e.g., "workflow executed", "package installed"). Your client ID is a random identifier not linked to your account.
+                  </div>
+                </div>
+              </div>
+
               {/* Auto-Save Toggle */}
               <div style={{ marginBottom: '32px' }}>
                 <h3 style={{ marginTop: 0, marginBottom: '12px', fontSize: '16px', fontWeight: 600, color: colors.text }}>
@@ -2873,57 +2931,6 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
                       No activity yet. Usage will appear here after your first LLM call.
                     </div>
                   )}
-                </div>
-              </div>
-
-              {/* Analytics Opt-in */}
-              <div style={{
-                padding: '16px',
-                background: colors.bgSecondary,
-                border: `1px solid ${colors.border}`,
-                borderRadius: '8px',
-                marginBottom: '16px',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <div>
-                    <div style={{ fontSize: '14px', fontWeight: 600, color: colors.text }}>Anonymous Analytics</div>
-                    <div style={{ fontSize: '12px', color: colors.textMuted, marginTop: '4px' }}>
-                      Help improve Prompd by sharing anonymous usage data. No prompts, files, or personal information is ever sent.
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      const next = !analyticsEnabled
-                      setAnalyticsEnabled(next)
-                    }}
-                    style={{
-                      width: 44,
-                      height: 24,
-                      borderRadius: 12,
-                      border: 'none',
-                      cursor: 'pointer',
-                      background: analyticsEnabled ? colors.primary : colors.border,
-                      position: 'relative',
-                      transition: 'background 0.2s',
-                      flexShrink: 0,
-                      marginLeft: 16,
-                    }}
-                  >
-                    <div style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: '50%',
-                      background: 'white',
-                      position: 'absolute',
-                      top: 3,
-                      left: analyticsEnabled ? 23 : 3,
-                      transition: 'left 0.2s',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                    }} />
-                  </button>
-                </div>
-                <div style={{ fontSize: '11px', color: colors.textMuted }}>
-                  Only event names and high-level counts are tracked (e.g., "workflow executed", "package installed"). Your client ID is a random identifier not linked to your account.
                 </div>
               </div>
 
