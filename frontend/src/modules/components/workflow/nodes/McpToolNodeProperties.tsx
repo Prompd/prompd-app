@@ -23,12 +23,12 @@ export interface McpToolNodePropertiesProps {
 /** Extract the serverName from the selected MCP connection */
 function resolveServerName(
   connectionId: string | undefined,
-  connections: { id: string; type: string; config: { serverName?: string } }[]
+  connections: Array<{ id: string; type: string; config: unknown }>
 ): string | undefined {
   if (!connectionId) return undefined
   const conn = connections.find(c => c.id === connectionId)
   if (!conn || conn.type !== 'mcp-server') return undefined
-  return (conn.config as McpServerConnectionConfig).serverName
+  return (conn.config as McpServerConnectionConfig | undefined)?.serverName
 }
 
 /** Build parameter fields from a tool's JSON Schema inputSchema */
@@ -60,7 +60,7 @@ export function McpToolNodeProperties({ data, onChange }: McpToolNodePropertiesP
   const connections = useWorkflowStore(state => state.connections)
   const mcpConnections = connections.filter(c => c.type === 'mcp-server')
 
-  const serverName = resolveServerName(data.connectionId, connections as { id: string; type: string; config: { serverName?: string } }[])
+  const serverName = resolveServerName(data.connectionId, connections as Array<{ id: string; type: string; config: unknown }>)
   const { tools, isLoading, error: toolsError, refresh } = useMcpTools(serverName)
 
   const selectedTool = useMemo(
@@ -344,7 +344,7 @@ export function McpToolNodeProperties({ data, onChange }: McpToolNodePropertiesP
                   </select>
                 ) : (
                   <input
-                    type={prop.type === 'number' || prop.type === 'integer' ? 'text' : 'text'}
+                    type="text"
                     value={String(parameters[prop.name] ?? '')}
                     onChange={(e) => handleSchemaParamChange(prop.name, e.target.value)}
                     style={inputStyle}

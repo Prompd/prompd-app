@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { Edit3, Eye, EyeOff, Check, X, FileText, Sparkles, Save, Package, Link, Settings, FolderOpen, Search, ChevronDown, Type, Hash, ToggleLeft, Brackets, Braces, AlertCircle, CheckCircle, AlertTriangle, Trash2, Tag, Code, Map as MapIcon } from 'lucide-react'
+import { Edit3, Eye, EyeOff, Check, X, FileText, Sparkles, Save, Package, Link, Settings, FolderOpen, Search, Type, Hash, ToggleLeft, Brackets, Braces, AlertCircle, CheckCircle, AlertTriangle, Trash2, Tag, Code, Map as MapIcon } from 'lucide-react'
 import { parsePrompd } from '../lib/prompdParser'
 import XmlDesignView, { type XmlDesignViewHandle } from '../components/XmlDesignView'
 import { ContentMinimap, type MinimapSection } from '../components/ContentMinimap'
@@ -8,13 +8,11 @@ import VersionInput from '../components/VersionInput'
 import { TagInput } from '../components/TagInput'
 import { ParamValue } from '../types'
 import { WizardState, PackageReference } from '../types/wizard'
-import SectionAdder from '../components/SectionAdder'
 import InheritsManager from '../components/InheritsManager'
 import { PrompdContextArea } from '@prompd/react'
 import { registryApi, type RegistryPackage } from '../services/registryApi'
 import JSZip from 'jszip'
-import Editor, { BeforeMount } from '@monaco-editor/react'
-import MarkdownPreview from '../components/MarkdownPreview'
+import ContentSections from '../components/ContentSections'
 
 // Type definitions for PrompdContextArea (from @prompd/react)
 interface PrompdFileSection {
@@ -108,7 +106,7 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
   const [isAddingParameter, setIsAddingParameter] = useState(false)
   const [newParamName, setNewParamName] = useState('')
   const [expandedParams, setExpandedParams] = useState<Set<string>>(new Set())
-  const [metadataCollapsed, setMetadataCollapsed] = useState(false)
+  const [metadataCollapsed, setMetadataCollapsed] = useState(true)
 
   // Specialty sections visibility state
   const [visibleSpecialtySections, setVisibleSpecialtySections] = useState<Set<string>>(() => {
@@ -328,31 +326,6 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
 
   // Track if we're currently updating parameters to avoid resetting editable state
 
-  // Monaco beforeMount to register custom themes
-  const beforeMount: BeforeMount = (monaco) => {
-    // Register prompd-dark theme
-    monaco.editor.defineTheme('prompd-dark', {
-      base: 'vs-dark',
-      inherit: true,
-      rules: [],
-      colors: {
-        'editor.background': '#0f172a',
-        'editor.foreground': '#f1f5f9',
-      }
-    })
-
-    // Register prompd-light theme
-    monaco.editor.defineTheme('prompd-light', {
-      base: 'vs',
-      inherit: true,
-      rules: [],
-      colors: {
-        'editor.background': '#ffffff',
-        'editor.foreground': '#000000',
-      }
-    })
-  }
-
   // Sync editable params from parsed schema when value changes
   // BUT only if user hasn't explicitly modified them
   useEffect(() => {
@@ -475,6 +448,17 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
     setEditingSection(null)
     setEditContent('')
   }
+
+  // Direct body replacement for document mode - replaces everything after the frontmatter
+  const handleBodyChange = useCallback((newBody: string) => {
+    const lines = value.split('\n')
+    const firstDashIndex = lines.findIndex(l => l.trim() === '---')
+    const secondDashIndex = lines.findIndex((l, i) => i > firstDashIndex && l.trim() === '---')
+    if (secondDashIndex > 0) {
+      const frontmatter = lines.slice(0, secondDashIndex + 1).join('\n')
+      onChange(`${frontmatter}\n${newBody}`)
+    }
+  }, [value, onChange])
 
   const toggleSectionVisibility = (sectionId: string) => {
     setSectionOverrides(prev => {
@@ -1656,20 +1640,19 @@ ${parsed.body.replace(/^\n+/, '')}`
     }
   }
 
+  // Only re-fetch inherited sections when the inherits field actually changes, not on every body edit
+  const inheritsFieldValue = parsed.frontmatter.inherits ?? ''
+
   // Fetch inherited template sections when inherits field changes
   useEffect(() => {
     const fetchInheritedSections = async () => {
-      // Parse value inside the effect to avoid render-time dependencies
-      const currentParsed = parsePrompd(value)
-      const inheritsValue = currentParsed.frontmatter.inherits
-
-      if (!inheritsValue) {
+      if (!inheritsFieldValue) {
         setInheritedSections([])
         setInheritedParams({})
         return
       }
 
-      const parsedInheritsValue = parseInheritsValue(inheritsValue)
+      const parsedInheritsValue = parseInheritsValue(inheritsFieldValue)
       if (!parsedInheritsValue) {
         setInheritedSections([])
         setInheritedParams({})
@@ -1800,7 +1783,7 @@ ${parsed.body.replace(/^\n+/, '')}`
     }
 
     fetchInheritedSections()
-  }, [value, workspaceHandle, currentFilePath])
+  }, [inheritsFieldValue, workspaceHandle, currentFilePath])
 
   // Debounced search for inherits
   useEffect(() => {
@@ -2102,9 +2085,8 @@ ${parsed.body.replace(/^\n+/, '')}`
             overflow: 'hidden'
           }}
         >
-          {/* Collapsible Header */}
+          {/* Header */}
           <div
-            onClick={() => setMetadataCollapsed(!metadataCollapsed)}
             style={{
               padding: '16px 20px',
               fontSize: '14px',
@@ -2112,49 +2094,107 @@ ${parsed.body.replace(/^\n+/, '')}`
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              cursor: 'pointer',
-              userSelect: 'none',
               borderBottom: metadataCollapsed ? 'none' : '1px solid var(--border)'
             }}
           >
-            <ChevronDown
-              size={16}
-              style={{
-                color: 'var(--text-secondary)',
-                transform: metadataCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                transition: 'transform 0.2s'
-              }}
-            />
             <Sparkles size={16} style={{ color: 'var(--accent)' }} />
             <span>Metadata</span>
-            {!metadataCollapsed && (
+            {metadataCollapsed && (
               <span style={{
                 fontSize: '12px',
                 color: 'var(--text-secondary)',
                 fontWeight: 400,
                 fontStyle: 'italic'
               }}>
-                Core identification and configuration for this prompt template
+                {metadata.name || metadata.id || 'Untitled'}
+                {metadata.version ? ` v${metadata.version}` : ''}
               </span>
             )}
-            {readOnly && (
-              <span style={{
-                marginLeft: 'auto',
-                padding: '4px 12px',
-                fontSize: '11px',
-                fontWeight: 600,
-                color: 'var(--accent)',
-                background: 'rgba(59, 130, 246, 0.1)',
-                border: '1px solid var(--accent)',
-                borderRadius: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}>
-                <Eye size={12} />
-                READ-ONLY REFERENCE
-              </span>
-            )}
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {readOnly && (
+                <span style={{
+                  padding: '4px 12px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: 'var(--accent)',
+                  background: 'rgba(59, 130, 246, 0.1)',
+                  border: '1px solid var(--accent)',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <Eye size={12} />
+                  READ-ONLY REFERENCE
+                </span>
+              )}
+              {metadataCollapsed ? (
+                <button
+                  onClick={() => !readOnly && setMetadataCollapsed(false)}
+                  disabled={readOnly}
+                  style={{
+                    padding: '4px 12px',
+                    fontSize: '11px',
+                    fontWeight: 500,
+                    background: 'transparent',
+                    color: 'var(--accent)',
+                    border: '1px solid var(--accent)',
+                    borderRadius: '4px',
+                    cursor: readOnly ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    opacity: readOnly ? 0.5 : 1,
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <Edit3 size={10} />
+                  Edit
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setMetadataCollapsed(true)}
+                    style={{
+                      padding: '4px 12px',
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      background: 'transparent',
+                      color: 'var(--text)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      regeneratePrompd()
+                      setMetadataCollapsed(true)
+                    }}
+                    style={{
+                      padding: '4px 12px',
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      background: 'var(--success)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <Check size={10} />
+                    Save
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Collapsed Summary View */}
@@ -2777,305 +2817,26 @@ ${parsed.body.replace(/^\n+/, '')}`
           </div>
         ) : (
           /* Sections List (Markdown content) */
-          <div
-            data-section="content"
-            style={{
-              padding: '20px',
-              background: 'var(--bg)',
-              border: '1px solid var(--border)',
-              borderRadius: '8px',
-              marginBottom: '24px'
-            }}
-          >
-            <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <FileText size={16} style={{ color: 'var(--accent)' }} />
-              Content Sections
-              <span style={{ fontSize: '11px', fontWeight: 400, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-                Main prompt sections with inherited content and overrides
-              </span>
-              <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-secondary)', marginLeft: 'auto' }}>
-                {allDisplaySections.length} section{allDisplaySections.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {/* SectionAdder at the top */}
-              <SectionAdder
-                onAdd={(title, type) => addSection(title, type, 0)}
-              suggestions={availableSections}
-            />
-
-            {/* Render sections with SectionAdder between each */}
-            {allDisplaySections.map((section, index) => {
-              const isHidden = sectionOverrides[section.id] === null
-              const isOverridden = sectionOverrides[section.id] !== undefined && sectionOverrides[section.id] !== null
-              const isEditing = editingSection === section.id
-              const displayContent = sectionOverrides[section.id] ?? section.content
-
-              return (
-                <React.Fragment key={section.id}>
-                  <div
-                    style={{
-                      padding: '16px',
-                      background: 'var(--panel)',
-                      border: `2px solid ${isOverridden ? 'var(--warning)' : isHidden ? 'var(--muted)' : 'var(--border)'}`,
-                      borderRadius: '8px',
-                      opacity: isHidden ? 0.6 : 1
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: isEditing ? '12px' : '8px' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)' }}>
-                          {section.title}
-                        </div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                          {isHidden ? 'Hidden' : isOverridden ? 'Modified' : 'Original'}
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        {!isEditing && (
-                          <>
-                            <button
-                              onClick={() => startEditing(section)}
-                              disabled={isHidden}
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '10px',
-                                background: 'transparent',
-                                color: 'var(--accent)',
-                                border: '1px solid var(--accent)',
-                                borderRadius: '4px',
-                                cursor: isHidden ? 'not-allowed' : 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                opacity: isHidden ? 0.5 : 1,
-                                transition: 'all 0.2s'
-                              }}
-                              onMouseEnter={(e) => {
-                                if (!isHidden) {
-                                  e.currentTarget.style.background = 'var(--accent)'
-                                  e.currentTarget.style.color = 'white'
-                                }
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!isHidden) {
-                                  e.currentTarget.style.background = 'transparent'
-                                  e.currentTarget.style.color = 'var(--accent)'
-                                }
-                              }}
-                            >
-                              <Edit3 size={10} />
-                              Edit
-                            </button>
-                            {/* Show Delete button for local sections without inheritance, Hide button otherwise */}
-                            {section.isLocal && !hasInheritance ? (
-                              <button
-                                onClick={() => deleteSection(section.id, section.title)}
-                                style={{
-                                  padding: '4px 8px',
-                                  fontSize: '10px',
-                                  background: 'transparent',
-                                  color: 'var(--error)',
-                                  border: '1px solid var(--error)',
-                                  borderRadius: '4px',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  transition: 'all 0.2s'
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = 'var(--error)'
-                                  e.currentTarget.style.color = 'white'
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = 'transparent'
-                                  e.currentTarget.style.color = 'var(--error)'
-                                }}
-                                title="Delete section"
-                              >
-                                <Trash2 size={10} />
-                                Delete
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => toggleSectionVisibility(section.id)}
-                                style={{
-                                  padding: '4px 8px',
-                                  fontSize: '10px',
-                                  background: isHidden ? 'var(--success)' : 'transparent',
-                                  color: isHidden ? 'white' : 'var(--text-secondary)',
-                                  border: `1px solid ${isHidden ? 'var(--success)' : 'var(--text-secondary)'}`,
-                                  borderRadius: '4px',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  transition: 'all 0.2s'
-                                }}
-                                onMouseEnter={(e) => {
-                                  if (!isHidden) {
-                                    e.currentTarget.style.background = 'var(--text-secondary)'
-                                    e.currentTarget.style.color = 'white'
-                                  }
-                                }}
-                                onMouseLeave={(e) => {
-                                  if (!isHidden) {
-                                    e.currentTarget.style.background = 'transparent'
-                                    e.currentTarget.style.color = 'var(--text-secondary)'
-                                  }
-                                }}
-                                title={isHidden ? 'Show section' : 'Hide section'}
-                              >
-                                {isHidden ? <Eye size={10} /> : <EyeOff size={10} />}
-                              </button>
-                            )}
-                            {isOverridden && (
-                              <button
-                                onClick={() => resetSection(section.id)}
-                                style={{
-                                  padding: '4px 8px',
-                                  fontSize: '10px',
-                                  background: 'transparent',
-                                  color: 'var(--error)',
-                                  border: '1px solid var(--error)',
-                                  borderRadius: '4px',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  transition: 'all 0.2s'
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = 'var(--error)'
-                                  e.currentTarget.style.color = 'white'
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = 'transparent'
-                                  e.currentTarget.style.color = 'var(--error)'
-                                }}
-                                title="Reset to original"
-                              >
-                                <X size={10} />
-                                Reset
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {isEditing ? (
-                      <div>
-                        <div style={{
-                          border: '1px solid var(--border)',
-                          borderRadius: '6px',
-                          overflow: 'hidden',
-                          marginBottom: '8px'
-                        }}>
-                          <Editor
-                            height="200px"
-                            language="markdown"
-                            value={editContent}
-                            onChange={(value) => setEditContent(value || '')}
-                            beforeMount={beforeMount}
-                            theme={theme === 'dark' ? 'prompd-dark' : 'prompd-light'}
-                            options={{
-                              minimap: { enabled: false },
-                              lineNumbers: 'on',
-                              wordWrap: 'on',
-                              scrollBeyondLastLine: false,
-                              fontSize: 13,
-                              fontFamily: 'monospace',
-                              automaticLayout: true,
-                              padding: { top: 8, bottom: 8 }
-                            }}
-                          />
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                          <button
-                            onClick={cancelEditing}
-                            style={{
-                              padding: '6px 12px',
-                              fontSize: '12px',
-                              background: 'transparent',
-                              color: 'var(--text)',
-                              border: '1px solid var(--border)',
-                              borderRadius: '6px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={() => saveSection(section.id)}
-                            style={{
-                              padding: '6px 12px',
-                              fontSize: '12px',
-                              background: 'var(--success)',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}
-                          >
-                            <Check size={12} />
-                            Save Changes
-                          </button>
-                        </div>
-                      </div>
-                    ) : !isHidden && (
-                      <div
-                        onDoubleClick={() => !readOnly && startEditing(section)}
-                        style={{
-                          marginTop: '8px',
-                          background: 'var(--panel-2)',
-                          borderRadius: '6px',
-                          border: '1px solid var(--border)',
-                          cursor: readOnly ? 'default' : 'pointer',
-                          position: 'relative',
-                          overflow: 'hidden'
-                        }}
-                        title={readOnly ? undefined : 'Double-click to edit'}
-                      >
-                        {displayContent.trim() ? (
-                          <div style={{ padding: '8px 12px' }}>
-                            <MarkdownPreview
-                              content={displayContent}
-                              theme={theme}
-                              height="auto"
-                            />
-                          </div>
-                        ) : (
-                          <div style={{
-                            padding: '24px 12px',
-                            fontSize: '12px',
-                            color: 'var(--text-muted)',
-                            fontStyle: 'italic',
-                            textAlign: 'center'
-                          }}>
-                            Empty section - {readOnly ? '' : 'double-click to add content'}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* SectionAdder after each section */}
-                  <SectionAdder
-                    onAdd={(title, type) => addSection(title, type, index + 1)}
-                    suggestions={availableSections}
-                  />
-                </React.Fragment>
-              )
-            })}
-            </div>
-          </div>
+          <ContentSections
+            sections={allDisplaySections}
+            sectionOverrides={sectionOverrides}
+            body={parsed.body}
+            editingSection={editingSection}
+            editContent={editContent}
+            hasInheritance={hasInheritance}
+            availableSections={availableSections}
+            readOnly={readOnly || false}
+            theme={theme || 'dark'}
+            onStartEditing={startEditing}
+            onCancelEditing={cancelEditing}
+            onSaveSection={saveSection}
+            onEditContentChange={setEditContent}
+            onAddSection={addSection}
+            onDeleteSection={deleteSection}
+            onToggleVisibility={toggleSectionVisibility}
+            onResetSection={resetSection}
+            onBodyChange={handleBodyChange}
+          />
         )}
 
         {/* Parameters Modal */}

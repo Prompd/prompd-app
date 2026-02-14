@@ -950,6 +950,7 @@ export interface McpServerConfig {
   serverUrl?: string            // For HTTP transport
   serverName?: string           // Display name
   registryRef?: string          // Official MCP registry name
+  headers?: Record<string, string>  // Custom HTTP headers (encrypted at rest)
 }
 
 export interface McpServerEntry {
@@ -989,6 +990,17 @@ export interface McpRegistryServer {
       name: string
       description?: string
       required?: boolean
+    }>
+  }>
+  remotes?: Array<{
+    type: string              // e.g., 'streamable-http'
+    url: string               // e.g., 'https://server.smithery.ai/@user/server/mcp'
+    headers?: Array<{
+      name: string            // e.g., 'Authorization'
+      description?: string
+      value?: string          // Template e.g., 'Bearer {smithery_api_key}'
+      isRequired?: boolean
+      isSecret?: boolean
     }>
   }>
   // Additional fields from registry API

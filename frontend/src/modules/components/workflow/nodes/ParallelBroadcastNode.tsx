@@ -86,6 +86,7 @@ export const ParallelBroadcastNode = memo(({ id, data, selected }: ParallelBroad
       id={id}
       selected={selected}
       disabled={nodeData.disabled}
+      locked={nodeData.locked}
       isCollapsed={isCollapsed}
       onToggleCollapsed={toggleCollapsed}
       colorVar="indigo"

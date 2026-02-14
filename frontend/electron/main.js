@@ -5823,17 +5823,20 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               })
 
               try {
-                // Connect first (no-op if already connected)
-                const connectResult = await mcpService.connect(serverName)
-                if (!connectResult.success) {
-                  return { success: false, error: `Failed to connect to MCP server '${serverName}': ${connectResult.error || 'Unknown error'}` }
-                }
+                // Connect first (no-op if already connected; throws on failure)
+                await mcpService.connect(serverName)
 
                 // Call the tool with resolved parameters from the CLI
+                // mcpService.callTool returns the raw MCP SDK CallToolResult: { content, isError }
                 const toolArgs = request.parameters || {}
                 const callResult = await mcpService.callTool(serverName, toolName, toolArgs)
 
-                if (!callResult.success) {
+                // MCP SDK signals errors via isError flag on the result
+                if (callResult.isError) {
+                  const errorText = (callResult.content || [])
+                    .filter(c => c.type === 'text')
+                    .map(c => c.text)
+                    .join('\n') || 'MCP tool call returned an error'
                   sender.send('workflow:event', {
                     type: 'checkpoint-data',
                     executionId,
@@ -5843,14 +5846,20 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
                       eventType: 'error',
                       serverName,
                       toolName,
-                      error: callResult.error,
+                      error: errorText,
                       timestamp: Date.now()
                     }
                   })
-                  return { success: false, error: callResult.error || 'MCP tool call failed' }
+                  return { success: false, error: errorText }
                 }
 
-                return { success: true, result: callResult.result }
+                // Extract text content from the MCP result
+                const resultText = (callResult.content || [])
+                  .filter(c => c.type === 'text')
+                  .map(c => c.text)
+                  .join('\n')
+
+                return { success: true, result: resultText || callResult }
               } catch (mcpErr) {
                 console.error('[Workflow Executor] MCP tool call error:', mcpErr)
 

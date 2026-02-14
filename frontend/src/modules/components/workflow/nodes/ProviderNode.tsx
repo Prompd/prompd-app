@@ -139,7 +139,7 @@ export const ProviderNode = memo(({ id, data, selected }: ProviderNodeProps) => 
 
   return (
     <div
-      className={nodeData.disabled ? 'workflow-node-disabled' : ''}
+      className={[nodeData.disabled && 'workflow-node-disabled', nodeData.locked && 'workflow-node-locked'].filter(Boolean).join(' ')}
       style={containerStyle(selected ?? false, 220)}
       onMouseDown={stopPropagation}
     >

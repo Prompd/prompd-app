@@ -124,7 +124,7 @@ export const TransformNode = memo(({ id, data, selected }: TransformNodeProps) =
 
   return (
     <div
-      className={nodeData.disabled ? 'workflow-node-disabled' : ''}
+      className={[nodeData.disabled && 'workflow-node-disabled', nodeData.locked && 'workflow-node-locked'].filter(Boolean).join(' ')}
       style={{
         minWidth: '180px',
         maxWidth: '280px',

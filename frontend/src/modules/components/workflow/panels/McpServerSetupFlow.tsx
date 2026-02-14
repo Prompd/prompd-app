@@ -68,15 +68,63 @@ const badgeStyle: React.CSSProperties = {
 }
 
 // ============================================================================
-// Helper: derive config from registry server package
+// Helper: derive config from registry server (packages or remotes)
 // ============================================================================
 
-function deriveConfigFromPackage(server: McpRegistryServer): {
+interface DerivedConfig {
   command: string
   args: string[]
   envVars: Array<{ name: string; description: string; required: boolean }>
   transport: 'stdio' | 'streamable-http'
-} {
+  serverUrl: string
+  /** Header templates from remotes — { headerName: templateValue } */
+  headerTemplates: Record<string, string>
+}
+
+/**
+ * Extract {variable_name} patterns from a header template value.
+ * e.g., "Bearer {smithery_api_key}" → ["smithery_api_key"]
+ */
+function extractTemplateVars(template: string): string[] {
+  const matches = template.match(/\{([^}]+)\}/g)
+  if (!matches) return []
+  return matches.map(m => m.slice(1, -1))
+}
+
+function deriveConfig(server: McpRegistryServer): DerivedConfig {
+  // Check for remotes first (streamable-http endpoints like Smithery)
+  const httpRemote = server.remotes?.find(r => r.type === 'streamable-http' || r.type === 'http')
+  if (httpRemote) {
+    const envVars: Array<{ name: string; description: string; required: boolean }> = []
+    const headerTemplates: Record<string, string> = {}
+
+    if (httpRemote.headers) {
+      for (const header of httpRemote.headers) {
+        if (header.value) {
+          headerTemplates[header.name] = header.value
+          // Extract template variables as env var fields for the user to fill
+          const templateVars = extractTemplateVars(header.value)
+          for (const varName of templateVars) {
+            envVars.push({
+              name: varName,
+              description: header.description || `Value for ${header.name} header`,
+              required: header.isRequired ?? false,
+            })
+          }
+        }
+      }
+    }
+
+    return {
+      command: '',
+      args: [],
+      envVars,
+      transport: 'streamable-http',
+      serverUrl: httpRemote.url,
+      headerTemplates,
+    }
+  }
+
   // Prefer npm/node packages since they work with npx
   const npmPkg = server.packages?.find(p => p.runtime === 'node' || p.registry_name === 'npm')
   const anyPkg = server.packages?.[0]
@@ -95,6 +143,8 @@ function deriveConfigFromPackage(server: McpRegistryServer): {
       args: ['-y', npmPkg.name],
       envVars: extractEnvVars(npmPkg),
       transport: 'stdio',
+      serverUrl: '',
+      headerTemplates: {},
     }
   }
 
@@ -105,6 +155,8 @@ function deriveConfigFromPackage(server: McpRegistryServer): {
       args: ['run', '-i', '--rm', anyPkg.name],
       envVars: extractEnvVars(anyPkg),
       transport: 'stdio',
+      serverUrl: '',
+      headerTemplates: {},
     }
   }
 
@@ -115,6 +167,8 @@ function deriveConfigFromPackage(server: McpRegistryServer): {
       args: [anyPkg.name],
       envVars: extractEnvVars(anyPkg),
       transport: 'stdio',
+      serverUrl: '',
+      headerTemplates: {},
     }
   }
 
@@ -125,6 +179,8 @@ function deriveConfigFromPackage(server: McpRegistryServer): {
       args: [],
       envVars: extractEnvVars(anyPkg),
       transport: anyPkg.transport_type === 'sse' ? 'streamable-http' : 'stdio',
+      serverUrl: '',
+      headerTemplates: {},
     }
   }
 
@@ -133,6 +189,8 @@ function deriveConfigFromPackage(server: McpRegistryServer): {
     args: [],
     envVars: [],
     transport: 'stdio',
+    serverUrl: '',
+    headerTemplates: {},
   }
 }
 
@@ -145,12 +203,15 @@ interface SearchStepProps {
   onManualConfig: () => void
 }
 
+type TransportFilter = 'all' | 'local' | 'hosted'
+
 function SearchStep({ onSelectServer, onManualConfig }: SearchStepProps) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<McpRegistryServer[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasSearched, setHasSearched] = useState(false)
+  const [transportFilter, setTransportFilter] = useState<TransportFilter>('all')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const doSearch = useCallback(async (searchQuery: string) => {
@@ -246,9 +307,45 @@ function SearchStep({ onSelectServer, onManualConfig }: SearchStepProps) {
         </div>
       )}
 
+      {/* Transport filter — client-side only (registry API has no server-side transport filter) */}
+      {results.length > 0 && (
+        <div style={{ display: 'flex', gap: '4px', marginBottom: '10px' }}>
+          {(['all', 'local', 'hosted'] as const).map(f => (
+            <button
+              key={f}
+              onClick={() => setTransportFilter(f)}
+              style={{
+                padding: '4px 10px',
+                fontSize: '11px',
+                fontWeight: 500,
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                background: transportFilter === f ? 'var(--accent)' : 'var(--panel-2)',
+                color: transportFilter === f ? 'white' : 'var(--text-secondary)',
+              }}
+            >
+              {f === 'all' ? 'All' : f === 'local' ? 'Local (stdio)' : 'Hosted (http)'}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-        {results.map((server, idx) => {
+        {results.filter(server => {
+          if (transportFilter === 'all') return true
+          const hasPackages = !!server.packages?.length
+          const hasRemotes = !!server.remotes?.length
+          if (transportFilter === 'local') return hasPackages
+          return hasRemotes && !hasPackages
+        }).map((server, idx) => {
           const pkg = server.packages?.[0]
+          const remote = server.remotes?.[0]
+          const transportLabel = pkg
+            ? (pkg.runtime || 'npm')
+            : remote
+              ? remote.type === 'streamable-http' ? 'http' : remote.type
+              : null
           return (
             <div
               key={`${server.name}-${idx}`}
@@ -268,13 +365,15 @@ function SearchStep({ onSelectServer, onManualConfig }: SearchStepProps) {
                   {server.name}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {pkg && (
+                  {transportLabel && (
                     <span style={{
                       ...badgeStyle,
-                      background: 'color-mix(in srgb, var(--accent) 15%, transparent)',
-                      color: 'var(--accent)',
+                      background: remote && !pkg
+                        ? 'color-mix(in srgb, var(--success, #22c55e) 15%, transparent)'
+                        : 'color-mix(in srgb, var(--accent) 15%, transparent)',
+                      color: remote && !pkg ? 'var(--success, #22c55e)' : 'var(--accent)',
                     }}>
-                      {pkg.runtime || 'npm'}
+                      {transportLabel}
                     </span>
                   )}
                   <ChevronRight size={14} style={{ color: 'var(--muted)' }} />
@@ -290,6 +389,11 @@ function SearchStep({ onSelectServer, onManualConfig }: SearchStepProps) {
               {pkg && (
                 <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px', fontFamily: 'monospace' }}>
                   {pkg.name}
+                </div>
+              )}
+              {!pkg && remote && (
+                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px', fontFamily: 'monospace' }}>
+                  {remote.url}
                 </div>
               )}
             </div>
@@ -328,6 +432,62 @@ function SearchStep({ onSelectServer, onManualConfig }: SearchStepProps) {
 }
 
 // ============================================================================
+// Helper: Add header row (inline key+value inputs with Add button)
+// ============================================================================
+
+function AddHeaderRow({ onAdd, existingKeys }: {
+  onAdd: (key: string, value: string) => void
+  existingKeys: string[]
+}) {
+  const [key, setKey] = useState('')
+  const [value, setValue] = useState('')
+
+  const handleAdd = () => {
+    const k = key.trim()
+    if (k && !existingKeys.includes(k)) {
+      onAdd(k, value)
+      setKey('')
+      setValue('')
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+      <input
+        type="text"
+        value={key}
+        onChange={(e) => setKey(e.target.value)}
+        placeholder="Header name"
+        style={{ ...inputStyle, flex: 1, fontSize: '11px', padding: '4px 8px' }}
+      />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Value"
+        style={{ ...inputStyle, flex: 2, fontSize: '11px', padding: '4px 8px' }}
+      />
+      <button
+        onClick={handleAdd}
+        disabled={!key.trim() || existingKeys.includes(key.trim())}
+        style={{
+          padding: '4px 10px',
+          background: key.trim() ? 'var(--accent)' : 'var(--muted)',
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: key.trim() ? 'pointer' : 'not-allowed',
+          fontSize: '11px',
+          opacity: key.trim() ? 1 : 0.5,
+        }}
+      >
+        Add
+      </button>
+    </div>
+  )
+}
+
+// ============================================================================
 // Step 2: Configure
 // ============================================================================
 
@@ -341,21 +501,25 @@ interface ConfigureStepProps {
   serverUrl: string
   registryRef: string | null
   isManual: boolean
+  customHeaders: Record<string, string>
   onServerNameChange: (v: string) => void
   onCommandChange: (v: string) => void
   onArgsChange: (v: string) => void
   onEnvValueChange: (key: string, value: string) => void
   onTransportChange: (v: 'stdio' | 'http' | 'streamable-http') => void
   onServerUrlChange: (v: string) => void
+  onCustomHeaderChange: (key: string, value: string) => void
+  onCustomHeaderRemove: (key: string) => void
   onBack: () => void
   onNext: () => void
 }
 
 function ConfigureStep({
   serverName, command, args, envVars, envValues, transport, serverUrl,
-  registryRef, isManual,
+  registryRef, isManual, customHeaders,
   onServerNameChange, onCommandChange, onArgsChange, onEnvValueChange,
-  onTransportChange, onServerUrlChange, onBack, onNext,
+  onTransportChange, onServerUrlChange, onCustomHeaderChange, onCustomHeaderRemove,
+  onBack, onNext,
 }: ConfigureStepProps) {
   const isSensitiveEnvVar = (name: string) =>
     /key|secret|token|password|credential/i.test(name)
@@ -476,6 +640,48 @@ function ConfigureStep({
               Add environment variables after connection is created if needed.
             </div>
           )}
+        </div>
+      )}
+
+      {/* HTTP Headers (for streamable-http transport) */}
+      {transport !== 'stdio' && (
+        <div style={{ marginBottom: '12px' }}>
+          <label style={labelStyle}>HTTP Headers</label>
+          {Object.entries(customHeaders).map(([key, value]) => (
+            <div key={key} style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
+              <input
+                type="text"
+                value={key}
+                readOnly
+                style={{ ...inputStyle, flex: 1, fontSize: '11px', padding: '4px 8px', background: 'var(--panel-2)' }}
+              />
+              <input
+                type="password"
+                value={value}
+                onChange={(e) => onCustomHeaderChange(key, e.target.value)}
+                style={{ ...inputStyle, flex: 2, fontSize: '11px', padding: '4px 8px' }}
+                placeholder="Header value"
+              />
+              <button
+                onClick={() => onCustomHeaderRemove(key)}
+                style={{
+                  padding: '4px 8px',
+                  background: 'transparent',
+                  border: '1px solid var(--border)',
+                  borderRadius: '4px',
+                  color: 'var(--muted)',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                }}
+              >
+                &times;
+              </button>
+            </div>
+          ))}
+          <AddHeaderRow onAdd={onCustomHeaderChange} existingKeys={Object.keys(customHeaders)} />
+          <div style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '4px' }}>
+            Add authentication headers if the server requires them (e.g., Authorization).
+          </div>
         </div>
       )}
 
@@ -748,20 +954,27 @@ export function McpServerSetupFlow({ onConfigReady, onBack: parentOnBack }: McpS
   const [transport, setTransport] = useState<'stdio' | 'http' | 'streamable-http'>('stdio')
   const [serverUrl, setServerUrl] = useState('')
   const [registryRef, setRegistryRef] = useState<string | null>(null)
+  const [headerTemplates, setHeaderTemplates] = useState<Record<string, string>>({})
+  const [customHeaders, setCustomHeaders] = useState<Record<string, string>>({})
 
   const handleSelectServer = useCallback((server: McpRegistryServer) => {
-    const derived = deriveConfigFromPackage(server)
+    const derived = deriveConfig(server)
     setServerName(server.name.replace(/\s+/g, '-').toLowerCase())
     setCommand(derived.command)
     setArgs(derived.args)
     setEnvVars(derived.envVars)
     setTransport(derived.transport)
+    setServerUrl(derived.serverUrl)
+    setHeaderTemplates(derived.headerTemplates)
+    setCustomHeaders({})
     setRegistryRef(server.name)
     setIsManual(false)
     setStep('configure')
   }, [])
 
   const handleManualConfig = useCallback(() => {
+    setHeaderTemplates({})
+    setCustomHeaders({})
     setIsManual(true)
     setStep('configure')
   }, [])
@@ -774,6 +987,18 @@ export function McpServerSetupFlow({ onConfigReady, onBack: parentOnBack }: McpS
 
   const handleEnvValueChange = useCallback((key: string, value: string) => {
     setEnvValues(prev => ({ ...prev, [key]: value }))
+  }, [])
+
+  const handleCustomHeaderChange = useCallback((key: string, value: string) => {
+    setCustomHeaders(prev => ({ ...prev, [key]: value }))
+  }, [])
+
+  const handleCustomHeaderRemove = useCallback((key: string) => {
+    setCustomHeaders(prev => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
   }, [])
 
   const buildMcpConfig = useCallback((): McpServerConfig => {
@@ -795,11 +1020,31 @@ export function McpServerSetupFlow({ onConfigReady, onBack: parentOnBack }: McpS
     if (Object.keys(filteredEnv).length > 0) {
       config.env = filteredEnv
     }
+    // Build headers from: (1) resolved templates + (2) custom headers
+    const allHeaders: Record<string, string> = {}
+    // Resolve header templates using env values (e.g., "Bearer {api_key}" → "Bearer sk-...")
+    for (const [headerName, template] of Object.entries(headerTemplates)) {
+      let resolved = template
+      for (const [varName, varValue] of Object.entries(filteredEnv)) {
+        resolved = resolved.replace(`{${varName}}`, varValue)
+      }
+      // Only include if all template variables were resolved
+      if (!resolved.includes('{')) {
+        allHeaders[headerName] = resolved
+      }
+    }
+    // Add custom headers (manually entered by user)
+    for (const [k, v] of Object.entries(customHeaders)) {
+      if (v.trim()) allHeaders[k] = v.trim()
+    }
+    if (Object.keys(allHeaders).length > 0) {
+      config.headers = allHeaders
+    }
     if (registryRef) {
       config.registryRef = registryRef
     }
     return config
-  }, [serverName, command, args, transport, serverUrl, envValues, registryRef])
+  }, [serverName, command, args, transport, serverUrl, envValues, headerTemplates, customHeaders, registryRef])
 
   const buildConnectionConfig = useCallback((): Partial<McpServerConnectionConfig> => {
     return {
@@ -812,6 +1057,7 @@ export function McpServerSetupFlow({ onConfigReady, onBack: parentOnBack }: McpS
       registryRef: registryRef || undefined,
     }
   }, [serverName, transport, command, args, serverUrl, registryRef])
+
 
   const handleDone = useCallback(() => {
     onConfigReady(buildConnectionConfig(), buildMcpConfig())
@@ -868,12 +1114,15 @@ export function McpServerSetupFlow({ onConfigReady, onBack: parentOnBack }: McpS
           serverUrl={serverUrl}
           registryRef={registryRef}
           isManual={isManual}
+          customHeaders={customHeaders}
           onServerNameChange={setServerName}
           onCommandChange={setCommand}
           onArgsChange={handleArgsChange}
           onEnvValueChange={handleEnvValueChange}
           onTransportChange={setTransport}
           onServerUrlChange={setServerUrl}
+          onCustomHeaderChange={handleCustomHeaderChange}
+          onCustomHeaderRemove={handleCustomHeaderRemove}
           onBack={handleBackFromConfigure}
           onNext={() => setStep('test')}
         />

@@ -240,7 +240,7 @@ export const CallbackNode = memo(({ id, data, selected }: CallbackNodeProps) => 
 
   return (
     <div
-      className={nodeData.disabled ? 'workflow-node-disabled' : ''}
+      className={[nodeData.disabled && 'workflow-node-disabled', nodeData.locked && 'workflow-node-locked'].filter(Boolean).join(' ')}
       style={{
         minWidth: 180,
         padding: '12px',

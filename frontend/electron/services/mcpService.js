@@ -103,27 +103,59 @@ function decryptValue(value) {
 }
 
 /**
- * Encrypt env values in a server config object (for writing to disk).
+ * Encrypt sensitive values in a record (env vars, headers).
+ * @param {Record<string, string>} record
+ * @returns {Record<string, string>}
  */
-function encryptEnvValues(serverConfig) {
-  if (!serverConfig.env || typeof serverConfig.env !== 'object') return serverConfig
-  const encrypted = { ...serverConfig, env: {} }
-  for (const [key, val] of Object.entries(serverConfig.env)) {
-    encrypted.env[key] = typeof val === 'string' ? encryptValue(val) : val
+function encryptRecord(record) {
+  if (!record || typeof record !== 'object') return record
+  const encrypted = {}
+  for (const [key, val] of Object.entries(record)) {
+    encrypted[key] = typeof val === 'string' ? encryptValue(val) : val
   }
   return encrypted
 }
 
 /**
- * Decrypt env values in a server config object (after reading from disk).
+ * Decrypt sensitive values in a record (env vars, headers).
+ * @param {Record<string, string>} record
+ * @returns {Record<string, string>}
  */
-function decryptEnvValues(serverConfig) {
-  if (!serverConfig.env || typeof serverConfig.env !== 'object') return serverConfig
-  const decrypted = { ...serverConfig, env: {} }
-  for (const [key, val] of Object.entries(serverConfig.env)) {
-    decrypted.env[key] = typeof val === 'string' ? decryptValue(val) : val
+function decryptRecord(record) {
+  if (!record || typeof record !== 'object') return record
+  const decrypted = {}
+  for (const [key, val] of Object.entries(record)) {
+    decrypted[key] = typeof val === 'string' ? decryptValue(val) : val
   }
   return decrypted
+}
+
+/**
+ * Encrypt env values and headers in a server config object (for writing to disk).
+ */
+function encryptEnvValues(serverConfig) {
+  const result = { ...serverConfig }
+  if (serverConfig.env && typeof serverConfig.env === 'object') {
+    result.env = encryptRecord(serverConfig.env)
+  }
+  if (serverConfig.headers && typeof serverConfig.headers === 'object') {
+    result.headers = encryptRecord(serverConfig.headers)
+  }
+  return result
+}
+
+/**
+ * Decrypt env values and headers in a server config object (after reading from disk).
+ */
+function decryptEnvValues(serverConfig) {
+  const result = { ...serverConfig }
+  if (serverConfig.env && typeof serverConfig.env === 'object') {
+    result.env = decryptRecord(serverConfig.env)
+  }
+  if (serverConfig.headers && typeof serverConfig.headers === 'object') {
+    result.headers = decryptRecord(serverConfig.headers)
+  }
+  return result
 }
 
 // ---------------------------------------------------------------------------
@@ -309,7 +341,19 @@ function createTransport(serverConfig) {
       throw new Error('HTTP transport requires a "serverUrl" field')
     }
     const HttpTransport = getStreamableHTTPTransport()
-    return new HttpTransport(new URL(serverConfig.serverUrl))
+    const url = new URL(serverConfig.serverUrl)
+
+    // Pass custom headers if configured (e.g., Authorization for Smithery)
+    if (serverConfig.headers && typeof serverConfig.headers === 'object') {
+      const headerEntries = Object.entries(serverConfig.headers).filter(([, v]) => v)
+      if (headerEntries.length > 0) {
+        const headerRecord = Object.fromEntries(headerEntries)
+        return new HttpTransport(url, {
+          requestInit: { headers: headerRecord },
+        })
+      }
+    }
+    return new HttpTransport(url)
   }
 
   throw new Error(`Unsupported transport: ${transport}`)
@@ -571,6 +615,8 @@ function searchRegistry(query, limit = 20) {
                   transport_type: pkg.transport?.type,
                 }))
               }
+              // Pass through remotes (streamable-http endpoints like Smithery)
+              // Already in correct format: [{ type, url, headers: [{ name, value, ... }] }]
               return s
             })
             resolve({ success: true, servers })
