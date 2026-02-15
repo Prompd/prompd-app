@@ -30,6 +30,7 @@ import type { WorkflowResult } from '../../services/workflowTypes'
 import type { CheckpointEvent, ExecutionTrace, TraceEntry } from '../../services/workflowExecutor'
 import { getTraceSummary } from '../../services/workflowExecutor'
 import { JsonTreeViewer, tryParseJsonValue } from '../common/JsonTreeViewer'
+import WysiwygEditor from '../WysiwygEditor'
 
 /** Captured prompt info for debugging */
 export interface PromptSentInfo {
@@ -271,21 +272,14 @@ export function WorkflowExecutionPanel({
                       />
                     </div>
                   ) : (
-                    <pre style={{
-                      margin: 0,
-                      padding: '12px',
-                      background: 'var(--panel-2)',
-                      borderRadius: '6px',
-                      fontSize: '11px',
-                      lineHeight: 1.5,
-                      color: 'var(--text-secondary)',
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word'
-                    }}>
-                      {typeof result.output === 'string'
+                    <WysiwygEditor
+                      value={typeof result.output === 'string'
                         ? result.output
                         : JSON.stringify(result.output, null, 2)}
-                    </pre>
+                      readOnly
+                      height="auto"
+                      showToolbar={false}
+                    />
                   ) })()}
                   {result.errors && result.errors.length > 0 && (
                     <div style={{

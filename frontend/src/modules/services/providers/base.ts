@@ -146,7 +146,22 @@ export class OpenAICompatibleProvider extends BaseProvider {
       const data = await response.json()
       const duration = Date.now() - startTime
 
-      const content = data.choices?.[0]?.message?.content || ''
+      // Handle both string responses and multimodal content arrays
+      // Models like GPT-4o can return image content blocks alongside text
+      let content = ''
+      const messageContent = data.choices?.[0]?.message?.content
+      if (typeof messageContent === 'string') {
+        content = messageContent
+      } else if (Array.isArray(messageContent)) {
+        for (const block of messageContent) {
+          if (block.type === 'text') {
+            content += block.text || ''
+          } else if (block.type === 'image_url' && block.image_url?.url) {
+            content += `\n\n![generated image](${block.image_url.url})\n\n`
+          }
+        }
+      }
+
       const usage: TokenUsage = {
         promptTokens: data.usage?.prompt_tokens || 0,
         completionTokens: data.usage?.completion_tokens || 0,
@@ -321,6 +336,7 @@ export class AnthropicProvider extends BaseProvider {
 
       // Anthropic returns content as an array of blocks
       // With thinking mode, there may be thinking blocks followed by text blocks
+      // Image blocks (from multimodal responses) are converted to markdown syntax
       let content = ''
       if (data.content && Array.isArray(data.content)) {
         for (const block of data.content) {
@@ -329,6 +345,9 @@ export class AnthropicProvider extends BaseProvider {
           } else if (block.type === 'thinking') {
             // Include thinking content (summarized in Claude 4)
             content += block.thinking || ''
+          } else if (block.type === 'image' && block.source?.data) {
+            const mimeType = block.source.media_type || 'image/png'
+            content += `\n\n![generated image](data:${mimeType};base64,${block.source.data})\n\n`
           }
         }
       }
@@ -513,8 +532,18 @@ export class GoogleGeminiProvider extends BaseProvider {
       const data = await response.json()
       const duration = Date.now() - startTime
 
-      // Extract text from candidates
-      const content = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+      // Extract text and images from candidates
+      // Gemini returns content as parts array which can contain text and inline_data
+      let content = ''
+      const parts = data.candidates?.[0]?.content?.parts || []
+      for (const part of parts) {
+        if (part.text) {
+          content += part.text
+        } else if (part.inline_data?.data) {
+          const mimeType = part.inline_data.mime_type || 'image/png'
+          content += `\n\n![generated image](data:${mimeType};base64,${part.inline_data.data})\n\n`
+        }
+      }
       const usageMetadata = data.usageMetadata || {}
       const usage: TokenUsage = {
         promptTokens: usageMetadata.promptTokenCount || 0,

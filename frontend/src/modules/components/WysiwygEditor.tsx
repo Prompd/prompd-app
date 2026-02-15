@@ -20,9 +20,29 @@ function normalizeForCompare(s: string): string {
   return s.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
+/**
+ * Pre-process markdown to convert base64 image syntax to HTML img tags.
+ * tiptap-markdown's markdown-it parser struggles with very long data: URLs
+ * in image syntax (escapes characters, truncates, or fails to parse).
+ * Converting to <img> tags works reliably when html: true is enabled.
+ * Also normalizes whitespace in base64 data that LLMs sometimes add.
+ */
+function preprocessBase64Images(markdown: string): string {
+  // Match ![alt](data:image/TYPE;base64,DATA) - base64 charset includes whitespace
+  // that LLMs may insert as line breaks
+  return markdown.replace(
+    /!\[([^\]]*)\]\((data:image\/[^;]+;base64,[A-Za-z0-9+/=\s]+)\)/g,
+    (_, alt, src) => {
+      const cleanSrc = src.replace(/\s+/g, '')
+      const escapedAlt = (alt || '').replace(/"/g, '&quot;')
+      return `<img src="${cleanSrc}" alt="${escapedAlt}">`
+    }
+  )
+}
+
 interface WysiwygEditorProps {
   value: string
-  onChange: (value: string) => void
+  onChange?: (value: string) => void
   height?: string
   theme?: 'light' | 'dark'
   readOnly?: boolean
@@ -46,7 +66,7 @@ export default function WysiwygEditor({
     if (!editor || isUpdatingRef.current) return
     const markdown = getEditorMarkdown(editor)
     lastValueRef.current = markdown
-    onChange(markdown)
+    onChange?.(markdown)
   }, [onChange])
 
   const editor = useEditor({
@@ -60,7 +80,7 @@ export default function WysiwygEditor({
         orderedList: { keepMarks: true, keepAttributes: false }
       }),
       Markdown.configure({
-        html: false,
+        html: true,
         transformCopiedText: true,
         transformPastedText: true
       }),
@@ -71,7 +91,7 @@ export default function WysiwygEditor({
       }),
       NunjucksHighlight
     ],
-    content: value,
+    content: preprocessBase64Images(value),
     editorProps: {
       attributes: {
         class: 'wysiwyg-editor',
@@ -107,7 +127,7 @@ export default function WysiwygEditor({
 
     isUpdatingRef.current = true
     lastValueRef.current = value
-    editor.commands.setContent(value)
+    editor.commands.setContent(preprocessBase64Images(value))
     isUpdatingRef.current = false
   }, [value, editor])
 

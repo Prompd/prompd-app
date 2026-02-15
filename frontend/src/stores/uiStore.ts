@@ -26,6 +26,7 @@ export interface ModelWithPricing {
   contextWindow?: number
   supportsVision?: boolean
   supportsTools?: boolean
+  supportsImageGeneration?: boolean
 }
 
 /**
@@ -469,9 +470,9 @@ export const useUIStore = create<UIStore>()(
                 hasKey: true,
                 isCustom: false,
                 models: [
-                  { model: 'claude-haiku-4-5-20251015', displayName: 'Claude Haiku 4.5', inputPrice: 0.80, outputPrice: 4.00 },
-                  { model: 'claude-sonnet-4-5-20250929', displayName: 'Claude Sonnet 4.5', inputPrice: 3.00, outputPrice: 15.00 },
-                  { model: 'claude-opus-4-5-20251101', displayName: 'Claude Opus 4.5', inputPrice: 15.00, outputPrice: 75.00 }
+                  { model: 'claude-haiku-4-5-20251015', displayName: 'Claude Haiku 4.5', inputPrice: 0.80, outputPrice: 4.00, supportsImageGeneration: false },
+                  { model: 'claude-sonnet-4-5-20250929', displayName: 'Claude Sonnet 4.5', inputPrice: 3.00, outputPrice: 15.00, supportsImageGeneration: false },
+                  { model: 'claude-opus-4-5-20251101', displayName: 'Claude Opus 4.5', inputPrice: 15.00, outputPrice: 75.00, supportsImageGeneration: false }
                 ]
               },
               {
@@ -480,10 +481,10 @@ export const useUIStore = create<UIStore>()(
                 hasKey: true,
                 isCustom: false,
                 models: [
-                  { model: 'gpt-4o-mini', displayName: 'GPT-4o Mini', inputPrice: 0.15, outputPrice: 0.60 },
-                  { model: 'gpt-4o', displayName: 'GPT-4o', inputPrice: 2.50, outputPrice: 10.00 },
-                  { model: 'gpt-4.1-nano', displayName: 'GPT-4.1 Nano', inputPrice: 0.10, outputPrice: 0.40 },
-                  { model: 'gpt-4.1-mini', displayName: 'GPT-4.1 Mini', inputPrice: 0.40, outputPrice: 1.60 }
+                  { model: 'gpt-4o-mini', displayName: 'GPT-4o Mini', inputPrice: 0.15, outputPrice: 0.60, supportsImageGeneration: true },
+                  { model: 'gpt-4o', displayName: 'GPT-4o', inputPrice: 2.50, outputPrice: 10.00, supportsImageGeneration: true },
+                  { model: 'gpt-4.1-nano', displayName: 'GPT-4.1 Nano', inputPrice: 0.10, outputPrice: 0.40, supportsImageGeneration: true },
+                  { model: 'gpt-4.1-mini', displayName: 'GPT-4.1 Mini', inputPrice: 0.40, outputPrice: 1.60, supportsImageGeneration: true }
                 ]
               }
             ]
@@ -551,7 +552,8 @@ export const useUIStore = create<UIStore>()(
                     outputPrice: m.outputPrice,
                     contextWindow: m.contextWindow,
                     supportsVision: m.supportsVision,
-                    supportsTools: m.supportsTools
+                    supportsTools: m.supportsTools,
+                    supportsImageGeneration: m.supportsImageGeneration || false
                   }))
 
                   // If API returned empty models, use default models for known providers

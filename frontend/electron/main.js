@@ -11,7 +11,7 @@ try {
   console.log('[Electron] Running without dotenv (production mode)')
 }
 
-const { app, BrowserWindow, ipcMain, dialog, Menu, shell, powerMonitor, net } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell, powerMonitor, net, protocol } = require('electron')
 const fs = require('fs-extra')
 const os = require('os')
 
@@ -69,6 +69,12 @@ try {
 } catch (e) {
   // electron-squirrel-startup not available (NSIS installer), which is fine
 }
+
+// Register custom protocol scheme for serving generated content (images, etc.)
+// Must be called before app.whenReady() per Electron docs
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'prompd-gen', privileges: { bypassCSP: true, supportFetchAPI: true, stream: true, standard: true, secure: true } }
+])
 
 let mainWindow
 let currentWorkspacePath = null  // Track the current workspace path for git operations
@@ -254,34 +260,44 @@ function createWindow() {
     mainWindow = null
   })
 
-  // Context menu for input fields (right-click cut/copy/paste)
+  // Context menu for input fields (right-click cut/copy/paste + spellcheck)
   mainWindow.webContents.on('context-menu', (_event, params) => {
-    const { isEditable, selectionText, editFlags } = params
+    const { isEditable, selectionText, editFlags, misspelledWord, dictionarySuggestions } = params
 
     if (isEditable) {
-      const contextMenu = Menu.buildFromTemplate([
-        {
-          label: 'Cut',
-          role: 'cut',
-          enabled: editFlags.canCut
-        },
-        {
-          label: 'Copy',
-          role: 'copy',
-          enabled: editFlags.canCopy
-        },
-        {
-          label: 'Paste',
-          role: 'paste',
-          enabled: editFlags.canPaste
-        },
-        { type: 'separator' },
-        {
-          label: 'Select All',
-          role: 'selectAll',
-          enabled: editFlags.canSelectAll
+      const menuItems = []
+
+      // Spelling suggestions when a misspelled word is detected
+      if (misspelledWord) {
+        if (dictionarySuggestions.length > 0) {
+          for (const suggestion of dictionarySuggestions) {
+            menuItems.push({
+              label: suggestion,
+              click: () => mainWindow.webContents.replaceMisspelling(suggestion)
+            })
+          }
+        } else {
+          menuItems.push({ label: 'No suggestions', enabled: false })
         }
-      ])
+        menuItems.push(
+          { type: 'separator' },
+          {
+            label: 'Add to Dictionary',
+            click: () => mainWindow.webContents.session.addWordToSpellCheckerDictionary(misspelledWord)
+          },
+          { type: 'separator' }
+        )
+      }
+
+      menuItems.push(
+        { label: 'Cut', role: 'cut', enabled: editFlags.canCut },
+        { label: 'Copy', role: 'copy', enabled: editFlags.canCopy },
+        { label: 'Paste', role: 'paste', enabled: editFlags.canPaste },
+        { type: 'separator' },
+        { label: 'Select All', role: 'selectAll', enabled: editFlags.canSelectAll }
+      )
+
+      const contextMenu = Menu.buildFromTemplate(menuItems)
       contextMenu.popup()
     } else if (selectionText) {
       // Non-editable text selection - just offer copy
@@ -757,6 +773,22 @@ app.whenReady().then(() => {
   console.log('[Electron] Platform:', process.platform)
   console.log('[Electron] Node version:', process.version)
   console.log('[Electron] Electron version:', process.versions.electron)
+
+  // Register prompd-gen:// protocol to serve generated content from ~/.prompd/generated/
+  // This allows <img src="prompd-gen://images/abc123.png"> to load persisted images
+  // without file:// restrictions or CSP issues
+  protocol.handle('prompd-gen', (request) => {
+    // URL format: prompd-gen://images/filename.png → ~/.prompd/generated/images/filename.png
+    const url = new URL(request.url)
+    const relativePath = decodeURIComponent(url.hostname + url.pathname)
+    // Security: block path traversal
+    if (relativePath.includes('..')) {
+      return new Response('Forbidden', { status: 403 })
+    }
+    const filePath = path.join(os.homedir(), '.prompd', 'generated', relativePath)
+    return net.fetch(`file://${filePath}`)
+  })
+  console.log('[Electron] Registered prompd-gen:// protocol')
 
   // Hide the default menu during loading - menu is shown when user authenticates
   Menu.setApplicationMenu(null)
@@ -1331,6 +1363,47 @@ ipcMain.handle('fs:createDir', async (event, dirPath) => {
     await fs.promises.mkdir(dirPath, { recursive: true })
     return { success: true }
   } catch (error) {
+    return { success: false, error: error.message }
+  }
+})
+
+// Generated content persistence - saves base64 images to ~/.prompd/generated/images/
+// Uses content-addressable hashing (SHA256) so duplicate images share storage
+ipcMain.handle('generated:saveImage', async (_event, base64Data, mimeType) => {
+  try {
+    if (!base64Data || typeof base64Data !== 'string') {
+      return { success: false, error: 'Invalid base64 data' }
+    }
+
+    // Determine file extension from mime type
+    const ext = (mimeType || 'image/png').split('/')[1]?.replace(/\+.*/, '') || 'png'
+
+    // Compute truncated SHA256 hash for content-addressable filename
+    const crypto = require('crypto')
+    const hash = crypto.createHash('sha256').update(base64Data).digest('hex').substring(0, 16)
+
+    const dir = path.join(os.homedir(), '.prompd', 'generated', 'images')
+    const fileName = `${hash}.${ext}`
+    const filePath = path.join(dir, fileName)
+
+    // Skip writing if file already exists (content-addressable dedup)
+    try {
+      await fs.promises.access(filePath)
+      return { success: true, filePath, fileName, existed: true }
+    } catch {
+      // File doesn't exist yet, proceed to save
+    }
+
+    await fs.promises.mkdir(dir, { recursive: true })
+
+    // Decode base64 and write binary
+    const buffer = Buffer.from(base64Data, 'base64')
+    await fs.promises.writeFile(filePath, buffer)
+
+    console.log(`[Generated] Saved image: ${fileName} (${buffer.length} bytes)`)
+    return { success: true, filePath, fileName }
+  } catch (error) {
+    console.error('[Generated] Error saving image:', error)
     return { success: false, error: error.message }
   }
 })

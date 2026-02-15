@@ -652,5 +652,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Check if analytics is currently enabled
     isEnabled: () => ipcRenderer.invoke('analytics:isEnabled'),
+  },
+
+  // Generated content persistence (images saved to ~/.prompd/generated/)
+  generated: {
+    // Save a base64-encoded image to disk, returns { success, filePath, fileName }
+    saveImage: (base64Data, mimeType) => ipcRenderer.invoke('generated:saveImage', base64Data, mimeType),
   }
 })

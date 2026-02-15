@@ -579,6 +579,17 @@ export interface ElectronAPI {
       error?: string
     }>
   }
+
+  // Generated content persistence (images saved to ~/.prompd/generated/)
+  generated?: {
+    saveImage: (base64Data: string, mimeType?: string) => Promise<{
+      success: boolean
+      filePath?: string
+      fileName?: string
+      existed?: boolean
+      error?: string
+    }>
+  }
 }
 
 // Workflow execution event types (single event channel with type-based routing)

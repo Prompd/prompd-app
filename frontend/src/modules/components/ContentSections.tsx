@@ -9,7 +9,7 @@
  */
 import { useState, useCallback } from 'react'
 import React from 'react'
-import { FileText, Edit3, Trash2, Eye, EyeOff, X, Check } from 'lucide-react'
+import { FileText, Edit3, Trash2, Eye, EyeOff, X, Check, Maximize2, Minimize2 } from 'lucide-react'
 import SectionAdder from './SectionAdder'
 import MarkdownPreview from './MarkdownPreview'
 import WysiwygEditor from './WysiwygEditor'
@@ -36,6 +36,8 @@ interface ContentSectionsProps {
   theme: 'light' | 'dark'
   /** Raw markdown body from parsed .prmd - used directly in document mode to avoid round-trip issues */
   body?: string
+  fullscreen?: boolean
+  onToggleFullscreen?: () => void
 
   onStartEditing: (section: Section) => void
   onCancelEditing: () => void
@@ -67,7 +69,9 @@ export default function ContentSections({
   onToggleVisibility,
   onResetSection,
   onBodyChange,
-  body
+  body,
+  fullscreen = false,
+  onToggleFullscreen
 }: ContentSectionsProps) {
   const [contentViewMode, setContentViewMode] = useState<ContentViewMode>('document')
 
@@ -87,20 +91,31 @@ export default function ContentSections({
     <div
       data-section="content"
       style={{
-        padding: '20px',
-        background: 'var(--bg)',
-        border: '1px solid var(--border)',
-        borderRadius: '8px',
-        marginBottom: '24px'
+        padding: fullscreen ? '0' : '20px',
+        background: fullscreen ? 'transparent' : 'var(--bg)',
+        border: fullscreen ? 'none' : '1px solid var(--border)',
+        borderRadius: fullscreen ? 0 : '8px',
+        marginBottom: fullscreen ? 0 : '24px',
+        ...(fullscreen ? { flex: 1, display: 'flex', flexDirection: 'column' as const } : {})
       }}
     >
       {/* Header with view mode toggle */}
-      <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div style={{
+        fontSize: '14px',
+        fontWeight: 600,
+        marginBottom: fullscreen ? '8px' : '16px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        ...(fullscreen ? { padding: '12px 0 0' } : {})
+      }}>
         <FileText size={16} style={{ color: 'var(--accent)' }} />
         Content Sections
-        <span style={{ fontSize: '11px', fontWeight: 400, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-          Main prompt sections with inherited content and overrides
-        </span>
+        {!fullscreen && (
+          <span style={{ fontSize: '11px', fontWeight: 400, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+            Main prompt sections with inherited content and overrides
+          </span>
+        )}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
           <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-secondary)', marginRight: '4px' }}>
             {sections.length} section{sections.length !== 1 ? 's' : ''}
@@ -144,6 +159,28 @@ export default function ContentSections({
               Document
             </button>
           </div>
+          {onToggleFullscreen && (
+            <button
+              onClick={onToggleFullscreen}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '26px',
+                height: '26px',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                color: fullscreen ? 'var(--accent)' : 'var(--text-muted)',
+                transition: 'all 0.15s',
+                marginLeft: '4px'
+              }}
+              title={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            >
+              {fullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            </button>
+          )}
         </div>
       </div>
 
@@ -161,7 +198,7 @@ export default function ContentSections({
         </div>
       ) : (
         /* Sections mode - per-section cards */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '0 16px' }}>
           {/* SectionAdder at the top */}
           <SectionAdder
             onAdd={(title, type) => onAddSection(title, type, 0)}

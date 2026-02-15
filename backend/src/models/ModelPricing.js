@@ -81,6 +81,10 @@ const ModelPricingSchema = new mongoose.Schema({
     supportsStreaming: {
       type: Boolean,
       default: true
+    },
+    supportsImageGeneration: {
+      type: Boolean,
+      default: false
     }
   },
 

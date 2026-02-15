@@ -6,6 +6,7 @@
  */
 
 import { configService } from './configService'
+import { persistBase64Images } from './imageStorage'
 import {
   createProvider,
   getProviderConfig,
@@ -137,9 +138,14 @@ class LocalExecutorService {
       // Execute
       const result = await providerInstance.execute(request)
 
+      // Persist any inline base64 images to disk to avoid store bloat
+      const response = result.response
+        ? await persistBase64Images(result.response)
+        : result.response
+
       return {
         success: result.success,
-        response: result.response,
+        response,
         error: result.error,
         usage: result.usage,
         metadata: {
@@ -213,9 +219,12 @@ class LocalExecutorService {
 
       const duration = Date.now() - startTime
 
+      // Persist any inline base64 images to disk to avoid store bloat
+      const persistedResponse = await persistBase64Images(fullResponse)
+
       return {
         success: true,
-        response: fullResponse,
+        response: persistedResponse,
         usage: finalUsage,
         metadata: {
           provider: options.provider,

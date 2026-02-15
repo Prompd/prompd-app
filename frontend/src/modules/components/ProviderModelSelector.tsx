@@ -11,7 +11,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Check, Zap, DollarSign, FileText } from 'lucide-react'
+import { ChevronDown, Check, Zap, DollarSign, FileText, Key } from 'lucide-react'
 import type { ProviderWithPricing, ModelWithPricing } from '../../stores/uiStore'
 import { formatPricePerMillion } from '../lib/formatters'
 
@@ -175,19 +175,37 @@ export function ProviderModelSelector({
     return ((currentModel.inputPrice + currentModel.outputPrice) / 2) / 1000
   }, [currentModel])
 
-  // Show message if no providers have API keys configured
+  // Show actionable message if no providers have API keys configured
   if (availableProviders.length === 0) {
     return (
-      <div style={{
-        padding: layout === 'compact' ? '6px 12px' : '12px',
-        fontSize: '12px',
-        color: 'var(--text-secondary)',
-        background: 'var(--panel-2)',
-        borderRadius: '6px',
-        border: '1px solid var(--border)'
-      }}>
-        No API keys configured
-      </div>
+      <button
+        onClick={() => {
+          window.dispatchEvent(new CustomEvent('prompd:openSettings', { detail: { tab: 'api-keys' } }))
+        }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: layout === 'compact' ? '6px 12px' : '10px 16px',
+          fontSize: '12px',
+          fontWeight: 500,
+          color: 'var(--accent)',
+          background: 'var(--panel-2)',
+          borderRadius: '6px',
+          border: '1px solid var(--accent)',
+          cursor: 'pointer',
+          transition: 'all 0.15s'
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'var(--panel-2)'
+        }}
+      >
+        <Key size={14} />
+        Configure API Keys
+      </button>
     )
   }
 

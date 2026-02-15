@@ -130,7 +130,8 @@ router.get('/available', clerkAuth, async (req, res) => {
             outputPrice: p.pricing?.outputTokens,
             contextWindow: p.capabilities?.contextWindow,
             supportsVision: p.capabilities?.supportsVision,
-            supportsTools: p.capabilities?.supportsTools
+            supportsTools: p.capabilities?.supportsTools,
+            supportsImageGeneration: p.capabilities?.supportsImageGeneration || false
           }))
         }
       })
@@ -318,7 +319,8 @@ router.get('/:provider/models', clerkAuth, async (req, res) => {
         maxOutputTokens: p.capabilities?.maxOutputTokens,
         supportsVision: p.capabilities?.supportsVision,
         supportsTools: p.capabilities?.supportsTools,
-        supportsStreaming: p.capabilities?.supportsStreaming
+        supportsStreaming: p.capabilities?.supportsStreaming,
+        supportsImageGeneration: p.capabilities?.supportsImageGeneration || false
       }))
     })
   } catch (error) {

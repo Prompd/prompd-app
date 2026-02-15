@@ -99,6 +99,11 @@ export class GroqPricingFetcher extends BasePricingFetcher {
       .join(' ')
   }
 
+  /**
+   * Groq: Inference-only platform, no models support native image generation.
+   * Base class default (false) applies.
+   */
+
   getDefaultPricing() {
     // Pricing as of February 2026 - https://groq.com/pricing
     // Note: Check https://console.groq.com/docs/deprecations for deprecated models

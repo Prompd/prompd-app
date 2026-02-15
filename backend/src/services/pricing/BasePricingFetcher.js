@@ -63,13 +63,43 @@ export class BasePricingFetcher {
   }
 
   /**
-   * Get pricing - tries API first, falls back to defaults
+   * Infer whether a model supports native image generation based on model ID patterns.
+   * Subclasses override this to provide provider-specific pattern matching.
+   * This runs as post-processing on ALL models (defaults + API-discovered),
+   * so new models get classified automatically without a release.
+   *
+   * @param {string} modelId - The model identifier
+   * @returns {boolean} Whether the model supports image generation
+   */
+  inferImageGenerationSupport(modelId) {
+    return false
+  }
+
+  /**
+   * Enrich model capabilities with pattern-based inference.
+   * Applied after fetching so both defaults and dynamically discovered models
+   * get correct capability flags without per-model hardcoding.
+   */
+  enrichCapabilities(models) {
+    for (const model of models) {
+      if (!model.capabilities) {
+        model.capabilities = {}
+      }
+      model.capabilities.supportsImageGeneration = this.inferImageGenerationSupport(model.model)
+    }
+    return models
+  }
+
+  /**
+   * Get pricing - tries API first, falls back to defaults.
+   * Enriches all models with pattern-based capability inference.
    */
   async getPricing() {
     if (this.supportsPricingApi()) {
       try {
         const apiPricing = await this.fetchPricing()
         this.validatePricingData(apiPricing)
+        this.enrichCapabilities(apiPricing)
         console.log(`[${this.provider}] Fetched ${apiPricing.length} models from API`)
         return {
           source: 'api',
@@ -82,6 +112,7 @@ export class BasePricingFetcher {
 
     const defaults = this.getDefaultPricing()
     this.validatePricingData(defaults)
+    this.enrichCapabilities(defaults)
     console.log(`[${this.provider}] Using ${defaults.length} models from defaults`)
     return {
       source: 'seed',

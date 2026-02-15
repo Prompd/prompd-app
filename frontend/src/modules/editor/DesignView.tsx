@@ -107,6 +107,7 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
   const [newParamName, setNewParamName] = useState('')
   const [expandedParams, setExpandedParams] = useState<Set<string>>(new Set())
   const [metadataCollapsed, setMetadataCollapsed] = useState(true)
+  const [contentFullscreen, setContentFullscreen] = useState(false)
 
   // Specialty sections visibility state
   const [visibleSpecialtySections, setVisibleSpecialtySections] = useState<Set<string>>(() => {
@@ -2039,11 +2040,14 @@ ${parsed.body.replace(/^\n+/, '')}`
         height: '100%',
         overflow: 'auto',
         background: 'var(--panel)',
-        padding: '24px',
-        paddingRight: showMinimap && minimapSections.length > 0 ? '154px' : '24px'
+        paddingTop: 0,
+        paddingRight: showMinimap && minimapSections.length > 0 ? '154px' : (contentFullscreen ? 0 : '24px'),
+        paddingBottom: contentFullscreen ? 0 : '24px',
+        paddingLeft: contentFullscreen ? 0 : '24px'
       }}
     >
-      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ maxWidth: contentFullscreen ? 'none' : '1200px', margin: '0 auto', paddingTop: contentFullscreen ? 0 : '24px' }}>
+        {!contentFullscreen && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '16px' }}>
             <h2 style={{ margin: 0, fontSize: '20px', color: 'var(--text)' }}>
@@ -2073,9 +2077,10 @@ ${parsed.body.replace(/^\n+/, '')}`
             <MapIcon size={16} />
           </button>
         </div>
+        )}
 
         {/* Combined Metadata Section */}
-        <div
+        {!contentFullscreen && (<div
           data-section="metadata"
           style={{
             background: 'var(--bg)',
@@ -2802,7 +2807,7 @@ ${parsed.body.replace(/^\n+/, '')}`
             />
           </div>
           </div>)}
-        </div>
+        </div>)}
 
         {/* Content Body - XML Design View or Markdown Sections */}
         {isXmlContent ? (
@@ -2827,6 +2832,8 @@ ${parsed.body.replace(/^\n+/, '')}`
             availableSections={availableSections}
             readOnly={readOnly || false}
             theme={theme || 'dark'}
+            fullscreen={contentFullscreen}
+            onToggleFullscreen={() => setContentFullscreen(f => !f)}
             onStartEditing={startEditing}
             onCancelEditing={cancelEditing}
             onSaveSection={saveSection}

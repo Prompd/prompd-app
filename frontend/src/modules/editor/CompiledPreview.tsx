@@ -8,7 +8,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Loader2, AlertCircle, RefreshCw, CheckCircle2, Clock, Sparkles, ChevronDown, ChevronRight, Eye, Code, Maximize2, Minimize2, X, Hash, FileText, Scissors, Layout, Map as MapIcon, Play } from 'lucide-react'
 import { PrompdParameterList, type PrompdParameter, PrompdContextArea, type PrompdFileSections, type PrompdFileSection, validateRequiredParameters } from '@prompd/react'
 import Editor from '@monaco-editor/react'
-import MarkdownPreview from '../components/MarkdownPreview'
+import WysiwygEditor from '../components/WysiwygEditor'
 import XmlDesignView, { type XmlDesignViewHandle } from '../components/XmlDesignView'
 import { ContentMinimap, type MinimapSection } from '../components/ContentMinimap'
 import { localCompiler } from '../services/localCompiler'
@@ -1588,10 +1588,12 @@ export function CompiledPreview({
               />
             )
           ) : viewMode === 'rendered' && outputFormat === 'markdown' ? (
-            <MarkdownPreview
-              content={displayContent}
+            <WysiwygEditor
+              value={displayContent}
+              readOnly
               height="100%"
               theme={theme}
+              showToolbar={false}
             />
           ) : (
             <Editor

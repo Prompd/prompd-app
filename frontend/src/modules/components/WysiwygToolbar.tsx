@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react'
 import type { Editor } from '@tiptap/react'
 import {
   Bold,
@@ -25,7 +26,25 @@ interface WysiwygToolbarProps {
 }
 
 export default function WysiwygToolbar({ editor }: WysiwygToolbarProps) {
+  const [showLinkInput, setShowLinkInput] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
+  const linkInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (showLinkInput && linkInputRef.current) {
+      linkInputRef.current.focus()
+    }
+  }, [showLinkInput])
+
   if (!editor) return null
+
+  const handleLinkSubmit = () => {
+    if (linkUrl.trim()) {
+      editor.chain().focus().setLink({ href: linkUrl.trim() }).run()
+    }
+    setLinkUrl('')
+    setShowLinkInput(false)
+  }
 
   return (
     <div className="wysiwyg-toolbar">
@@ -151,22 +170,33 @@ export default function WysiwygToolbar({ editor }: WysiwygToolbarProps) {
       <div className="toolbar-group">
         <button
           onClick={() => {
-            const url = window.prompt('Enter URL:')
-            if (url) {
-              editor.chain().focus().setLink({ href: url }).run()
+            if (editor.isActive('link')) {
+              editor.chain().focus().unsetLink().run()
+            } else {
+              setShowLinkInput(!showLinkInput)
             }
           }}
           className={editor.isActive('link') ? 'is-active' : ''}
-          title="Insert Link (Ctrl+K)"
+          title={editor.isActive('link') ? 'Remove Link' : 'Insert Link (Ctrl+K)'}
         >
           <Link size={15} />
         </button>
         <button
           onClick={() => {
-            const url = window.prompt('Enter image URL:')
-            if (url) {
-              editor.chain().focus().setImage({ src: url }).run()
+            const input = document.createElement('input')
+            input.type = 'file'
+            input.accept = 'image/*'
+            input.onchange = () => {
+              const file = input.files?.[0]
+              if (file) {
+                const reader = new FileReader()
+                reader.onload = () => {
+                  editor.chain().focus().setImage({ src: reader.result as string }).run()
+                }
+                reader.readAsDataURL(file)
+              }
             }
+            input.click()
           }}
           title="Insert Image"
         >
@@ -188,6 +218,56 @@ export default function WysiwygToolbar({ editor }: WysiwygToolbarProps) {
           }}
         />
       </div>
+
+      {/* Link URL input */}
+      {showLinkInput && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          marginLeft: '8px',
+          borderLeft: '1px solid var(--border)',
+          paddingLeft: '8px'
+        }}>
+          <input
+            ref={linkInputRef}
+            type="url"
+            value={linkUrl}
+            onChange={e => setLinkUrl(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleLinkSubmit()
+              if (e.key === 'Escape') { setShowLinkInput(false); setLinkUrl('') }
+            }}
+            placeholder="https://..."
+            style={{
+              height: '24px',
+              padding: '0 8px',
+              fontSize: '12px',
+              border: '1px solid var(--border)',
+              borderRadius: '4px',
+              background: 'var(--input-bg)',
+              color: 'var(--text)',
+              outline: 'none',
+              width: '200px'
+            }}
+          />
+          <button
+            onClick={handleLinkSubmit}
+            style={{
+              padding: '2px 8px',
+              fontSize: '11px',
+              background: 'var(--accent)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              height: '24px'
+            }}
+          >
+            Add
+          </button>
+        </div>
+      )}
     </div>
   )
 }

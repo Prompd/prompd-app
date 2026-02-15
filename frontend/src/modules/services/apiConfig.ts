@@ -326,6 +326,7 @@ let syncPromise: Promise<boolean> | null = null
  * Sync user with backend on sign-in
  * This ensures the user exists in the database before any other authenticated requests
  * Uses a promise to prevent race conditions - multiple callers will wait for the same sync
+ * Retries up to 3 times with exponential backoff on failure
  *
  * @param getToken - Function to get the auth token
  * @returns true if sync succeeded, false otherwise
@@ -341,43 +342,56 @@ export async function syncUserOnSignIn(getToken: () => Promise<string | null>): 
     return syncPromise
   }
 
-  // Start sync
+  // Start sync with retries
   syncPromise = (async () => {
-    try {
-      const token = await getToken()
-      if (!token) {
-        console.warn('[apiConfig] No token available for user sync')
-        return false
-      }
+    const MAX_RETRIES = 3
+    const BASE_DELAY_MS = 2000
 
-      const apiBase = getApiBaseUrl()
-      const response = await fetch(`${apiBase}/auth/sync`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const token = await getToken()
+        if (!token) {
+          console.warn('[apiConfig] No token available for user sync')
+          return false
         }
-      })
 
-      if (response.ok) {
-        const data = await response.json()
-        console.log('[apiConfig] User synced successfully:', data.user?.email)
-        userSynced = true
-        return true
-      } else {
-        const error = await response.text()
-        console.error('[apiConfig] User sync failed:', response.status, error)
-        return false
+        const apiBase = getApiBaseUrl()
+        const response = await fetch(`${apiBase}/auth/sync`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          console.log('[apiConfig] User synced successfully:', data.user?.email)
+          userSynced = true
+          return true
+        } else {
+          const error = await response.text()
+          console.error(`[apiConfig] User sync failed (attempt ${attempt}/${MAX_RETRIES}):`, response.status, error)
+        }
+      } catch (error) {
+        console.error(`[apiConfig] User sync error (attempt ${attempt}/${MAX_RETRIES}):`, error)
       }
-    } catch (error) {
-      console.error('[apiConfig] User sync error:', error)
-      return false
-    } finally {
-      syncPromise = null
+
+      // Wait before retrying (exponential backoff: 2s, 4s, 8s)
+      if (attempt < MAX_RETRIES) {
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1)
+        console.log(`[apiConfig] Retrying user sync in ${delay / 1000}s...`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
     }
+
+    console.error('[apiConfig] User sync failed after all retries')
+    return false
   })()
 
-  return syncPromise
+  const result = await syncPromise
+  syncPromise = null
+  return result
 }
 
 /**
