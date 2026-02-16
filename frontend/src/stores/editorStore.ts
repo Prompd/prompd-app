@@ -185,6 +185,9 @@ interface EditorActions {
   updateFileCursor: (workspacePath: string, filePath: string, cursor: { line: number; column: number }) => void
   updateFileScroll: (workspacePath: string, filePath: string, scrollTop: number) => void
 
+  // Clear all tabs from persistence (called on clean app close after save/discard)
+  clearAllTabs: () => void
+
   // Computed/derived
   getActiveTab: () => Tab | undefined
   getParsed: () => ParsedPrompd
@@ -286,7 +289,7 @@ export const useEditorStore = create<EditorStore>()(
                 if (state.tabs.length > 0) {
                   const newActiveTab = state.tabs[Math.max(0, index - 1)]
                   state.activeTabId = newActiveTab.id
-                  state.text = newActiveTab.text
+                  state.text = newActiveTab.text || ''
                 } else {
                   state.activeTabId = null
                   state.text = ''
@@ -299,7 +302,7 @@ export const useEditorStore = create<EditorStore>()(
             const tab = state.tabs.find(t => t.id === tabId)
             if (tab) {
               state.activeTabId = tabId
-              state.text = tab.text
+              state.text = tab.text || ''
             }
           }),
 
@@ -486,6 +489,13 @@ export const useEditorStore = create<EditorStore>()(
             }
           }),
 
+          // Clear all tabs from persistence (called on clean app close after save/discard)
+          clearAllTabs: () => set((state) => {
+            state.tabs = []
+            state.activeTabId = null
+            state.text = ''
+          }),
+
           // Computed/derived
           getActiveTab: () => {
             const state = get()
@@ -506,8 +516,10 @@ export const useEditorStore = create<EditorStore>()(
         {
           name: 'prompd-editor-storage',
           partialize: (state) => ({
-            // Only persist tabs, project info, workspace path, and workspace states
-            tabs: state.tabs,
+            // Persist open editors with content (base64 images included).
+            // handles are non-serializable so they're excluded.
+            // Realistic open count is 15-25 files, few with images — fits in ~5MB localStorage.
+            tabs: state.tabs.map(({ handle, ...rest }) => rest),
             activeTabId: state.activeTabId,
             currentProjectId: state.currentProjectId,
             explorerDirPath: state.explorerDirPath,

@@ -13,6 +13,7 @@ import type {
 } from '@prompd/react'
 import { localExecutor } from './localExecutor'
 import { configService } from './configService'
+import { useUIStore } from '../../stores/uiStore'
 
 export interface LocalLLMClientConfig {
   provider?: LLMProvider
@@ -54,6 +55,12 @@ export class LocalLLMClient implements IPrompdLLMClient {
       const prompt = this.messagesToPrompt(request.messages)
       const systemPrompt = this.extractSystemPrompt(request.messages)
 
+      // Check if selected model supports image generation
+      const providersWithPricing = useUIStore.getState().llmProvider.providersWithPricing
+      const providerData = providersWithPricing?.find(p => p.providerId === provider)
+      const modelData = providerData?.models.find(m => m.model === model)
+      const enableImageGeneration = modelData?.supportsImageGeneration === true
+
       // Execute locally
       const result = await localExecutor.execute({
         provider,
@@ -62,7 +69,8 @@ export class LocalLLMClient implements IPrompdLLMClient {
         systemPrompt,
         temperature: request.temperature,
         maxTokens: request.maxTokens,
-        stream: false
+        stream: false,
+        enableImageGeneration
       })
 
       if (!result.success) {

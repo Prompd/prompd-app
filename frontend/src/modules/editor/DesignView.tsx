@@ -566,6 +566,71 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
     })
   }
 
+  const reorderSections = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return
+
+    const lines = value.split('\n')
+    const firstDashIndex = lines.findIndex(l => l.trim() === '---')
+    const secondDashIndex = lines.findIndex((l, i) => i > firstDashIndex && l.trim() === '---')
+
+    if (secondDashIndex <= 0) return
+
+    const frontmatter = lines.slice(0, secondDashIndex + 1).join('\n')
+    const bodyLines = lines.slice(secondDashIndex + 1)
+
+    // Find section boundaries in the body (each section = heading line through to next heading or EOF)
+    const sectionBounds: Array<{ start: number; end: number }> = []
+    for (let i = 0; i < bodyLines.length; i++) {
+      if (/^#{1,2}\s+/.test(bodyLines[i])) {
+        if (sectionBounds.length > 0) {
+          sectionBounds[sectionBounds.length - 1].end = i
+        }
+        sectionBounds.push({ start: i, end: bodyLines.length })
+      }
+    }
+
+    if (fromIndex >= sectionBounds.length || toIndex >= sectionBounds.length) return
+
+    // Extract each section's lines (including any leading blank lines before content)
+    const sectionChunks = sectionBounds.map(b => bodyLines.slice(b.start, b.end))
+
+    // Also capture any lines before the first section (e.g. leading blank lines)
+    const preamble = sectionBounds.length > 0 ? bodyLines.slice(0, sectionBounds[0].start) : bodyLines
+
+    // Reorder
+    const moved = sectionChunks.splice(fromIndex, 1)[0]
+    sectionChunks.splice(toIndex, 0, moved)
+
+    const newBody = [...preamble, ...sectionChunks.flat()].join('\n')
+    onChange(`${frontmatter}\n${newBody}`)
+  }
+
+  const renameSection = (sectionId: string, oldTitle: string, newTitle: string) => {
+    if (!newTitle.trim() || newTitle === oldTitle) return
+
+    // Find and rename the heading in the markdown body
+    const lines = value.split('\n')
+    const firstDashIndex = lines.findIndex(l => l.trim() === '---')
+    const secondDashIndex = lines.findIndex((l, i) => i > firstDashIndex && l.trim() === '---')
+
+    if (secondDashIndex > 0) {
+      const frontmatter = lines.slice(0, secondDashIndex + 1).join('\n')
+      const bodyLines = lines.slice(secondDashIndex + 1)
+
+      const headerPattern = new RegExp(`^(#{1,2})\\s+${oldTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`)
+
+      const newBodyLines = bodyLines.map(line => {
+        const match = line.match(headerPattern)
+        if (match) {
+          return `${match[1]} ${newTitle.trim()}`
+        }
+        return line
+      })
+
+      onChange(`${frontmatter}\n${newBodyLines.join('\n')}`)
+    }
+  }
+
   const addSection = (title: string, type: string, position?: number) => {
     const sectionId = title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
 
@@ -585,19 +650,45 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
       setEditingSection(sectionId)
       setEditContent('')
     } else {
-      // This is a new custom section - add to body
-      const newSectionMarkdown = `# ${title}\n\nAdd content here...\n`
+      // This is a new custom section - add to body at the correct position
+      const newSectionMarkdown = `\n# ${title}\n\nAdd content here...\n`
 
-      // Append to body (after the frontmatter)
       const lines = value.split('\n')
       const firstDashIndex = lines.findIndex(l => l.trim() === '---')
       const secondDashIndex = lines.findIndex((l, i) => i > firstDashIndex && l.trim() === '---')
 
       if (secondDashIndex > 0) {
         const frontmatter = lines.slice(0, secondDashIndex + 1).join('\n')
-        const body = lines.slice(secondDashIndex + 1).join('\n')
-        const newValue = `${frontmatter}\n${body}\n\n${newSectionMarkdown}`
-        onChange(newValue)
+        const bodyLines = lines.slice(secondDashIndex + 1)
+
+        // Find the line index of each section heading in the body
+        const sectionLineIndices: number[] = []
+        for (let i = 0; i < bodyLines.length; i++) {
+          if (/^#{1,2}\s+/.test(bodyLines[i])) {
+            sectionLineIndices.push(i)
+          }
+        }
+
+        let insertAtLine: number
+        if (position === undefined || position === null || sectionLineIndices.length === 0) {
+          // No position or no sections - append at end
+          insertAtLine = bodyLines.length
+        } else if (position === 0) {
+          // Insert before the first section (or at start of body if no sections)
+          insertAtLine = sectionLineIndices.length > 0 ? sectionLineIndices[0] : 0
+        } else if (position >= sectionLineIndices.length) {
+          // Insert after the last section - append at end
+          insertAtLine = bodyLines.length
+        } else {
+          // Insert before the section at `position` index
+          insertAtLine = sectionLineIndices[position]
+        }
+
+        const before = bodyLines.slice(0, insertAtLine)
+        const after = bodyLines.slice(insertAtLine)
+        const newBody = [...before, newSectionMarkdown, ...after].join('\n')
+
+        onChange(`${frontmatter}\n${newBody}`)
       }
     }
   }
@@ -1842,6 +1933,25 @@ ${parsed.body.replace(/^\n+/, '')}`
       })
     }
 
+    // Context/specialty sections if any have files
+    const activeSections = specialtySections.filter(s => visibleSpecialtySections.has(s.name) && s.files.length > 0)
+    if (activeSections.length > 0) {
+      sections.push({
+        id: 'context-section',
+        type: 'context',
+        label: 'Context Sections',
+        depth: 0
+      })
+      activeSections.forEach((s) => {
+        sections.push({
+          id: `context-${s.name}`,
+          type: 'context',
+          label: `${s.label} (${s.files.length})`,
+          depth: 1
+        })
+      })
+    }
+
     // Content section
     sections.push({
       id: 'content-section',
@@ -1957,7 +2067,7 @@ ${parsed.body.replace(/^\n+/, '')}`
     }
 
     return sections
-  }, [editableParams, isXmlContent, parsed.body])
+  }, [editableParams, specialtySections, visibleSpecialtySections, isXmlContent, parsed.body])
 
   // Scroll to a section when clicked in minimap
   const scrollToSection = useCallback((sectionId: string) => {
@@ -1994,6 +2104,16 @@ ${parsed.body.replace(/^\n+/, '')}`
       return
     }
 
+    // Context sections — scroll to the context area (inside metadata)
+    if (sectionId === 'context-section' || sectionId.startsWith('context-')) {
+      const needsExpand = metadataCollapsed
+      if (needsExpand) {
+        setMetadataCollapsed(false)
+      }
+      scrollTo('[data-section="context"]', needsExpand ? 100 : 0)
+      return
+    }
+
     // For content-section, scroll to content
     if (sectionId === 'content-section') {
       scrollTo('[data-section="content"]', 0)
@@ -2019,9 +2139,20 @@ ${parsed.body.replace(/^\n+/, '')}`
       return
     }
 
-    // For headings, scroll to the content section
+    // For headings, find the actual heading element in the rendered content
     if (sectionId.startsWith('heading-')) {
-      scrollTo('[data-section="content"]', 0)
+      const index = parseInt(sectionId.replace('heading-', ''), 10)
+      if (!isNaN(index)) {
+        // In DesignView markdown mode, sections are rendered as ContentSections
+        // Look for section headers by data attribute or heading elements
+        const headings = container.querySelectorAll('[data-section="content"] h1, [data-section="content"] h2, [data-section="content"] h3, [data-section="content"] h4, [data-section="content"] h5, [data-section="content"] h6')
+        if (index < headings.length) {
+          headings[index].scrollIntoView({ behavior: 'smooth', block: 'start' })
+        } else {
+          scrollTo('[data-section="content"]', 0)
+        }
+      }
+      return
     }
   }, [metadataCollapsed])
 
@@ -2041,12 +2172,12 @@ ${parsed.body.replace(/^\n+/, '')}`
         overflow: 'auto',
         background: 'var(--panel)',
         paddingTop: 0,
-        paddingRight: showMinimap && minimapSections.length > 0 ? '154px' : (contentFullscreen ? 0 : '24px'),
-        paddingBottom: contentFullscreen ? 0 : '24px',
-        paddingLeft: contentFullscreen ? 0 : '24px'
+        paddingRight: showMinimap && minimapSections.length > 0 ? '154px' : (contentFullscreen ? '24px' : '24px'),
+        paddingBottom: contentFullscreen ? '16px' : '24px',
+        paddingLeft: contentFullscreen ? '24px' : '24px'
       }}
     >
-      <div style={{ maxWidth: contentFullscreen ? 'none' : '1200px', margin: '0 auto', paddingTop: contentFullscreen ? 0 : '24px' }}>
+      <div style={{ maxWidth: contentFullscreen ? 'none' : '1200px', margin: '0 auto', paddingTop: contentFullscreen ? '16px' : '24px' }}>
         {!contentFullscreen && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '16px' }}>
@@ -2794,17 +2925,19 @@ ${parsed.body.replace(/^\n+/, '')}`
                 </div>
               )}
             </div>
-            <PrompdContextArea
-              sections={specialtySections.filter(s => visibleSpecialtySections.has(s.name))}
-              value={specialtyFileSections}
-              onChange={handleSpecialtyChange}
-              onSelectFromBrowser={onSelectFileFromBrowser}
-              onFileClick={onOpenFile ? openContextFile : undefined}
-              hasFolderOpen={!!workspaceHandle}
-              currentFilePath={currentFilePath}
-              workspacePath={((workspaceHandle as unknown) as { _electronPath?: string })?._electronPath}
-              variant="card"
-            />
+            <div data-section="context">
+              <PrompdContextArea
+                sections={specialtySections.filter(s => visibleSpecialtySections.has(s.name))}
+                value={specialtyFileSections}
+                onChange={handleSpecialtyChange}
+                onSelectFromBrowser={onSelectFileFromBrowser}
+                onFileClick={onOpenFile ? openContextFile : undefined}
+                hasFolderOpen={!!workspaceHandle}
+                currentFilePath={currentFilePath}
+                workspacePath={((workspaceHandle as unknown) as { _electronPath?: string })?._electronPath}
+                variant="card"
+              />
+            </div>
           </div>
           </div>)}
         </div>)}
@@ -2840,9 +2973,12 @@ ${parsed.body.replace(/^\n+/, '')}`
             onEditContentChange={setEditContent}
             onAddSection={addSection}
             onDeleteSection={deleteSection}
+            onRenameSection={renameSection}
+            onReorderSections={reorderSections}
             onToggleVisibility={toggleSectionVisibility}
             onResetSection={resetSection}
             onBodyChange={handleBodyChange}
+            variables={editableParams}
           />
         )}
 

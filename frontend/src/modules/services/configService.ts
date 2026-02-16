@@ -269,7 +269,7 @@ class ConfigService {
           type: providerConfig.type || 'openai-compatible',
           configured: providerConfig.enabled !== false,
           baseUrl: providerConfig.base_url,
-          models: providerConfig.models || []
+          models: (providerConfig.models || []).map(m => typeof m === 'string' ? m : m.id)
         })
       }
     }

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useReducer } from 'react'
 import type { Editor } from '@tiptap/react'
 import {
   Bold,
@@ -29,6 +29,19 @@ export default function WysiwygToolbar({ editor }: WysiwygToolbarProps) {
   const [showLinkInput, setShowLinkInput] = useState(false)
   const [linkUrl, setLinkUrl] = useState('')
   const linkInputRef = useRef<HTMLInputElement>(null)
+
+  // Force re-render when cursor/selection changes so isActive() reflects current position
+  const [, forceUpdate] = useReducer(x => x + 1, 0)
+
+  useEffect(() => {
+    if (!editor) return
+    editor.on('selectionUpdate', forceUpdate)
+    editor.on('transaction', forceUpdate)
+    return () => {
+      editor.off('selectionUpdate', forceUpdate)
+      editor.off('transaction', forceUpdate)
+    }
+  }, [editor])
 
   useEffect(() => {
     if (showLinkInput && linkInputRef.current) {

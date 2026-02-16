@@ -750,26 +750,20 @@ function TestStep({ serverName, mcpConfig, onBack, onDone }: TestStepProps) {
     setTools([])
 
     try {
-      // First add the server config so the MCP service knows about it
-      const addResult = await window.electronAPI?.mcp?.addServer(serverName, mcpConfig)
-      if (addResult && !addResult.success) {
-        throw new Error(addResult.error || 'Failed to save server config')
-      }
-
-      // Then connect (which spawns the process / opens HTTP connection)
-      const connectResult = await window.electronAPI?.mcp?.connect(serverName)
-      if (connectResult?.success && connectResult.tools) {
-        setTools(connectResult.tools)
+      // Test connection without persisting to config — config is only saved
+      // when the user explicitly clicks "Create Connection"
+      const result = await window.electronAPI?.mcp?.testConnection(serverName, mcpConfig)
+      if (result?.success && result.tools) {
+        setTools(result.tools)
         setStatus('success')
       } else {
-        throw new Error(connectResult?.error || 'Connection failed')
+        throw new Error(result?.error || 'Connection failed')
       }
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Connection test failed')
       setStatus('error')
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-create on retry, not every render
-  }, [serverName])
+  }, [serverName, mcpConfig])
 
   // Run test once on mount only
   const hasRun = useRef(false)

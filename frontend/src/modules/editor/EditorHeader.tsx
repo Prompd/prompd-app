@@ -1,4 +1,4 @@
-import { Code2, Palette, Settings, Play, Square, LogOut, User, Moon, Sun, HelpCircle } from 'lucide-react'
+import { Code2, Palette, Settings, Play, Square, LogOut, User, Moon, Sun, HelpCircle, KeyRound } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { PreviewToggle, ChatToggle } from './SplitViewToggles'
@@ -428,21 +428,52 @@ export default function EditorHeader({
       {/* LLM Provider/Model Selector - Show when user is logged in and providers are loaded */}
       {/* Hide entirely in very compact mode, use responsive layout at other breakpoints */}
       {!isVeryCompact && isAuthenticated && !llmProvider.isLoading && llmProvider.providersWithPricing && llmProvider.providersWithPricing.length > 0 && (
-        <ProviderModelSelector
-          providers={llmProvider.providersWithPricing}
-          selectedProvider={llmProvider.provider}
-          selectedModel={llmProvider.model}
-          onProviderChange={(providerId: string) => {
-            setLLMProvider(providerId)
-          }}
-          onModelChange={(modelId: string) => {
-            setLLMModel(modelId)
-          }}
-          layout="compact"
-          showPricing={!isCompact}
-          forceDropdown={isCompact}
-          shrinkModel={isMediumCompact}
-        />
+        <>
+          <button
+            onClick={onOpenSettings}
+            title="API Key Settings"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: '-7px',
+              padding: '8px',
+              background: 'transparent',
+              border: '1px solid var(--border)',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+              flexShrink: 0,
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--accent)'
+              e.currentTarget.style.borderColor = 'var(--accent)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--text-secondary)'
+              e.currentTarget.style.borderColor = 'var(--border)'
+            }}
+          >
+            <KeyRound size={14} />
+          </button>
+
+          <ProviderModelSelector
+            providers={llmProvider.providersWithPricing}
+            selectedProvider={llmProvider.provider}
+            selectedModel={llmProvider.model}
+            onProviderChange={(providerId: string) => {
+              setLLMProvider(providerId)
+            }}
+            onModelChange={(modelId: string) => {
+              setLLMModel(modelId)
+            }}
+            layout="compact"
+            showPricing={!isCompact}
+            forceDropdown={isCompact}
+            shrinkModel={isMediumCompact}
+          />
+        </>
       )}
       {/* Loading indicator while providers are being fetched */}
       {!isVeryCompact && isAuthenticated && llmProvider.isLoading && (

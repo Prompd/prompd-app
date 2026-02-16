@@ -7,12 +7,13 @@
  *
  * Defaults to "document" mode for a clean WYSIWYG experience.
  */
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import React from 'react'
-import { FileText, Edit3, Trash2, Eye, EyeOff, X, Check, Maximize2, Minimize2 } from 'lucide-react'
+import { FileText, Edit3, Trash2, Eye, EyeOff, Check, Maximize2, Minimize2, RotateCcw, GripVertical } from 'lucide-react'
 import SectionAdder from './SectionAdder'
 import MarkdownPreview from './MarkdownPreview'
 import WysiwygEditor from './WysiwygEditor'
+import type { VariablesMap } from '../lib/tiptap/nunjucksExtension'
 
 export interface Section {
   id: string
@@ -45,10 +46,108 @@ interface ContentSectionsProps {
   onEditContentChange: (content: string) => void
   onAddSection: (title: string, type: string, index: number) => void
   onDeleteSection: (sectionId: string, title: string) => void
+  onRenameSection?: (sectionId: string, oldTitle: string, newTitle: string) => void
+  onReorderSections?: (fromIndex: number, toIndex: number) => void
   onToggleVisibility: (sectionId: string) => void
   onResetSection: (sectionId: string) => void
   /** Direct body replacement for document mode - avoids per-section save round-trips */
   onBodyChange?: (body: string) => void
+  /** Parameter metadata for hover tooltips on {{ variable }} expressions */
+  variables?: VariablesMap
+}
+
+/**
+ * Inline editable section title
+ */
+function EditableTitle({
+  title,
+  level,
+  readOnly,
+  isLocal,
+  onRename
+}: {
+  title: string
+  level: number
+  readOnly: boolean
+  isLocal?: boolean
+  onRename?: (newTitle: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(title)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [editing])
+
+  const commit = () => {
+    const trimmed = draft.trim()
+    if (trimmed && trimmed !== title && onRename) {
+      onRename(trimmed)
+    } else {
+      setDraft(title)
+    }
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === 'Enter') commit()
+          if (e.key === 'Escape') { setDraft(title); setEditing(false) }
+        }}
+        style={{
+          fontSize: level === 1 ? '18px' : '16px',
+          fontWeight: 700,
+          color: 'var(--text)',
+          background: 'transparent',
+          border: 'none',
+          borderBottom: '2px solid var(--accent)',
+          outline: 'none',
+          padding: '2px 0',
+          width: '100%',
+          fontFamily: 'inherit',
+          letterSpacing: '-0.01em'
+        }}
+      />
+    )
+  }
+
+  return (
+    <span
+      onClick={() => {
+        if (!readOnly && isLocal && onRename) setEditing(true)
+      }}
+      style={{
+        fontSize: level === 1 ? '18px' : '16px',
+        fontWeight: 700,
+        color: 'var(--text)',
+        letterSpacing: '-0.01em',
+        cursor: !readOnly && isLocal && onRename ? 'text' : 'default',
+        borderBottom: !readOnly && isLocal && onRename ? '2px solid transparent' : 'none',
+        transition: 'border-color 0.15s'
+      }}
+      onMouseEnter={e => {
+        if (!readOnly && isLocal && onRename) {
+          e.currentTarget.style.borderBottomColor = 'var(--border)'
+        }
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderBottomColor = 'transparent'
+      }}
+      title={!readOnly && isLocal ? 'Click to rename' : undefined}
+    >
+      {title}
+    </span>
+  )
 }
 
 export default function ContentSections({
@@ -66,14 +165,19 @@ export default function ContentSections({
   onEditContentChange,
   onAddSection,
   onDeleteSection,
+  onRenameSection,
+  onReorderSections,
   onToggleVisibility,
   onResetSection,
   onBodyChange,
   body,
   fullscreen = false,
-  onToggleFullscreen
+  onToggleFullscreen,
+  variables
 }: ContentSectionsProps) {
   const [contentViewMode, setContentViewMode] = useState<ContentViewMode>('document')
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dropTarget, setDropTarget] = useState<number | null>(null)
 
   // For document mode, use the raw body directly to avoid round-trip parsing issues.
   // The raw body preserves exact formatting and prevents inherited sections from
@@ -107,7 +211,7 @@ export default function ContentSections({
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
-        ...(fullscreen ? { padding: '12px 0 0' } : {})
+        ...(fullscreen ? { padding: '8px 0 0' } : {})
       }}>
         <FileText size={16} style={{ color: 'var(--accent)' }} />
         Content Sections
@@ -186,7 +290,7 @@ export default function ContentSections({
 
       {contentViewMode === 'document' ? (
         /* Document mode - single continuous WYSIWYG editor */
-        <div style={{ margin: '0 -20px -20px' }}>
+        <div style={{ margin: fullscreen ? '0 -12px 0 0' : '0 -20px -20px' }}>
           <WysiwygEditor
             value={documentMarkdown}
             onChange={handleDocumentChange}
@@ -194,11 +298,12 @@ export default function ContentSections({
             theme={theme}
             readOnly={readOnly}
             placeholder="Start writing your prompt content..."
+            variables={variables}
           />
         </div>
       ) : (
         /* Sections mode - per-section cards */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '0 16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {/* SectionAdder at the top */}
           <SectionAdder
             onAdd={(title, type) => onAddSection(title, type, 0)}
@@ -212,165 +317,232 @@ export default function ContentSections({
             const isEditing = editingSection === section.id
             const displayContent = sectionOverrides[section.id] ?? section.content
 
+            // Status badge
+            const statusLabel = isHidden ? 'Hidden' : isOverridden ? 'Modified' : section.isLocal ? 'Local' : 'Inherited'
+            const statusColor = isHidden ? 'var(--text-muted)' : isOverridden ? 'var(--warning)' : 'var(--text-secondary)'
+
+            const isDragging = dragIndex === index
+            const isDropTarget = dropTarget === index
+            const canDrag = !readOnly && section.isLocal && onReorderSections
+
             return (
               <React.Fragment key={section.id}>
                 <div
+                  draggable={!!canDrag}
+                  onDragStart={e => {
+                    if (!canDrag) return
+                    setDragIndex(index)
+                    e.dataTransfer.effectAllowed = 'move'
+                    e.dataTransfer.setData('text/plain', String(index))
+                  }}
+                  onDragOver={e => {
+                    if (dragIndex === null) return
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = 'move'
+                    setDropTarget(index)
+                  }}
+                  onDragLeave={() => {
+                    if (dropTarget === index) setDropTarget(null)
+                  }}
+                  onDrop={e => {
+                    e.preventDefault()
+                    if (dragIndex !== null && dragIndex !== index && onReorderSections) {
+                      onReorderSections(dragIndex, index)
+                    }
+                    setDragIndex(null)
+                    setDropTarget(null)
+                  }}
+                  onDragEnd={() => {
+                    setDragIndex(null)
+                    setDropTarget(null)
+                  }}
                   style={{
-                    padding: '16px',
                     background: 'var(--panel)',
-                    border: `1px solid ${isOverridden ? 'var(--warning)' : isHidden ? 'var(--muted)' : 'var(--border)'}`,
-                    borderRadius: '8px',
-                    opacity: isHidden ? 0.6 : 1
+                    border: `1px solid ${isDropTarget && dragIndex !== null ? 'var(--accent)' : isHidden ? 'var(--border)' : isOverridden ? 'rgba(245, 158, 11, 0.3)' : 'var(--border)'}`,
+                    borderRadius: '10px',
+                    opacity: isDragging ? 0.4 : isHidden ? 0.5 : 1,
+                    transition: 'all 0.2s',
+                    overflow: 'hidden',
+                    ...(isDropTarget && dragIndex !== null ? { boxShadow: '0 0 0 1px var(--accent)' } : {})
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: isEditing ? '12px' : '8px' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)' }}>
-                        {section.title}
+                  {/* Section Header Bar */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '12px 16px',
+                      borderBottom: isEditing || (!isHidden && displayContent.trim()) ? '1px solid var(--border)' : 'none',
+                      background: isOverridden ? 'rgba(245, 158, 11, 0.04)' : 'transparent'
+                    }}
+                  >
+                    {/* Drag handle */}
+                    {canDrag && (
+                      <div
+                        style={{
+                          cursor: 'grab',
+                          color: 'var(--text-muted)',
+                          flexShrink: 0,
+                          opacity: 0.5,
+                          display: 'flex',
+                          alignItems: 'center',
+                          transition: 'opacity 0.15s'
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.opacity = '1' }}
+                        onMouseLeave={e => { e.currentTarget.style.opacity = '0.5' }}
+                        title="Drag to reorder"
+                      >
+                        <GripVertical size={14} />
                       </div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                        {isHidden ? 'Hidden' : isOverridden ? 'Modified' : 'Original'}
+                    )}
+
+                    {/* Title + status */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <EditableTitle
+                          title={section.title}
+                          level={section.level}
+                          readOnly={readOnly}
+                          isLocal={section.isLocal}
+                          onRename={onRenameSection ? (newTitle) => onRenameSection(section.id, section.title, newTitle) : undefined}
+                        />
+                        <span style={{
+                          fontSize: '10px',
+                          fontWeight: 500,
+                          color: statusColor,
+                          background: isOverridden ? 'rgba(245, 158, 11, 0.1)' : 'var(--bg)',
+                          padding: '2px 8px',
+                          borderRadius: '10px',
+                          flexShrink: 0,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em'
+                        }}>
+                          {statusLabel}
+                        </span>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      {!isEditing && (
-                        <>
+                    {/* Action buttons - icon-only for cleaner look */}
+                    {!isEditing && (
+                      <div style={{ display: 'flex', gap: '2px', flexShrink: 0 }}>
+                        <button
+                          onClick={() => onStartEditing(section)}
+                          disabled={isHidden}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '28px',
+                            height: '28px',
+                            background: 'transparent',
+                            color: isHidden ? 'var(--text-muted)' : 'var(--accent)',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: isHidden ? 'not-allowed' : 'pointer',
+                            opacity: isHidden ? 0.4 : 1,
+                            transition: 'all 0.15s'
+                          }}
+                          onMouseEnter={e => { if (!isHidden) e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)' }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                          title="Edit section"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+
+                        {section.isLocal && !hasInheritance ? (
                           <button
-                            onClick={() => onStartEditing(section)}
-                            disabled={isHidden}
+                            onClick={() => onDeleteSection(section.id, section.title)}
                             style={{
-                              padding: '4px 8px',
-                              fontSize: '10px',
-                              background: 'transparent',
-                              color: 'var(--accent)',
-                              border: '1px solid var(--accent)',
-                              borderRadius: '4px',
-                              cursor: isHidden ? 'not-allowed' : 'pointer',
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '4px',
-                              opacity: isHidden ? 0.5 : 1,
-                              transition: 'all 0.2s'
+                              justifyContent: 'center',
+                              width: '28px',
+                              height: '28px',
+                              background: 'transparent',
+                              color: 'var(--text-muted)',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s'
                             }}
-                            onMouseEnter={(e) => {
-                              if (!isHidden) {
-                                e.currentTarget.style.background = 'var(--accent)'
-                                e.currentTarget.style.color = 'white'
-                              }
+                            onMouseEnter={e => {
+                              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'
+                              e.currentTarget.style.color = 'var(--error)'
                             }}
-                            onMouseLeave={(e) => {
-                              if (!isHidden) {
-                                e.currentTarget.style.background = 'transparent'
-                                e.currentTarget.style.color = 'var(--accent)'
-                              }
+                            onMouseLeave={e => {
+                              e.currentTarget.style.background = 'transparent'
+                              e.currentTarget.style.color = 'var(--text-muted)'
                             }}
+                            title="Delete section"
                           >
-                            <Edit3 size={10} />
-                            Edit
+                            <Trash2 size={14} />
                           </button>
-                          {section.isLocal && !hasInheritance ? (
-                            <button
-                              onClick={() => onDeleteSection(section.id, section.title)}
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '10px',
-                                background: 'transparent',
-                                color: 'var(--error)',
-                                border: '1px solid var(--error)',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                transition: 'all 0.2s'
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.background = 'var(--error)'
-                                e.currentTarget.style.color = 'white'
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background = 'transparent'
-                                e.currentTarget.style.color = 'var(--error)'
-                              }}
-                              title="Delete section"
-                            >
-                              <Trash2 size={10} />
-                              Delete
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => onToggleVisibility(section.id)}
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '10px',
-                                background: isHidden ? 'var(--success)' : 'transparent',
-                                color: isHidden ? 'white' : 'var(--text-secondary)',
-                                border: `1px solid ${isHidden ? 'var(--success)' : 'var(--text-secondary)'}`,
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                transition: 'all 0.2s'
-                              }}
-                              onMouseEnter={(e) => {
-                                if (!isHidden) {
-                                  e.currentTarget.style.background = 'var(--text-secondary)'
-                                  e.currentTarget.style.color = 'white'
-                                }
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!isHidden) {
-                                  e.currentTarget.style.background = 'transparent'
-                                  e.currentTarget.style.color = 'var(--text-secondary)'
-                                }
-                              }}
-                              title={isHidden ? 'Show section' : 'Hide section'}
-                            >
-                              {isHidden ? <Eye size={10} /> : <EyeOff size={10} />}
-                            </button>
-                          )}
-                          {isOverridden && (
-                            <button
-                              onClick={() => onResetSection(section.id)}
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '10px',
-                                background: 'transparent',
-                                color: 'var(--error)',
-                                border: '1px solid var(--error)',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                transition: 'all 0.2s'
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.background = 'var(--error)'
-                                e.currentTarget.style.color = 'white'
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background = 'transparent'
-                                e.currentTarget.style.color = 'var(--error)'
-                              }}
-                              title="Reset to original"
-                            >
-                              <X size={10} />
-                              Reset
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
+                        ) : (
+                          <button
+                            onClick={() => onToggleVisibility(section.id)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: '28px',
+                              height: '28px',
+                              background: 'transparent',
+                              color: isHidden ? 'var(--success)' : 'var(--text-muted)',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s'
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.background = isHidden
+                                ? 'rgba(34, 197, 94, 0.1)'
+                                : 'rgba(107, 114, 128, 0.1)'
+                            }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                            title={isHidden ? 'Show section' : 'Hide section'}
+                          >
+                            {isHidden ? <Eye size={14} /> : <EyeOff size={14} />}
+                          </button>
+                        )}
+
+                        {isOverridden && (
+                          <button
+                            onClick={() => onResetSection(section.id)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: '28px',
+                              height: '28px',
+                              background: 'transparent',
+                              color: 'var(--text-muted)',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s'
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'
+                              e.currentTarget.style.color = 'var(--error)'
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.background = 'transparent'
+                              e.currentTarget.style.color = 'var(--text-muted)'
+                            }}
+                            title="Reset to original"
+                          >
+                            <RotateCcw size={14} />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
+                  {/* Content Area */}
                   {isEditing ? (
-                    <div>
-                      <div style={{
-                        marginBottom: '8px'
-                      }}>
+                    <div style={{ padding: '12px 16px' }}>
+                      <div style={{ marginBottom: '10px' }}>
                         <WysiwygEditor
                           value={editContent}
                           onChange={onEditContentChange}
@@ -378,19 +550,22 @@ export default function ContentSections({
                           theme={theme}
                           readOnly={false}
                           placeholder="Start writing..."
+                          variables={variables}
                         />
                       </div>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                         <button
                           onClick={onCancelEditing}
                           style={{
-                            padding: '6px 12px',
+                            padding: '6px 14px',
                             fontSize: '12px',
+                            fontWeight: 500,
                             background: 'transparent',
-                            color: 'var(--text)',
+                            color: 'var(--text-secondary)',
                             border: '1px solid var(--border)',
                             borderRadius: '6px',
-                            cursor: 'pointer'
+                            cursor: 'pointer',
+                            transition: 'all 0.15s'
                           }}
                         >
                           Cancel
@@ -398,20 +573,22 @@ export default function ContentSections({
                         <button
                           onClick={() => onSaveSection(section.id)}
                           style={{
-                            padding: '6px 12px',
+                            padding: '6px 14px',
                             fontSize: '12px',
-                            background: 'var(--success)',
+                            fontWeight: 500,
+                            background: 'var(--accent)',
                             color: 'white',
                             border: 'none',
                             borderRadius: '6px',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '4px'
+                            gap: '4px',
+                            transition: 'all 0.15s'
                           }}
                         >
                           <Check size={12} />
-                          Save Changes
+                          Save
                         </button>
                       </div>
                     </div>
@@ -419,7 +596,8 @@ export default function ContentSections({
                     <div
                       onDoubleClick={() => !readOnly && onStartEditing(section)}
                       style={{
-                        cursor: readOnly ? 'default' : 'pointer'
+                        cursor: readOnly ? 'default' : 'pointer',
+                        padding: displayContent.trim() ? '8px 16px 12px' : '0'
                       }}
                       title={readOnly ? undefined : 'Double-click to edit'}
                     >
@@ -431,13 +609,13 @@ export default function ContentSections({
                         />
                       ) : (
                         <div style={{
-                          padding: '16px 0',
-                          fontSize: '12px',
+                          padding: '20px 16px',
+                          fontSize: '13px',
                           color: 'var(--text-muted)',
                           fontStyle: 'italic',
                           textAlign: 'center'
                         }}>
-                          Empty section - {readOnly ? '' : 'double-click to add content'}
+                          {readOnly ? 'Empty section' : 'Double-click to add content'}
                         </div>
                       )}
                     </div>

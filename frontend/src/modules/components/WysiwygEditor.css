@@ -316,14 +316,14 @@
   color: #e6edf3;
 }
 
-[data-theme="dark"] .wysiwyg-editor code {
+[data-theme="dark"] .wysiwyg-editor :not(pre) > code {
   background: rgba(110, 118, 129, 0.25);
   color: #e6edf3;
   border-color: rgba(110, 118, 129, 0.3);
 }
 
 /* Light theme code overrides */
-[data-theme="light"] .wysiwyg-editor code {
+[data-theme="light"] .wysiwyg-editor :not(pre) > code {
   background: rgba(175, 184, 193, 0.3);
   color: #24292f;
   border-color: rgba(175, 184, 193, 0.4);
@@ -347,6 +347,102 @@
   font-size: 0.9em;
   color: #ff8800;
   white-space: nowrap;
+  cursor: default;
+}
+
+/* ─── Nunjucks Hover Tooltip ─── */
+.nunjucks-tooltip {
+  position: fixed;
+  z-index: 10000;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  max-width: 320px;
+  pointer-events: none;
+  white-space: normal;
+}
+
+.nunjucks-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.nunjucks-tooltip-name {
+  font-family: "JetBrains Mono", Monaco, Consolas, monospace;
+  font-weight: 600;
+  color: #ff8800;
+}
+
+.nunjucks-tooltip-tag {
+  font-family: "JetBrains Mono", Monaco, Consolas, monospace;
+  font-weight: 600;
+  color: #c084fc;
+}
+
+.nunjucks-tooltip-label {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.nunjucks-tooltip-desc {
+  color: var(--text-secondary);
+}
+
+.nunjucks-tooltip-type {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-family: "JetBrains Mono", Monaco, Consolas, monospace;
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  font-weight: 500;
+}
+
+.nunjucks-tooltip-required {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  font-weight: 500;
+}
+
+.nunjucks-tooltip-warning {
+  color: #fbbf24;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.nunjucks-tooltip-description {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.nunjucks-tooltip-default,
+.nunjucks-tooltip-enum {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.nunjucks-tooltip-default code,
+.nunjucks-tooltip-enum code {
+  font-family: "JetBrains Mono", Monaco, Consolas, monospace;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--panel-2);
+  color: var(--text-secondary);
 }
 
 /* ─── Bubble Menu ─── */

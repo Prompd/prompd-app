@@ -351,7 +351,7 @@ body { background: var(--bg); color: var(--text); font: 14px/1.4 Inter, system-u
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--border);
-  background: var(--panel);
+  background: var(--panel-bg);
   position: relative;
 }
 .tabs-scroll-btn {
@@ -393,7 +393,7 @@ body { background: var(--bg); color: var(--text); font: 14px/1.4 Inter, system-u
   display: flex;
   gap: 2px;
   padding: 8px 8px 0 8px;
-  background: var(--panel);
+  background: var(--panel-bg);
   align-items: flex-end;
   overflow-x: auto;
   overflow-y: hidden;
@@ -425,7 +425,7 @@ body { background: var(--bg); color: var(--text); font: 14px/1.4 Inter, system-u
   background: var(--hover);
 }
 .tab.active {
-  background: var(--bg);
+  background: var(--panel);
   border-color: var(--border);
   border-bottom: 1px solid var(--bg);
 }

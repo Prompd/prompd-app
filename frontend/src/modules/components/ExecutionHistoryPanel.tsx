@@ -624,6 +624,13 @@ export function ExecutionHistoryPanel({ theme, onViewExecution, onCollapse }: Ex
                         }} className="history-markdown">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
+                            urlTransform={(url) => {
+                              // Allow prompd-gen:// protocol for persisted generated images
+                              if (url.startsWith('prompd-gen://')) return url
+                              // Default: allow http, https, mailto, tel
+                              if (/^https?:\/\/|^mailto:|^tel:|^#/.test(url)) return url
+                              return ''
+                            }}
                             components={{
                               h1: ({ children }) => (
                                 <h1 style={{ margin: '16px 0 8px', fontSize: '18px', fontWeight: 600 }}>{children}</h1>
@@ -741,6 +748,18 @@ export function ExecutionHistoryPanel({ theme, onViewExecution, onCollapse }: Ex
                               ),
                               hr: () => (
                                 <hr style={{ border: 'none', borderTop: `1px solid ${colors.border}`, margin: '12px 0' }} />
+                              ),
+                              img: ({ src, alt }) => (
+                                <img
+                                  src={src}
+                                  alt={alt || 'generated image'}
+                                  loading="lazy"
+                                  style={{
+                                    maxWidth: '100%',
+                                    borderRadius: '6px',
+                                    margin: '8px 0'
+                                  }}
+                                />
                               )
                             }}
                           >

@@ -786,7 +786,9 @@ app.whenReady().then(() => {
       return new Response('Forbidden', { status: 403 })
     }
     const filePath = path.join(os.homedir(), '.prompd', 'generated', relativePath)
-    return net.fetch(`file://${filePath}`)
+    // On Windows, path.join uses backslashes which break file:// URLs
+    const fileUrl = `file:///${filePath.replace(/\\/g, '/')}`
+    return net.fetch(fileUrl)
   })
   console.log('[Electron] Registered prompd-gen:// protocol')
 
@@ -1182,8 +1184,23 @@ app.whenReady().then(() => {
   })
 })
 
-// Handle app quitting - ensure deployment service and analytics shut down cleanly
-app.on('before-quit', async () => {
+// Track whether the renderer has confirmed it's ready to quit
+let rendererReadyToQuit = false
+
+// Handle app quitting - ask renderer to save/discard dirty files first
+app.on('before-quit', async (event) => {
+  // If the renderer hasn't confirmed yet, prevent quit and ask it to handle dirty tabs
+  if (!rendererReadyToQuit && mainWindow && !mainWindow.isDestroyed()) {
+    event.preventDefault()
+    // Show the window if hidden (so save dialogs are visible)
+    if (!mainWindow.isVisible()) {
+      mainWindow.show()
+    }
+    mainWindow.webContents.send('app:before-quit')
+    return
+  }
+
+  // Renderer confirmed — proceed with cleanup
   analytics.trackAppClose()
   analytics.shutdown()
   trayManager.setQuitting(true)
@@ -1194,6 +1211,12 @@ app.on('before-quit', async () => {
   for (const m of ipcModules) {
     if (m.cleanup) await m.cleanup()
   }
+})
+
+// Renderer signals it has handled dirty tabs and is ready to quit
+ipcMain.on('app:ready-to-quit', () => {
+  rendererReadyToQuit = true
+  app.quit()
 })
 
 // Quit when all windows are closed (except on macOS or when minimizing to tray)
@@ -1404,6 +1427,104 @@ ipcMain.handle('generated:saveImage', async (_event, base64Data, mimeType) => {
     return { success: true, filePath, fileName }
   } catch (error) {
     console.error('[Generated] Error saving image:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// List all generated resources from ~/.prompd/generated/ grouped by type (subdirectory)
+ipcMain.handle('generated:list', async () => {
+  try {
+    const baseDir = path.join(os.homedir(), '.prompd', 'generated')
+
+    // Ensure directory exists
+    try {
+      await fs.promises.access(baseDir)
+    } catch {
+      return { success: true, resources: [] }
+    }
+
+    const resources = []
+    const entries = await fs.promises.readdir(baseDir, { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const typeDir = path.join(baseDir, entry.name)
+      const files = await fs.promises.readdir(typeDir, { withFileTypes: true })
+
+      for (const file of files) {
+        if (!file.isFile()) continue
+        const filePath = path.join(typeDir, file.name)
+        const stat = await fs.promises.stat(filePath)
+        resources.push({
+          fileName: file.name,
+          relativePath: `${entry.name}/${file.name}`,
+          type: entry.name,
+          protocolUrl: `prompd-gen://${entry.name}/${file.name}`,
+          size: stat.size,
+          modified: stat.mtimeMs
+        })
+      }
+    }
+
+    // Sort by most recently modified first
+    resources.sort((a, b) => b.modified - a.modified)
+    return { success: true, resources }
+  } catch (error) {
+    console.error('[Generated] Error listing resources:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// Delete a specific generated resource
+ipcMain.handle('generated:delete', async (_event, relativePath) => {
+  try {
+    if (!relativePath || typeof relativePath !== 'string') {
+      return { success: false, error: 'Invalid path' }
+    }
+    // Security: block path traversal
+    if (relativePath.includes('..')) {
+      return { success: false, error: 'Invalid path: parent directory references not allowed' }
+    }
+    const filePath = path.join(os.homedir(), '.prompd', 'generated', relativePath)
+    await fs.promises.unlink(filePath)
+    console.log(`[Generated] Deleted resource: ${relativePath}`)
+    return { success: true }
+  } catch (error) {
+    console.error('[Generated] Error deleting resource:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// Save text/code content as a generated resource
+ipcMain.handle('generated:saveText', async (_event, content, ext) => {
+  try {
+    if (!content || typeof content !== 'string') {
+      return { success: false, error: 'Invalid content' }
+    }
+
+    const fileExt = ext || 'md'
+    const crypto = require('crypto')
+    const hash = crypto.createHash('sha256').update(content).digest('hex').substring(0, 16)
+
+    const dir = path.join(os.homedir(), '.prompd', 'generated', 'text')
+    const fileName = `${hash}.${fileExt}`
+    const filePath = path.join(dir, fileName)
+
+    // Content-addressable dedup
+    try {
+      await fs.promises.access(filePath)
+      return { success: true, filePath, fileName, existed: true }
+    } catch {
+      // File doesn't exist yet
+    }
+
+    await fs.promises.mkdir(dir, { recursive: true })
+    await fs.promises.writeFile(filePath, content, 'utf-8')
+
+    console.log(`[Generated] Saved text: ${fileName} (${content.length} chars)`)
+    return { success: true, filePath, fileName }
+  } catch (error) {
+    console.error('[Generated] Error saving text:', error)
     return { success: false, error: error.message }
   }
 })

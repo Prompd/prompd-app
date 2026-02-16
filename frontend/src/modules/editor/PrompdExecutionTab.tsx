@@ -200,18 +200,18 @@ export function PrompdExecutionTab({
   return (
     <>
       <style>{`
-        @keyframes flash-in {
+        @keyframes pop-in {
           0% {
             opacity: 0;
-            transform: translateY(-10px) scale(0.95);
+            transform: scale(0.9);
           }
-          50% {
+          70% {
             opacity: 1;
-            transform: translateY(0) scale(1.02);
+            transform: scale(1.03);
           }
           100% {
             opacity: 1;
-            transform: translateY(0) scale(1);
+            transform: scale(1);
           }
         }
       `}</style>
@@ -322,12 +322,20 @@ export function PrompdExecutionTab({
 
             {/* Execution History - Collapsible */}
             {config.executionHistory.length > 0 && (
-              <div style={{ marginBottom: '12px' }}>
+              <div style={{
+                marginBottom: '12px',
+                background: 'var(--panel-2)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                overflow: 'hidden'
+              }}>
+                {/* Header */}
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  marginBottom: historyExpanded ? '8px' : '0'
+                  padding: '10px 14px',
+                  borderBottom: historyExpanded ? '1px solid var(--border)' : 'none'
                 }}>
                   <button
                     onClick={() => setHistoryExpanded(!historyExpanded)}
@@ -341,7 +349,7 @@ export function PrompdExecutionTab({
                       background: 'none',
                       border: 'none',
                       cursor: 'pointer',
-                      padding: '2px 0'
+                      padding: 0
                     }}
                   >
                     {historyExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -350,9 +358,8 @@ export function PrompdExecutionTab({
                     <span style={{ fontWeight: 400, fontSize: '12px' }}>
                       ({config.executionHistory.length})
                     </span>
-                    {/* Inline summary when collapsed */}
                     {!historyExpanded && executionStats && (
-                      <span style={{ fontWeight: 400, fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '4px' }}>
+                      <span style={{ fontWeight: 400, fontSize: '12px', color: 'var(--text-secondary)', marginLeft: '4px' }}>
                         {executionStats.successRate}% success, avg {executionStats.avgDuration}s
                       </span>
                     )}
@@ -363,12 +370,12 @@ export function PrompdExecutionTab({
                         onClick={handleCopyCompiledPrompt}
                         style={{
                           padding: '4px 10px',
-                          fontSize: '11px',
+                          fontSize: '12px',
                           fontWeight: 500,
                           background: 'transparent',
                           color: 'var(--text-secondary)',
                           border: '1px solid var(--border)',
-                          borderRadius: '4px',
+                          borderRadius: '6px',
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
@@ -390,9 +397,9 @@ export function PrompdExecutionTab({
                 {!historyExpanded && (
                   <div style={{
                     display: 'flex',
-                    gap: '4px',
+                    gap: '6px',
                     flexWrap: 'wrap',
-                    marginTop: '6px'
+                    padding: '10px 14px'
                   }}>
                     {config.executionHistory.slice(0, 8).map((result, idx) => {
                       const isNew = idx === 0 && !viewedResults.has(result.timestamp)
@@ -405,33 +412,34 @@ export function PrompdExecutionTab({
                             setViewedResults(prev => new Set(prev).add(result.timestamp))
                           }}
                           style={{
-                            padding: '3px 8px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            background: isNew ? 'rgba(59, 130, 246, 0.1)' : 'var(--panel-2)',
-                            border: isNew ? '1px solid var(--accent)' : '1px solid var(--border)',
+                            padding: '5px 10px',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            background: isNew ? 'rgba(59, 130, 246, 0.08)' : 'var(--panel)',
+                            border: `1px solid ${isNew ? 'var(--accent)' : 'var(--border)'}`,
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '4px',
+                            gap: '5px',
                             color: 'var(--text-secondary)',
-                            transition: 'all 0.15s'
+                            transition: 'all 0.15s',
+                            animation: isNew ? 'pop-in 0.3s ease-out' : 'none'
                           }}
                           onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)' }}
                           onMouseLeave={(e) => { e.currentTarget.style.borderColor = isNew ? 'var(--accent)' : 'var(--border)' }}
                           title={`${result.status === 'success' ? 'Success' : 'Failed'} - ${new Date(result.timestamp).toLocaleTimeString()}`}
                         >
                           {result.status === 'success' ? (
-                            <CheckCircle size={10} style={{ color: '#22c55e' }} />
+                            <CheckCircle size={11} style={{ color: '#22c55e' }} />
                           ) : (
-                            <XCircle size={10} style={{ color: '#ef4444' }} />
+                            <XCircle size={11} style={{ color: '#ef4444' }} />
                           )}
                           <span>{new Date(result.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         </button>
                       )
                     })}
                     {config.executionHistory.length > 8 && (
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', padding: '3px 4px' }}>
+                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '5px 4px' }}>
                         +{config.executionHistory.length - 8} more
                       </span>
                     )}
@@ -440,13 +448,12 @@ export function PrompdExecutionTab({
 
                 {/* Expanded: full horizontal scrollable cards */}
                 {historyExpanded && (
-                  <>
-                    {/* Stats row */}
+                  <div style={{ padding: '10px 14px' }}>
                     {executionStats && (
                       <div style={{
                         display: 'flex',
                         gap: '16px',
-                        marginBottom: '8px',
+                        marginBottom: '10px',
                         fontSize: '12px',
                         color: 'var(--text-secondary)'
                       }}>
@@ -475,25 +482,23 @@ export function PrompdExecutionTab({
                             style={{
                               flex: '0 0 auto',
                               textAlign: 'left',
-                              padding: '8px 12px',
-                              borderRadius: '6px',
-                              background: isNew ? 'rgba(59, 130, 246, 0.08)' : 'var(--panel-2)',
-                              border: isNew ? '1.5px solid var(--accent)' : '1px solid var(--border)',
+                              padding: '10px 14px',
+                              borderRadius: '8px',
+                              background: isNew ? 'rgba(59, 130, 246, 0.06)' : 'var(--panel)',
+                              border: `1px solid ${isNew ? 'var(--accent)' : 'var(--border)'}`,
                               cursor: 'pointer',
                               transition: 'all 0.15s',
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '8px',
-                              animation: isNew ? 'flash-in 0.4s ease-out' : 'none',
-                              minWidth: '180px'
+                              gap: '10px',
+                              animation: isNew ? 'pop-in 0.3s ease-out' : 'none',
+                              minWidth: '200px'
                             }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.background = 'var(--panel-3)'
-                              if (!isNew) e.currentTarget.style.borderColor = 'var(--accent)'
+                              e.currentTarget.style.borderColor = 'var(--accent)'
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.background = isNew ? 'rgba(59, 130, 246, 0.08)' : 'var(--panel-2)'
-                              if (!isNew) e.currentTarget.style.borderColor = 'var(--border)'
+                              e.currentTarget.style.borderColor = isNew ? 'var(--accent)' : 'var(--border)'
                             }}
                           >
                             {result.status === 'success' ? (
@@ -502,10 +507,10 @@ export function PrompdExecutionTab({
                               <XCircle size={14} style={{ color: '#ef4444', flexShrink: 0 }} />
                             )}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-                              <span style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                              <span style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 500, whiteSpace: 'nowrap' }}>
                                 {new Date(result.timestamp).toLocaleTimeString()}
                               </span>
-                              <div style={{ display: 'flex', gap: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
+                              <div style={{ display: 'flex', gap: '6px', fontSize: '11px', color: 'var(--text-secondary)' }}>
                                 {result.metadata?.model && (
                                   <span style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>
                                     {result.metadata.model}
@@ -518,25 +523,11 @@ export function PrompdExecutionTab({
                                 )}
                               </div>
                             </div>
-                            {isNew && (
-                              <span style={{
-                                fontSize: '9px',
-                                fontWeight: 700,
-                                color: 'var(--accent)',
-                                padding: '1px 5px',
-                                background: 'rgba(59, 130, 246, 0.15)',
-                                borderRadius: '3px',
-                                flexShrink: 0,
-                                letterSpacing: '0.5px'
-                              }}>
-                                NEW
-                              </span>
-                            )}
                           </button>
                         )
                       })}
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
             )}

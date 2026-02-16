@@ -4,15 +4,38 @@ import type { Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import ImageExtension from '@tiptap/extension-image'
+import { Table } from '@tiptap/extension-table'
+import { TableRow } from '@tiptap/extension-table-row'
+import { TableHeader } from '@tiptap/extension-table-header'
+import { TableCell } from '@tiptap/extension-table-cell'
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
+import { common, createLowlight } from 'lowlight'
 import { Markdown } from 'tiptap-markdown'
 import { NunjucksHighlight } from '../lib/tiptap/nunjucksExtension'
+import type { VariablesMap } from '../lib/tiptap/nunjucksExtension'
 import WysiwygToolbar from './WysiwygToolbar'
+import 'highlight.js/styles/github-dark.css'
 import './WysiwygEditor.css'
+
+const lowlight = createLowlight(common)
 
 /** Extract markdown string from editor via tiptap-markdown storage */
 function getEditorMarkdown(editor: Editor): string {
   const storage = editor.storage as unknown as Record<string, { getMarkdown?: () => string }>
-  return storage.markdown?.getMarkdown?.() ?? ''
+  const md = storage.markdown?.getMarkdown?.() ?? ''
+  return unescapeNunjucks(md)
+}
+
+/**
+ * Un-escape markdown special characters inside Nunjucks expressions.
+ * tiptap-markdown's serializer escapes characters like [ ] * _ ~ inside text nodes,
+ * which corrupts Nunjucks syntax (e.g. `{%- for x in [items] %}` → `{%- for x in \[items\] %}`).
+ * This restores the original characters within {{ }}, {% %}, and {# #} blocks.
+ */
+function unescapeNunjucks(markdown: string): string {
+  return markdown.replace(/(\{[{%#]-?[\s\S]*?-?[}%#]\})/g, (match) => {
+    return match.replace(/\\([[\]\\*_~`|(){}])/g, '$1')
+  })
 }
 
 /** Normalize markdown for comparison to prevent re-render loops from whitespace differences */
@@ -48,6 +71,8 @@ interface WysiwygEditorProps {
   readOnly?: boolean
   placeholder?: string
   showToolbar?: boolean
+  /** Parameter metadata for hover tooltips on {{ variable }} expressions */
+  variables?: VariablesMap
 }
 
 export default function WysiwygEditor({
@@ -57,7 +82,8 @@ export default function WysiwygEditor({
   theme = 'dark',
   readOnly = false,
   placeholder = 'Start writing... (use markdown shortcuts like # for headings, ** for bold)',
-  showToolbar = true
+  showToolbar = true,
+  variables
 }: WysiwygEditorProps) {
   const isUpdatingRef = useRef(false)
   const lastValueRef = useRef(value)
@@ -73,11 +99,13 @@ export default function WysiwygEditor({
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3, 4, 5, 6] },
-        codeBlock: {
-          HTMLAttributes: { class: 'hljs' }
-        },
+        codeBlock: false,
         bulletList: { keepMarks: true, keepAttributes: false },
         orderedList: { keepMarks: true, keepAttributes: false }
+      }),
+      CodeBlockLowlight.configure({
+        lowlight,
+        defaultLanguage: 'plaintext'
       }),
       Markdown.configure({
         html: true,
@@ -89,6 +117,13 @@ export default function WysiwygEditor({
         inline: false,
         allowBase64: true
       }),
+      Table.configure({
+        resizable: false,
+        HTMLAttributes: { class: 'wysiwyg-table' }
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
       NunjucksHighlight
     ],
     content: preprocessBase64Images(value),
@@ -130,6 +165,16 @@ export default function WysiwygEditor({
     editor.commands.setContent(preprocessBase64Images(value))
     isUpdatingRef.current = false
   }, [value, editor])
+
+  // Sync variable metadata to nunjucks extension storage for hover tooltips
+  useEffect(() => {
+    if (editor) {
+      const storage = editor.storage as unknown as Record<string, Record<string, unknown>>
+      if (storage.nunjucksHighlight) {
+        storage.nunjucksHighlight.variables = variables || {}
+      }
+    }
+  }, [variables, editor])
 
   // Update editable state
   useEffect(() => {

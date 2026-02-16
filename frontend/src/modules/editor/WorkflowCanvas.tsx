@@ -1193,13 +1193,21 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
           timestamp: Date.now(),
         }])
 
+        // Check if model supports image generation
+        const effectiveProvider = provider || 'openai'
+        const effectiveModel = model || 'gpt-4o'
+        const pricingData = useUIStore.getState().llmProvider.providersWithPricing
+        const providerPricing = pricingData?.find(p => p.providerId === effectiveProvider)
+        const modelPricing = providerPricing?.models.find(m => m.model === effectiveModel)
+
         // Execute using the execution router
         const result = await executionRouter.execute({
-          provider: provider || 'openai',
-          model: model || 'gpt-4o',
+          provider: effectiveProvider,
+          model: effectiveModel,
           prompt: compiledPrompt,
           maxTokens: 4096,
           temperature: 0.7,
+          enableImageGeneration: modelPricing?.supportsImageGeneration === true,
         })
 
         if (!result.success) {
@@ -1240,12 +1248,20 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
         }])
 
         try {
+          // Check if model supports image generation
+          const agentProvider = request.provider || 'openai'
+          const agentModel = request.model || 'gpt-4o'
+          const agentPricingData = useUIStore.getState().llmProvider.providersWithPricing
+          const agentProviderPricing = agentPricingData?.find(p => p.providerId === agentProvider)
+          const agentModelPricing = agentProviderPricing?.models.find(m => m.model === agentModel)
+
           const result = await executionRouter.execute({
-            provider: request.provider || 'openai',
-            model: request.model || 'gpt-4o',
+            provider: agentProvider,
+            model: agentModel,
             prompt: fullPrompt,
             maxTokens: 4096,
             temperature: request.temperature ?? 0.7,
+            enableImageGeneration: agentModelPricing?.supportsImageGeneration === true,
           })
 
           if (!result.success) {

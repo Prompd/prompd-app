@@ -554,6 +554,11 @@ export interface ElectronAPI {
       success: boolean
       error?: string
     }>
+    testConnection: (serverName: string, config: McpServerConfig) => Promise<{
+      success: boolean
+      tools?: McpToolDefinition[]
+      error?: string
+    }>
     connect: (serverName: string) => Promise<{
       success: boolean
       tools?: McpToolDefinition[]
@@ -580,7 +585,7 @@ export interface ElectronAPI {
     }>
   }
 
-  // Generated content persistence (images saved to ~/.prompd/generated/)
+  // Generated content persistence and resource management (~/.prompd/generated/)
   generated?: {
     saveImage: (base64Data: string, mimeType?: string) => Promise<{
       success: boolean
@@ -589,7 +594,42 @@ export interface ElectronAPI {
       existed?: boolean
       error?: string
     }>
+    list: () => Promise<{
+      success: boolean
+      resources?: GeneratedResource[]
+      error?: string
+    }>
+    delete: (relativePath: string) => Promise<{
+      success: boolean
+      error?: string
+    }>
+    saveText: (content: string, ext?: string) => Promise<{
+      success: boolean
+      filePath?: string
+      fileName?: string
+      existed?: boolean
+      error?: string
+    }>
   }
+
+  // App lifecycle — clean close with save/discard prompt
+  onBeforeQuit?: (callback: () => void) => void
+  readyToQuit?: () => void
+
+  // Storage monitoring
+  storage?: {
+    getUsage: () => { usedBytes: number; quotaBytes: number }
+  }
+}
+
+// Generated resource entry from ~/.prompd/generated/
+export interface GeneratedResource {
+  fileName: string
+  relativePath: string
+  type: string           // subdirectory name: 'images', 'text', etc.
+  protocolUrl: string    // prompd-gen://type/filename
+  size: number
+  modified: number       // timestamp ms
 }
 
 // Workflow execution event types (single event channel with type-based routing)
@@ -924,10 +964,21 @@ export interface PrompdConfig {
   disabled_providers?: string[]  // List of provider IDs to disable (preserves API keys)
 }
 
+export interface CustomProviderModelConfig {
+  id: string
+  name: string
+  supports_text?: boolean
+  supports_vision?: boolean
+  supports_image_generation?: boolean
+  supports_tools?: boolean
+  context_window?: number
+}
+
 export interface CustomProviderConfig {
+  display_name?: string
   base_url: string
   api_key?: string
-  models?: string[]
+  models?: (string | CustomProviderModelConfig)[]
   type?: string
   enabled?: boolean
 }

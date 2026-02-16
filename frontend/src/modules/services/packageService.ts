@@ -172,13 +172,22 @@ export class PackageService {
     packageBlob: Blob,
     manifest: PackageManifest,
     getToken: () => Promise<string | null>,
-    onProgress?: (percent: number) => void
+    onProgress?: (percent: number) => void,
+    registryConfig?: { apiKey?: string; url?: string }
   ): Promise<void> {
     console.log('[PackageService] Publishing:', manifest.name)
 
     const formData = new FormData()
     formData.append('manifest', JSON.stringify(manifest))
     formData.append('package', packageBlob, `${manifest.name.replace('/', '-')}-${manifest.version}.pdpkg`)
+
+    // Pass registry-specific auth to backend so it uses the right token and URL
+    if (registryConfig?.apiKey) {
+      formData.append('registryApiKey', registryConfig.apiKey)
+    }
+    if (registryConfig?.url) {
+      formData.append('registryUrl', registryConfig.url)
+    }
 
     const token = await getToken()
     if (!token) {
@@ -198,7 +207,7 @@ export class PackageService {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const result = JSON.parse(xhr.responseText)
-            console.log('[PackageService] ✅ Published:', result.data)
+            console.log('[PackageService] Published:', result.data)
             resolve()
           } catch {
             resolve()
@@ -235,20 +244,30 @@ export class PackageService {
 
   /**
    * Get user's namespaces from registry
+   * If registryConfig is provided, fetches from that specific registry using its API key.
+   * Otherwise falls back to default registry with Clerk token.
    */
-  async getUserNamespaces(getToken: () => Promise<string | null>): Promise<Namespace[]> {
-    const registryUrl = prompdSettings.getRegistryUrl()
-    const token = await getToken()
+  async getUserNamespaces(
+    getToken: () => Promise<string | null>,
+    registryConfig?: { apiKey?: string; url?: string }
+  ): Promise<Namespace[]> {
+    const registryUrl = registryConfig?.url || prompdSettings.getRegistryUrl()
 
-    if (!token) {
-      throw new Error('Authentication required. Please sign in to view your namespaces.')
+    // Use registry API key if available, otherwise fall back to Clerk token
+    let authToken: string | null = registryConfig?.apiKey || null
+    if (!authToken) {
+      authToken = await getToken()
+    }
+
+    if (!authToken) {
+      throw new Error('Authentication required. Please sign in or configure a registry API key.')
     }
 
     console.log('[PackageService] Fetching namespaces from:', registryUrl)
 
     const response = await fetch(`${registryUrl}/user/namespaces`, {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${authToken}`,
         'Content-Type': 'application/json'
       }
     })
@@ -263,13 +282,13 @@ export class PackageService {
     const namespaces = Array.isArray(data) ? data : []
 
     // Transform to match expected format
-    return namespaces.map((ns: any) => ({
-      name: ns.name,
-      displayName: ns.displayName || ns.name,
-      description: ns.description,
-      type: ns.type || 'personal',
-      canPublish: ns.canPublish ?? true,
-      frozen: ns.frozen ?? false
+    return namespaces.map((ns: Record<string, unknown>) => ({
+      name: ns.name as string,
+      displayName: (ns.displayName as string) || (ns.name as string),
+      description: ns.description as string | undefined,
+      type: (ns.type as 'personal' | 'organization') || 'personal',
+      canPublish: (ns.canPublish as boolean) ?? true,
+      frozen: (ns.frozen as boolean) ?? false
     }))
   }
 

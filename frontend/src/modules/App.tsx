@@ -14,6 +14,7 @@ import { PrompdExecutionTab } from './editor/PrompdExecutionTab'
 import { ChatTab } from './editor/ChatTab'
 import GitPanel from './editor/GitPanel'
 import { ExecutionHistoryPanel } from './components/ExecutionHistoryPanel'
+import { ResourcePanel } from './components/ResourcePanel'
 import { LocalStorageModal } from './components/LocalStorageModal'
 import { PublishModal } from './components/PublishModal'
 import { SettingsModal } from './components/SettingsModal'
@@ -299,6 +300,7 @@ export default function App() {
   // Workspace state management
   const saveWorkspaceState = useEditorStore(state => state.saveWorkspaceState)
 
+
   // UI store
   const mode = useUIStore(state => state.mode)
   const setMode = useUIStore(state => state.setMode)
@@ -555,7 +557,6 @@ export default function App() {
       console.log('[App] Restoring file handles for', tabs.length, 'tabs')
 
       for (const tab of tabs) {
-        console.log('[App] Checking tab:', tab.name, 'type:', tab.type, 'hasHandle:', !!tab.handle, 'filePath:', tab.filePath)
         // Skip non-file tabs, tabs with valid handles, and package-sourced tabs
         if (tab.type === 'chat' || tab.type === 'execution' || tab.packageSource) continue
         if (tab.handle && typeof tab.handle.createWritable === 'function') continue
@@ -570,7 +571,6 @@ export default function App() {
           } else {
             fullPath = `${explorerDirPath}\\${tabName}`
           }
-          console.log('[App] Using legacy path construction for tab:', tab.name, '->', fullPath)
         }
         if (!fullPath) continue
 
@@ -598,12 +598,12 @@ export default function App() {
               })
             }
             updateTab(tab.id, { handle: fileHandle as any, filePath: fullPath })
-            console.log('[App] Restored file handle for tab:', fullPath)
           }
         } catch (err) {
           console.warn('[App] Could not restore handle for tab:', fullPath, err)
         }
       }
+
     }
 
     restoreTabHandles()
@@ -620,6 +620,32 @@ export default function App() {
 
   // Monaco marker listening is now handled by MonacoMarkerListener component
   // which only renders when tabs.length > 0, preventing Monaco from loading on startup
+
+  // Clean close handler — save workspace state and signal ready to quit.
+  // Tabs persist in Zustand/localStorage and restore on next launch.
+  useEffect(() => {
+    const electronAPI = (window as any).electronAPI
+    if (!electronAPI?.onBeforeQuit) return
+
+    const handleBeforeQuit = async () => {
+      // Save workspace state — tabs persist in Zustand/localStorage
+      // and will be restored on next launch (same as crash recovery)
+      const dirPath = useEditorStore.getState().explorerDirPath
+      if (dirPath) {
+        saveWorkspaceState(dirPath)
+      }
+
+      // Signal main process that we're ready to quit
+      electronAPI.readyToQuit()
+    }
+
+    electronAPI.onBeforeQuit(handleBeforeQuit)
+
+    return () => {
+      // ipcRenderer.on returns the ipcRenderer, so removal uses removeListener
+      // But since we're in the cleanup phase, this is fine to skip
+    }
+  }, [saveWorkspaceState])
 
   // Save workspace state on unload and when workspace changes
   useEffect(() => {
@@ -1567,6 +1593,7 @@ version: 1.0.0
   // Sync Monaco markers to build output panel whenever they change
   // Live update - show errors when present, clear when fixed
   const setBottomPanelMinimized = useUIStore(state => state.setBottomPanelMinimized)
+  const openBottomPanelMinimized = useUIStore(state => state.openBottomPanelMinimized)
   useEffect(() => {
     if (monacoMarkers.length > 0) {
       setBuildOutput({
@@ -2391,12 +2418,7 @@ version: 1.0.0
     if (!activeTab || activeTab.type === 'execution') return
 
     // Open bottom panel minimized to Prompds tab if closed
-    const currentPanelState = useUIStore.getState()
-    if (!currentPanelState.showBottomPanel) {
-      setShowBottomPanel(true)
-      setActiveBottomTab('prompds')
-      setBottomPanelMinimized(true)
-    }
+    openBottomPanelMinimized('prompds')
 
     // Set executing state
     setIsExecutingPreview(true)
@@ -2553,7 +2575,7 @@ version: 1.0.0
       )
       setIsExecutingPreview(false)
     }
-  }, [getActiveTab, llmProvider.provider, llmProvider.model, llmProvider.maxTokens, llmProvider.temperature, llmProvider.generationMode, explorerDirPath, selectedEnvFile, setShowBottomPanel, setActiveBottomTab, setBottomPanelMinimized, aiShowNotification, setPrompdSessionHistory, getToken, readFileFromWorkspace])
+  }, [getActiveTab, llmProvider.provider, llmProvider.model, llmProvider.maxTokens, llmProvider.temperature, llmProvider.generationMode, explorerDirPath, selectedEnvFile, setShowBottomPanel, setActiveBottomTab, setBottomPanelMinimized, openBottomPanelMinimized, aiShowNotification, setPrompdSessionHistory, getToken, readFileFromWorkspace])
 
   // Handle viewing execution in modal
   const handleViewExecution = useCallback((index: number) => {
@@ -3673,15 +3695,24 @@ Write your prompt here...
 
     const files = Array.from(e.dataTransfer.files)
 
-    // Filter for supported file types
-    const supportedExtensions = ['.prmd', '.pdflow', '.prompdflow']
+    // Filter for text-openable file types
+    const textExtensions = [
+      '.prmd', '.pdflow', '.prompdflow',
+      '.json', '.yaml', '.yml', '.md', '.txt',
+      '.js', '.ts', '.jsx', '.tsx', '.css', '.html',
+      '.env', '.toml', '.ini', '.cfg', '.conf',
+      '.sh', '.bat', '.ps1', '.py', '.rb', '.go',
+      '.xml', '.csv', '.log', '.gitignore'
+    ]
     const openableFiles = files.filter(file => {
       const name = file.name.toLowerCase()
-      return supportedExtensions.some(ext => name.endsWith(ext)) || name === 'prompd.json'
+      return textExtensions.some(ext => name.endsWith(ext))
+        || name === 'prompd.json'
+        || name.startsWith('.')  // dotfiles
     })
 
     if (openableFiles.length === 0) {
-      console.log('[App] No supported files in drop')
+      console.log('[App] No supported files in drop:', files.map(f => f.name))
       return
     }
 
@@ -4120,6 +4151,20 @@ Write your prompt here...
             onCollapse={() => setShowSidebar(false)}
           />
         </div>
+        <div style={{
+          visibility: activeSide === 'resources' ? 'visible' : 'hidden',
+          position: activeSide === 'resources' ? 'relative' : 'absolute',
+          height: '100%',
+          width: '100%',
+          top: 0,
+          left: 0,
+          pointerEvents: activeSide === 'resources' ? 'auto' : 'none',
+          overflow: 'hidden'
+        }}>
+          <ResourcePanel
+            onCollapse={() => setShowSidebar(false)}
+          />
+        </div>
         <div className="sidebar-resizer" onMouseDown={beginResize} />
       </div>
 
@@ -4323,13 +4368,7 @@ Write your prompt here...
                       setExecutingTab(activeTabId, true)
 
                       // Open bottom panel minimized to Prompds tab if closed
-                      // If already open, keep current state (animation will show when execution completes)
-                      const currentPanelState = useUIStore.getState()
-                      if (!currentPanelState.showBottomPanel) {
-                        setShowBottomPanel(true)
-                        setActiveBottomTab('prompds')
-                        setBottomPanelMinimized(true)
-                      }
+                      openBottomPanelMinimized('prompds')
 
                       try {
                         // Get FRESH config from current tab state (not from closure)

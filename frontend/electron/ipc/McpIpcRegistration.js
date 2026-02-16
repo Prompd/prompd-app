@@ -61,6 +61,30 @@ class McpIpcRegistration extends BaseIpcRegistration {
       }
     })
 
+    // Test connection to an MCP server without persisting config
+    ipcMain.handle('mcp:testConnection', async (_event, serverName, config) => {
+      try {
+        if (!serverName || typeof serverName !== 'string') {
+          return { success: false, error: 'Server name is required' }
+        }
+        if (!config || typeof config !== 'object') {
+          return { success: false, error: 'Server config is required' }
+        }
+        const result = await mcpService.testConnection(serverName, config)
+        return {
+          success: true,
+          tools: result.tools.map(t => ({
+            name: t.name,
+            description: t.description || '',
+            inputSchema: t.inputSchema || {},
+          })),
+        }
+      } catch (err) {
+        console.error('[MCP IPC] testConnection error:', err.message)
+        return { success: false, error: err.message }
+      }
+    })
+
     // Connect to an MCP server (spawns process or opens HTTP connection)
     ipcMain.handle('mcp:connect', async (_event, serverName) => {
       try {
@@ -148,7 +172,7 @@ class McpIpcRegistration extends BaseIpcRegistration {
       }
     })
 
-    console.log('[MCP IPC] Registered 8 handlers')
+    console.log('[MCP IPC] Registered 9 handlers')
   }
 
   /**

@@ -688,6 +688,7 @@ export function AddConnectionDialog({ onClose, initialType }: AddConnectionDialo
   }, [selectedType, name, config, scope, addConnection, onClose])
 
   // MCP-specific: dual-write to connections.json AND mcp-config.json
+  // Config is only persisted here (not during test) so back/close won't leave phantom entries
   const handleMcpConfigReady = useCallback((
     connectionConfig: Partial<McpServerConnectionConfig>,
     mcpConfig: McpServerConfig
@@ -703,8 +704,7 @@ export function AddConnectionDialog({ onClose, initialType }: AddConnectionDialo
       config: { ...connectionConfig, type: 'mcp-server' } as WorkflowConnectionConfig,
     })
 
-    // Write to mcp-config.json (already written during test step,
-    // but ensure it's there even if test was skipped)
+    // Write to mcp-config.json — this is the single place that persists the MCP server config
     window.electronAPI?.mcp?.addServer(serverName, mcpConfig)
 
     onClose()

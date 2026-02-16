@@ -472,6 +472,62 @@ async function connect(serverName) {
 }
 
 /**
+ * Test a connection to an MCP server without persisting config.
+ * Creates a temporary client, connects, discovers tools, then tears down.
+ * @param {string} serverName - Display name (used for logging only)
+ * @param {object} serverConfig - Full server config (command, args, env, serverUrl, etc.)
+ * @returns {Promise<{ tools: Array }>}
+ */
+async function testConnection(serverName, serverConfig) {
+  if (!serverConfig || typeof serverConfig !== 'object') {
+    throw new Error('Server config is required')
+  }
+
+  console.log(`[MCP] Testing connection to "${serverName}" (no persist)...`)
+
+  let client = null
+  let transport = null
+
+  try {
+    transport = createTransport(serverConfig)
+    client = new Client(
+      { name: 'prompd', version: '0.1.0' },
+      { capabilities: {} }
+    )
+
+    await client.connect(transport)
+
+    // Discover tools
+    let tools = []
+    try {
+      const result = await client.listTools()
+      tools = (result.tools || []).map(t => ({
+        name: t.name,
+        description: t.description || '',
+        inputSchema: t.inputSchema || {},
+      }))
+      console.log(`[MCP] Test connection to "${serverName}" succeeded - ${tools.length} tools`)
+    } catch (err) {
+      console.warn(`[MCP] Test connected to "${serverName}" but tool listing failed:`, err.message)
+    }
+
+    return { tools }
+  } finally {
+    // Always tear down — this is a test, not a persistent connection
+    try {
+      if (client && typeof client.close === 'function') {
+        await client.close()
+      }
+    } catch { /* ignore cleanup errors */ }
+    try {
+      if (transport && typeof transport.close === 'function') {
+        await transport.close()
+      }
+    } catch { /* ignore cleanup errors */ }
+  }
+}
+
+/**
  * Disconnect from an MCP server.
  * @param {string} serverName
  */
@@ -726,6 +782,7 @@ module.exports = {
   // Connection pool
   connect,
   disconnect,
+  testConnection,
   listTools,
   callTool,
   getConnectionStatus,

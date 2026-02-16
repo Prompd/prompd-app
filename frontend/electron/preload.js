@@ -306,6 +306,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     listServers: () => ipcRenderer.invoke('mcp:listServers'),
     addServer: (name, config) => ipcRenderer.invoke('mcp:addServer', name, config),
     removeServer: (name) => ipcRenderer.invoke('mcp:removeServer', name),
+    testConnection: (serverName, config) => ipcRenderer.invoke('mcp:testConnection', serverName, config),
     connect: (serverName) => ipcRenderer.invoke('mcp:connect', serverName),
     disconnect: (serverName) => ipcRenderer.invoke('mcp:disconnect', serverName),
     listTools: (serverName) => ipcRenderer.invoke('mcp:listTools', serverName),
@@ -658,5 +659,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generated: {
     // Save a base64-encoded image to disk, returns { success, filePath, fileName }
     saveImage: (base64Data, mimeType) => ipcRenderer.invoke('generated:saveImage', base64Data, mimeType),
+    // List all generated resources grouped by type
+    list: () => ipcRenderer.invoke('generated:list'),
+    // Delete a generated resource by relative path
+    delete: (relativePath) => ipcRenderer.invoke('generated:delete', relativePath),
+    // Save text/code content as a generated resource
+    saveText: (content, ext) => ipcRenderer.invoke('generated:saveText', content, ext),
+  },
+
+  // App lifecycle — clean close with save/discard prompt
+  onBeforeQuit: (callback) => ipcRenderer.on('app:before-quit', callback),
+  readyToQuit: () => ipcRenderer.send('app:ready-to-quit'),
+
+  // Storage monitoring
+  storage: {
+    // Get localStorage usage info
+    getUsage: () => {
+      try {
+        const total = JSON.stringify(localStorage).length
+        return { usedBytes: total * 2, quotaBytes: 5 * 1024 * 1024 } // UTF-16 = 2 bytes/char, 5MB limit
+      } catch {
+        return { usedBytes: 0, quotaBytes: 5 * 1024 * 1024 }
+      }
+    }
   }
 })

@@ -233,6 +233,7 @@ interface UIActions {
   setBottomPanelHeight: (height: number) => void
   setBottomPanelPinned: (pinned: boolean) => void
   setBottomPanelMinimized: (minimized: boolean) => void
+  openBottomPanelMinimized: (tab: 'errors' | 'prompds' | 'workflows' | 'packages' | 'output') => void
 
   // Auto-save settings
   setAutoSaveEnabled: (enabled: boolean) => void
@@ -424,6 +425,9 @@ export const useUIStore = create<UIStore>()(
 
             // Get locally configured providers (those with API keys in config.yaml)
             let locallyConfiguredProviders: string[] = []
+            let localCustomProviders: Array<{ name: string; displayName: string; models: { id: string; name: string; contextWindow?: number }[]; isCustom: boolean }> = []
+            // Raw custom provider config for capability flags
+            let customProviderConfigs: Record<string, { models?: (string | { id: string; name?: string; supports_vision?: boolean; supports_tools?: boolean; supports_image_generation?: boolean; context_window?: number })[] }> = {}
             if ((window as any).electronAPI?.isElectron) {
               try {
                 const { localExecutor } = await import('../modules/services/localExecutor')
@@ -431,7 +435,20 @@ export const useUIStore = create<UIStore>()(
                 locallyConfiguredProviders = availableProviders
                   .filter(p => p.hasKey)
                   .map(p => p.name)
+                // Track custom providers separately for injection into pricing list
+                localCustomProviders = availableProviders
+                  .filter(p => (p as { isCustom?: boolean }).isCustom && p.hasKey)
+                  .map(p => ({ name: p.name, displayName: p.displayName, models: p.models, isCustom: true }))
+                // Load raw config for capability flags
+                try {
+                  const { configService } = await import('../modules/services/configService')
+                  const rawConfig = await configService.getConfig()
+                  customProviderConfigs = (rawConfig.custom_providers || {}) as typeof customProviderConfigs
+                } catch { /* ignore */ }
                 console.log('[uiStore] Locally configured providers:', locallyConfiguredProviders)
+                if (localCustomProviders.length > 0) {
+                  console.log('[uiStore] Custom providers:', localCustomProviders.map(p => p.name))
+                }
               } catch (error) {
                 console.warn('[uiStore] Failed to load local providers:', error)
               }
@@ -490,9 +507,40 @@ export const useUIStore = create<UIStore>()(
             ]
 
             // Filter defaults if we're in Electron and have local config
-            const defaultProvidersWithPricing = (window as any).electronAPI?.isElectron && locallyConfiguredProviders.length > 0
+            let defaultProvidersWithPricing = (window as any).electronAPI?.isElectron && locallyConfiguredProviders.length > 0
               ? allDefaultProvidersWithPricing.filter(p => locallyConfiguredProviders.includes(p.providerId))
               : allDefaultProvidersWithPricing
+
+            // Inject custom providers into defaults too
+            if (localCustomProviders.length > 0) {
+              const existingIds = new Set(defaultProvidersWithPricing.map(p => p.providerId))
+              for (const cp of localCustomProviders) {
+                if (!existingIds.has(cp.name)) {
+                  const rawModels = customProviderConfigs[cp.name]?.models || []
+                  defaultProvidersWithPricing = [...defaultProvidersWithPricing, {
+                    providerId: cp.name,
+                    displayName: cp.displayName,
+                    hasKey: true,
+                    isCustom: true,
+                    models: cp.models.map(m => {
+                      // Find matching raw config for capability flags
+                      const raw = rawModels.find(rm => typeof rm !== 'string' && rm.id === m.id)
+                      const caps = typeof raw === 'object' ? raw : null
+                      return {
+                        model: m.id,
+                        displayName: m.name,
+                        inputPrice: null,
+                        outputPrice: null,
+                        contextWindow: caps?.context_window,
+                        supportsVision: caps?.supports_vision,
+                        supportsTools: caps?.supports_tools,
+                        supportsImageGeneration: caps?.supports_image_generation
+                      }
+                    })
+                  }]
+                }
+              }
+            }
 
             try {
               const token = await getToken()
@@ -533,7 +581,6 @@ export const useUIStore = create<UIStore>()(
               const availableData = availableRes.ok ? await availableRes.json() : null
               console.log('[uiStore] Provider data:', providersData)
               console.log('[uiStore] Available data:', availableData)
-
               // Build providers with pricing from API response
               let providersWithPricing: ProviderWithPricing[] = defaultProvidersWithPricing
 
@@ -580,10 +627,39 @@ export const useUIStore = create<UIStore>()(
 
                 // Filter to only configured providers if in Electron
                 if ((window as any).electronAPI?.isElectron && locallyConfiguredProviders.length > 0) {
-                  console.log('[uiStore] Filtering providers to locally configured only')
                   providersWithPricing = providersWithPricing.filter(p =>
                     locallyConfiguredProviders.includes(p.providerId)
                   )
+                }
+
+                // Inject custom providers that aren't in the API response
+                if (localCustomProviders.length > 0) {
+                  const existingIds = new Set(providersWithPricing.map(p => p.providerId))
+                  for (const cp of localCustomProviders) {
+                    if (!existingIds.has(cp.name)) {
+                      const rawModels = customProviderConfigs[cp.name]?.models || []
+                      providersWithPricing.push({
+                        providerId: cp.name,
+                        displayName: cp.displayName,
+                        hasKey: true,
+                        isCustom: true,
+                        models: cp.models.map(m => {
+                          const raw = rawModels.find(rm => typeof rm !== 'string' && rm.id === m.id)
+                          const caps = typeof raw === 'object' ? raw : null
+                          return {
+                            model: m.id,
+                            displayName: m.name,
+                            inputPrice: null,
+                            outputPrice: null,
+                            contextWindow: caps?.context_window,
+                            supportsVision: caps?.supports_vision,
+                            supportsTools: caps?.supports_tools,
+                            supportsImageGeneration: caps?.supports_image_generation
+                          }
+                        })
+                      })
+                    }
+                  }
                 }
 
                 // Filter out disabled providers in Electron mode
@@ -602,11 +678,6 @@ export const useUIStore = create<UIStore>()(
                   }
                 }
 
-                console.log('[uiStore] Providers with pricing:', providersWithPricing.map(p => ({
-                  providerId: p.providerId,
-                  hasKey: p.hasKey,
-                  modelCount: p.models.length
-                })))
               }
 
               set((state) => {
@@ -858,6 +929,15 @@ export const useUIStore = create<UIStore>()(
 
           setBottomPanelMinimized: (minimized) => set((state) => {
             state.bottomPanelMinimized = minimized
+          }),
+
+          // Open bottom panel in minimized state (single atomic update)
+          openBottomPanelMinimized: (tab) => set((state) => {
+            if (!state.showBottomPanel) {
+              state.showBottomPanel = true
+              state.activeBottomTab = tab
+              state.bottomPanelMinimized = true
+            }
           }),
 
           // Auto-save settings

@@ -251,7 +251,7 @@ router.post('/publish', auth, upload.single('package'), async (req, res, next) =
   try {
     console.log('[Packages] Publish request received')
 
-    const { manifest } = req.body
+    const { manifest, registryApiKey, registryUrl: registryUrlOverride } = req.body
     const packageFile = req.file
 
     // SECURITY: Validate inputs
@@ -330,8 +330,11 @@ router.post('/publish', auth, upload.single('package'), async (req, res, next) =
 
     const userToken = authHeader.replace('Bearer ', '')
 
-    // Publish to registry
-    const registryUrl = process.env.PROMPD_REGISTRY_URL || 'https://registry.prompdhub.ai'
+    // Use registry-specific API key if provided, otherwise fall back to Clerk JWT
+    const publishToken = registryApiKey || userToken
+
+    // Use provided registry URL if specified, otherwise fall back to env/default
+    const registryUrl = registryUrlOverride || process.env.PROMPD_REGISTRY_URL || 'https://registry.prompdhub.ai'
     const endpoint = `${registryUrl}/packages/${encodeURIComponent(manifestData.name)}`
 
     console.log(`[Packages] Publishing to registry: ${endpoint}`)
@@ -349,7 +352,7 @@ router.post('/publish', auth, upload.single('package'), async (req, res, next) =
     const response = await fetch(endpoint, {
       method: 'PUT',
       headers: {
-        'Authorization': `Bearer ${userToken}`,
+        'Authorization': `Bearer ${publishToken}`,
         ...formData.getHeaders()
       },
       body: formData

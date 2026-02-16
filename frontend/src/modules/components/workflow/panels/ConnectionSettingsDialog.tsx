@@ -226,16 +226,27 @@ async function testConnection(connection: WorkflowConnection): Promise<{ success
       }
 
       case 'mcp-server': {
-        // Use Electron IPC to test MCP server
-        if (window.electronAPI?.testMCPConnection) {
+        // Use MCP service testConnection (tests without persisting config)
+        if (window.electronAPI?.mcp?.testConnection) {
           const mcpConfig = config as McpServerConnectionConfig
-          if (!mcpConfig.serverUrl) {
-            return { success: false, message: 'Server URL is required' }
+          const serverName = mcpConfig.serverName || connection.name
+          if (!mcpConfig.command && !mcpConfig.serverUrl) {
+            return { success: false, message: 'Server command or URL is required' }
           }
-          const result = await window.electronAPI.testMCPConnection({
+          // Map connection transport to MCP config transport (exclude 'websocket' — not supported by MCP SDK)
+          const mcpTransport = mcpConfig.transport === 'websocket' ? 'streamable-http' : mcpConfig.transport
+          const result = await window.electronAPI.mcp.testConnection(serverName, {
+            command: mcpConfig.command,
+            args: mcpConfig.args,
             serverUrl: mcpConfig.serverUrl,
+            transport: mcpTransport,
+            env: mcpConfig.env,
           })
-          return result
+          if (result.success) {
+            const toolCount = result.tools?.length || 0
+            return { success: true, message: `Connected - ${toolCount} tool${toolCount !== 1 ? 's' : ''} discovered` }
+          }
+          return { success: false, message: result.error || 'Connection failed' }
         }
         return { success: false, message: 'MCP testing requires the desktop app' }
       }

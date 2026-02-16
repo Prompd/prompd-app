@@ -11,7 +11,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Check, Zap, DollarSign, FileText, Key } from 'lucide-react'
+import { ChevronDown, Check, Zap, DollarSign, FileText, Key, Eye, Wrench, ImageIcon } from 'lucide-react'
 import type { ProviderWithPricing, ModelWithPricing } from '../../stores/uiStore'
 import { formatPricePerMillion } from '../lib/formatters'
 
@@ -75,9 +75,9 @@ export function ProviderModelSelector({
   const providerButtonRef = useRef<HTMLButtonElement>(null)
   const modelButtonRef = useRef<HTMLButtonElement>(null)
 
-  // Filter to providers with keys configured only
+  // Filter to providers with keys configured, or custom providers (which may not need a key)
   const availableProviders = useMemo(() => {
-    return providers.filter(p => p.hasKey)
+    return providers.filter(p => p.hasKey || p.isCustom)
   }, [providers])
 
   // Use tabs if <= 3 providers and not forced to dropdown, otherwise dropdown
@@ -585,28 +585,21 @@ export function ProviderModelSelector({
                         </span>
                       )}
                     </div>
-                    {/* Feature badges on the right */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    {/* Feature icons on the right */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                       {model.supportsVision && (
-                        <span style={{
-                          fontSize: '9px',
-                          background: 'rgba(139, 92, 246, 0.2)',
-                          color: '#8b5cf6',
-                          padding: '2px 5px',
-                          borderRadius: '3px'
-                        }}>
-                          Vision
+                        <span title="Supports vision (image input)" style={{ color: '#8b5cf6', display: 'flex' }}>
+                          <Eye size={13} />
                         </span>
                       )}
                       {model.supportsTools && (
-                        <span style={{
-                          fontSize: '9px',
-                          background: 'rgba(59, 130, 246, 0.2)',
-                          color: '#3b82f6',
-                          padding: '2px 5px',
-                          borderRadius: '3px'
-                        }}>
-                          Tools
+                        <span title="Supports tool use" style={{ color: '#3b82f6', display: 'flex' }}>
+                          <Wrench size={13} />
+                        </span>
+                      )}
+                      {model.supportsImageGeneration && (
+                        <span title="Supports image generation" style={{ color: '#f59e0b', display: 'flex' }}>
+                          <ImageIcon size={13} />
                         </span>
                       )}
                     </div>

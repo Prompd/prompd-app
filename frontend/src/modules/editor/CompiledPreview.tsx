@@ -740,6 +740,27 @@ export function CompiledPreview({
       })
     }
 
+    // Add context sections if visible
+    if (showContextSections && fileSections.length > 0) {
+      sections.push({
+        id: 'context-section',
+        type: 'context',
+        label: 'Context Sections',
+        depth: 0
+      })
+      fileSections.forEach((fs) => {
+        const files = fileSectionsValue.get(fs.name) || []
+        if (files.length > 0) {
+          sections.push({
+            id: `context-${fs.name}`,
+            type: 'context',
+            label: `${fs.label} (${files.length})`,
+            depth: 1
+          })
+        }
+      })
+    }
+
     // Add content section
     if (displayContent) {
       sections.push({
@@ -874,7 +895,7 @@ export function CompiledPreview({
     }
 
     return sections
-  }, [showParameters, parsedParams, displayContent, isXmlContent])
+  }, [showParameters, parsedParams, showContextSections, fileSections, fileSectionsValue, displayContent, isXmlContent])
 
   // Scroll to a section when clicked in minimap
   const scrollToSection = useCallback((sectionId: string) => {
@@ -889,6 +910,16 @@ export function CompiledPreview({
           element.scrollIntoView({ behavior: 'smooth', block: 'start' })
         }
       }, delay)
+    }
+
+    // Context sections — expand the context tab and scroll to it
+    if (sectionId === 'context-section' || sectionId.startsWith('context-')) {
+      const needsExpand = activeControlsTab !== 'context'
+      if (needsExpand) {
+        setActiveControlsTab('context')
+      }
+      scrollTo('[data-section="context"]', needsExpand ? 100 : 0)
+      return
     }
 
     // For params-section, scroll to the parameters area and expand the params tab
@@ -929,9 +960,18 @@ export function CompiledPreview({
       return
     }
 
-    // For headings, scroll to the content section
+    // For headings, find the actual heading element in the rendered content
     if (sectionId.startsWith('heading-')) {
-      scrollTo('[data-section="content"]', 0)
+      const index = parseInt(sectionId.replace('heading-', ''), 10)
+      if (!isNaN(index)) {
+        const headings = container.querySelectorAll('[data-section="content"] h1, [data-section="content"] h2, [data-section="content"] h3, [data-section="content"] h4, [data-section="content"] h5, [data-section="content"] h6')
+        if (index < headings.length) {
+          headings[index].scrollIntoView({ behavior: 'smooth', block: 'start' })
+        } else {
+          scrollTo('[data-section="content"]', 0)
+        }
+      }
+      return
     }
   }, [activeControlsTab])
 
@@ -1497,7 +1537,7 @@ export function CompiledPreview({
 
               {/* Expanded content */}
               {activeControlsTab === 'context' && showContextSections && fileSections.length > 0 && (
-                <div style={{ padding: '10px 12px' }}>
+                <div data-section="context" style={{ padding: '10px 12px' }}>
                   <PrompdContextArea
                     sections={fileSections}
                     value={fileSectionsValue}
