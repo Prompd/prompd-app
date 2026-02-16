@@ -16,6 +16,7 @@ import {
   CustomProviderConfig
 } from '../services/aiApi'
 import { configService } from '../services/configService'
+import { prompdSettings } from '../services/prompdSettings'
 import { usePrompdUsage, formatCost, formatTokens } from '@prompd/react'
 import type { NamespaceInfo } from '../services/namespacesApi'
 import { useConfirmDialog } from './ConfirmDialog'
@@ -2232,6 +2233,11 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
                                     config.registry = config.registry || { default: 'prompdhub', registries: {} }
                                     config.registry.default = registry.name
                                     await configService.saveConfig(config)
+                                    // Propagate URL change to registryApi, namespacesApi, etc.
+                                    const newUrl = config.registry.registries?.[registry.name]?.url
+                                    if (newUrl) {
+                                      prompdSettings.setRegistryUrl(newUrl)
+                                    }
                                     setRegistries(prev => prev.map(r => ({
                                       ...r,
                                       isDefault: r.name === registry.name
@@ -2275,6 +2281,9 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
                                     }
                                     if (config.registry?.default === registry.name) {
                                       config.registry.default = 'prompdhub'
+                                      // Revert to prompdhub URL
+                                      const prompdUrl = config.registry.registries?.prompdhub?.url || 'https://registry.prompdhub.ai'
+                                      prompdSettings.setRegistryUrl(prompdUrl)
                                     }
                                     await configService.saveConfig(config)
                                     setRegistries(prev => prev.filter(r => r.name !== registry.name))

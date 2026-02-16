@@ -330,7 +330,8 @@ class RegistryApiClient {
   }
 
   private async performRequest<T>(endpoint: string, params?: Record<string, string>, etag?: string): Promise<T> {
-    const url = new URL(endpoint, this.baseUrl)
+    const baseUrl = await this.ensureBaseUrl()
+    const url = new URL(endpoint, baseUrl)
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         url.searchParams.set(key, value)

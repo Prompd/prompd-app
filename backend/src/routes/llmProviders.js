@@ -17,8 +17,7 @@ const PROVIDER_KEY_PREFIXES = {
   cohere: '',
   together: '',
   perplexity: 'pplx-',
-  deepseek: 'sk-',
-  ollama: '' // Local, may not need key
+  deepseek: 'sk-'
 }
 
 /**
