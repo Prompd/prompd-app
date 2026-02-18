@@ -297,6 +297,7 @@ export const LoopNode = memo(({ id, data, selected }: LoopNodeProps) => {
       id={id}
       selected={selected}
       disabled={nodeData.disabled}
+      locked={nodeData.locked}
       isCollapsed={isCollapsed}
       onToggleCollapsed={toggleCollapsed}
       colorVar="cyan"

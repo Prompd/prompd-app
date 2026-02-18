@@ -39,13 +39,6 @@ const DEFAULT_PROVIDERS = [
     displayName: 'Groq',
     baseUrl: 'https://api.groq.com/openai/v1',
     models: ['llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it']
-  },
-  {
-    providerId: 'ollama',
-    name: 'ollama',
-    displayName: 'Ollama (Local)',
-    baseUrl: 'http://localhost:11434/v1',
-    models: ['llama3.2', 'qwen2.5', 'codellama', 'mistral']
   }
 ]
 

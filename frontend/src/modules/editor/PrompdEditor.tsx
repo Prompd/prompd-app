@@ -1194,6 +1194,21 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
       return
     }
 
+    // Check if it's a resource from the ResourcePanel
+    const resourceData = e.dataTransfer.getData('application/x-prompd-resource')
+    if (resourceData) {
+      try {
+        const resource = JSON.parse(resourceData)
+        // Insert markdown at cursor or append to body
+        const markdown = resource.markdown || resource.protocolUrl
+        // Append to end of document body
+        onChange(value + '\n' + markdown)
+      } catch (err) {
+        console.error('Failed to handle resource drop:', err)
+      }
+      return
+    }
+
     // Otherwise, handle as file upload
     const file = e.dataTransfer.files?.[0]
     if (file) {

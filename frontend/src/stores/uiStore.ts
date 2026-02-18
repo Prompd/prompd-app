@@ -26,6 +26,7 @@ export interface ModelWithPricing {
   contextWindow?: number
   supportsVision?: boolean
   supportsTools?: boolean
+  supportsImageGeneration?: boolean
 }
 
 /**
@@ -146,6 +147,9 @@ interface UIState {
 
   // Auto-save settings
   autoSaveEnabled: boolean
+
+  // Analytics (GA4) opt-in
+  analyticsEnabled: boolean
 }
 
 /**
@@ -229,9 +233,13 @@ interface UIActions {
   setBottomPanelHeight: (height: number) => void
   setBottomPanelPinned: (pinned: boolean) => void
   setBottomPanelMinimized: (minimized: boolean) => void
+  openBottomPanelMinimized: (tab: 'errors' | 'prompds' | 'workflows' | 'packages' | 'output') => void
 
   // Auto-save settings
   setAutoSaveEnabled: (enabled: boolean) => void
+
+  // Analytics (GA4) opt-in
+  setAnalyticsEnabled: (enabled: boolean) => void
 }
 
 type UIStore = UIState & UIActions
@@ -282,6 +290,7 @@ export const useUIStore = create<UIStore>()(
           bottomPanelPinned: false,
           bottomPanelMinimized: false,
           autoSaveEnabled: true, // Default to enabled
+          analyticsEnabled: false, // Default to disabled (opt-in)
 
           // View mode
           setMode: (mode) => set((state) => {
@@ -416,6 +425,9 @@ export const useUIStore = create<UIStore>()(
 
             // Get locally configured providers (those with API keys in config.yaml)
             let locallyConfiguredProviders: string[] = []
+            let localCustomProviders: Array<{ name: string; displayName: string; models: { id: string; name: string; contextWindow?: number }[]; isCustom: boolean }> = []
+            // Raw custom provider config for capability flags
+            let customProviderConfigs: Record<string, { models?: (string | { id: string; name?: string; supports_vision?: boolean; supports_tools?: boolean; supports_image_generation?: boolean; context_window?: number })[] }> = {}
             if ((window as any).electronAPI?.isElectron) {
               try {
                 const { localExecutor } = await import('../modules/services/localExecutor')
@@ -423,7 +435,20 @@ export const useUIStore = create<UIStore>()(
                 locallyConfiguredProviders = availableProviders
                   .filter(p => p.hasKey)
                   .map(p => p.name)
+                // Track custom providers separately for injection into pricing list
+                localCustomProviders = availableProviders
+                  .filter(p => (p as { isCustom?: boolean }).isCustom && p.hasKey)
+                  .map(p => ({ name: p.name, displayName: p.displayName, models: p.models, isCustom: true }))
+                // Load raw config for capability flags
+                try {
+                  const { configService } = await import('../modules/services/configService')
+                  const rawConfig = await configService.getConfig()
+                  customProviderConfigs = (rawConfig.custom_providers || {}) as typeof customProviderConfigs
+                } catch { /* ignore */ }
                 console.log('[uiStore] Locally configured providers:', locallyConfiguredProviders)
+                if (localCustomProviders.length > 0) {
+                  console.log('[uiStore] Custom providers:', localCustomProviders.map(p => p.name))
+                }
               } catch (error) {
                 console.warn('[uiStore] Failed to load local providers:', error)
               }
@@ -462,9 +487,9 @@ export const useUIStore = create<UIStore>()(
                 hasKey: true,
                 isCustom: false,
                 models: [
-                  { model: 'claude-haiku-4-5-20251015', displayName: 'Claude Haiku 4.5', inputPrice: 0.80, outputPrice: 4.00 },
-                  { model: 'claude-sonnet-4-5-20250929', displayName: 'Claude Sonnet 4.5', inputPrice: 3.00, outputPrice: 15.00 },
-                  { model: 'claude-opus-4-5-20251101', displayName: 'Claude Opus 4.5', inputPrice: 15.00, outputPrice: 75.00 }
+                  { model: 'claude-haiku-4-5-20251015', displayName: 'Claude Haiku 4.5', inputPrice: 0.80, outputPrice: 4.00, supportsImageGeneration: false },
+                  { model: 'claude-sonnet-4-5-20250929', displayName: 'Claude Sonnet 4.5', inputPrice: 3.00, outputPrice: 15.00, supportsImageGeneration: false },
+                  { model: 'claude-opus-4-5-20251101', displayName: 'Claude Opus 4.5', inputPrice: 15.00, outputPrice: 75.00, supportsImageGeneration: false }
                 ]
               },
               {
@@ -473,18 +498,49 @@ export const useUIStore = create<UIStore>()(
                 hasKey: true,
                 isCustom: false,
                 models: [
-                  { model: 'gpt-4o-mini', displayName: 'GPT-4o Mini', inputPrice: 0.15, outputPrice: 0.60 },
-                  { model: 'gpt-4o', displayName: 'GPT-4o', inputPrice: 2.50, outputPrice: 10.00 },
-                  { model: 'gpt-4.1-nano', displayName: 'GPT-4.1 Nano', inputPrice: 0.10, outputPrice: 0.40 },
-                  { model: 'gpt-4.1-mini', displayName: 'GPT-4.1 Mini', inputPrice: 0.40, outputPrice: 1.60 }
+                  { model: 'gpt-4o-mini', displayName: 'GPT-4o Mini', inputPrice: 0.15, outputPrice: 0.60, supportsImageGeneration: true },
+                  { model: 'gpt-4o', displayName: 'GPT-4o', inputPrice: 2.50, outputPrice: 10.00, supportsImageGeneration: true },
+                  { model: 'gpt-4.1-nano', displayName: 'GPT-4.1 Nano', inputPrice: 0.10, outputPrice: 0.40, supportsImageGeneration: true },
+                  { model: 'gpt-4.1-mini', displayName: 'GPT-4.1 Mini', inputPrice: 0.40, outputPrice: 1.60, supportsImageGeneration: true }
                 ]
               }
             ]
 
             // Filter defaults if we're in Electron and have local config
-            const defaultProvidersWithPricing = (window as any).electronAPI?.isElectron && locallyConfiguredProviders.length > 0
+            let defaultProvidersWithPricing = (window as any).electronAPI?.isElectron && locallyConfiguredProviders.length > 0
               ? allDefaultProvidersWithPricing.filter(p => locallyConfiguredProviders.includes(p.providerId))
               : allDefaultProvidersWithPricing
+
+            // Inject custom providers into defaults too
+            if (localCustomProviders.length > 0) {
+              const existingIds = new Set(defaultProvidersWithPricing.map(p => p.providerId))
+              for (const cp of localCustomProviders) {
+                if (!existingIds.has(cp.name)) {
+                  const rawModels = customProviderConfigs[cp.name]?.models || []
+                  defaultProvidersWithPricing = [...defaultProvidersWithPricing, {
+                    providerId: cp.name,
+                    displayName: cp.displayName,
+                    hasKey: true,
+                    isCustom: true,
+                    models: cp.models.map(m => {
+                      // Find matching raw config for capability flags
+                      const raw = rawModels.find(rm => typeof rm !== 'string' && rm.id === m.id)
+                      const caps = typeof raw === 'object' ? raw : null
+                      return {
+                        model: m.id,
+                        displayName: m.name,
+                        inputPrice: null,
+                        outputPrice: null,
+                        contextWindow: caps?.context_window,
+                        supportsVision: caps?.supports_vision,
+                        supportsTools: caps?.supports_tools,
+                        supportsImageGeneration: caps?.supports_image_generation
+                      }
+                    })
+                  }]
+                }
+              }
+            }
 
             try {
               const token = await getToken()
@@ -525,7 +581,6 @@ export const useUIStore = create<UIStore>()(
               const availableData = availableRes.ok ? await availableRes.json() : null
               console.log('[uiStore] Provider data:', providersData)
               console.log('[uiStore] Available data:', availableData)
-
               // Build providers with pricing from API response
               let providersWithPricing: ProviderWithPricing[] = defaultProvidersWithPricing
 
@@ -544,7 +599,8 @@ export const useUIStore = create<UIStore>()(
                     outputPrice: m.outputPrice,
                     contextWindow: m.contextWindow,
                     supportsVision: m.supportsVision,
-                    supportsTools: m.supportsTools
+                    supportsTools: m.supportsTools,
+                    supportsImageGeneration: m.supportsImageGeneration || false
                   }))
 
                   // If API returned empty models, use default models for known providers
@@ -571,10 +627,39 @@ export const useUIStore = create<UIStore>()(
 
                 // Filter to only configured providers if in Electron
                 if ((window as any).electronAPI?.isElectron && locallyConfiguredProviders.length > 0) {
-                  console.log('[uiStore] Filtering providers to locally configured only')
                   providersWithPricing = providersWithPricing.filter(p =>
                     locallyConfiguredProviders.includes(p.providerId)
                   )
+                }
+
+                // Inject custom providers that aren't in the API response
+                if (localCustomProviders.length > 0) {
+                  const existingIds = new Set(providersWithPricing.map(p => p.providerId))
+                  for (const cp of localCustomProviders) {
+                    if (!existingIds.has(cp.name)) {
+                      const rawModels = customProviderConfigs[cp.name]?.models || []
+                      providersWithPricing.push({
+                        providerId: cp.name,
+                        displayName: cp.displayName,
+                        hasKey: true,
+                        isCustom: true,
+                        models: cp.models.map(m => {
+                          const raw = rawModels.find(rm => typeof rm !== 'string' && rm.id === m.id)
+                          const caps = typeof raw === 'object' ? raw : null
+                          return {
+                            model: m.id,
+                            displayName: m.name,
+                            inputPrice: null,
+                            outputPrice: null,
+                            contextWindow: caps?.context_window,
+                            supportsVision: caps?.supports_vision,
+                            supportsTools: caps?.supports_tools,
+                            supportsImageGeneration: caps?.supports_image_generation
+                          }
+                        })
+                      })
+                    }
+                  }
                 }
 
                 // Filter out disabled providers in Electron mode
@@ -593,11 +678,6 @@ export const useUIStore = create<UIStore>()(
                   }
                 }
 
-                console.log('[uiStore] Providers with pricing:', providersWithPricing.map(p => ({
-                  providerId: p.providerId,
-                  hasKey: p.hasKey,
-                  modelCount: p.models.length
-                })))
               }
 
               set((state) => {
@@ -851,9 +931,25 @@ export const useUIStore = create<UIStore>()(
             state.bottomPanelMinimized = minimized
           }),
 
+          // Open bottom panel in minimized state (single atomic update)
+          openBottomPanelMinimized: (tab) => set((state) => {
+            if (!state.showBottomPanel) {
+              state.showBottomPanel = true
+              state.activeBottomTab = tab
+              state.bottomPanelMinimized = true
+            }
+          }),
+
           // Auto-save settings
           setAutoSaveEnabled: (enabled) => set((state) => {
             state.autoSaveEnabled = enabled
+          }),
+
+          // Analytics (GA4) opt-in
+          setAnalyticsEnabled: (enabled) => set((state) => {
+            state.analyticsEnabled = enabled
+            // Sync to main process immediately
+            window.electronAPI?.analytics?.setEnabled(enabled)
           }),
 
           refreshLLMProviders: async (getToken) => {
@@ -892,7 +988,8 @@ export const useUIStore = create<UIStore>()(
             bottomPanelHeight: state.bottomPanelHeight,
             bottomPanelPinned: state.bottomPanelPinned,
             bottomPanelMinimized: state.bottomPanelMinimized,
-            autoSaveEnabled: state.autoSaveEnabled
+            autoSaveEnabled: state.autoSaveEnabled,
+            analyticsEnabled: state.analyticsEnabled,
           }),
           // After hydration, set mode from defaultViewMode so the app opens in user's preferred view
           onRehydrateStorage: () => (state) => {
@@ -927,3 +1024,4 @@ export const selectBuildPanelPinned = (state: UIStore) => state.buildPanelPinned
 export const selectShowWorkflowPanel = (state: UIStore) => state.showWorkflowPanel
 export const selectWorkflowPanelPinned = (state: UIStore) => state.workflowPanelPinned
 export const selectAutoSaveEnabled = (state: UIStore) => state.autoSaveEnabled
+export const selectAnalyticsEnabled = (state: UIStore) => state.analyticsEnabled

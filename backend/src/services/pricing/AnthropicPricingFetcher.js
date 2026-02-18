@@ -68,6 +68,11 @@ export class AnthropicPricingFetcher extends BasePricingFetcher {
     }
   }
 
+  /**
+   * Anthropic: No Claude models currently support native image generation.
+   * Base class default (false) applies.
+   */
+
   getDefaultPricing() {
     // Pricing as of February 2026 - https://platform.claude.com/docs/en/about-claude/pricing
     return [

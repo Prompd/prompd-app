@@ -81,6 +81,8 @@ export type WorkflowNodeType =
   | 'memory'          // Memory node: KV store, conversation history, or cache
   | 'output'
   | 'web-search'      // Web search node: search the web via configurable provider
+  | 'database-query'  // Database query execution node
+  // --- Add new node types here ---
 
 export interface WorkflowNode {
   id: string
@@ -178,6 +180,9 @@ export const DOCKABLE_HANDLES: Array<{
   // Web Search node - accepts checkpoint/callback for search event logging
   { nodeType: 'web-search', handleId: 'onCheckpoint', position: { side: 'bottom', topPercent: 100 }, acceptsTypes: ['callback', 'checkpoint'] },
 
+  // Error Handler node - accepts checkpoint/callback on error events
+  { nodeType: 'error-handler', handleId: 'onError', position: { side: 'bottom', topPercent: 100 }, acceptsTypes: ['callback', 'checkpoint'] },
+
   // Tool Call Router node - accepts tool nodes for docking
   { nodeType: 'tool-call-router', handleId: 'ai-input', position: { side: 'left', topPercent: 35 }, acceptsTypes: ['tool'] },
 
@@ -189,6 +194,10 @@ export const DOCKABLE_HANDLES: Array<{
 
   // Loop node - accepts tool-call-router nodes for container-to-container docking
   { nodeType: 'loop', handleId: 'toolResult', position: { side: 'left', topPercent: 50 }, acceptsTypes: ['tool-call-router'] },
+
+  // Database Query node - accepts memory for state, callback for logging
+  { nodeType: 'database-query', handleId: 'onExecute', position: { side: 'bottom', topPercent: 100 }, acceptsTypes: ['memory', 'callback'] },
+  // --- Add new dockable handle entries here ---
 ]
 
 // ============================================================================
@@ -285,6 +294,8 @@ export interface PromptNodeData extends BaseNodeData {
   outputSchema?: JsonSchema
   /** Guardrail configuration (for content filtering/validation) */
   guardrail?: {
+    /** Whether the guardrail is enabled */
+    enabled?: boolean
     /** Output mode when guardrail passes */
     outputMode?: 'passthrough' | 'original' | 'reject-message'
     /** Expected response format from LLM */
@@ -921,6 +932,38 @@ export interface CommandNodeData extends BaseNodeData {
 
   /** Description shown in approval dialog */
   approvalMessage?: string
+}
+
+/**
+ * DatabaseQueryNodeData - Execute queries against a database connection
+ *
+ * Uses the connection system to select which database to query.
+ * Supports SQL (PostgreSQL, MySQL, SQLite), MongoDB JSON queries, and Redis commands.
+ */
+export interface DatabaseQueryNodeData extends BaseNodeData {
+  /** Reference to a saved database connection */
+  connectionId: string
+
+  /** Type of query operation */
+  queryType: 'select' | 'insert' | 'update' | 'delete' | 'raw' | 'aggregate'
+
+  /** SQL query, MongoDB JSON query, or Redis command */
+  query: string
+
+  /** JSON-encoded parameter array for parameterized queries (e.g. ["value1", 42]) */
+  parameters?: string
+
+  /** MongoDB collection name (only used for MongoDB connections) */
+  collection?: string
+
+  /** Maximum number of result rows to return (default 1000) */
+  maxRows?: number
+
+  /** Query timeout in milliseconds (default 30000) */
+  timeoutMs?: number
+
+  /** Description of what this query does */
+  description?: string
 }
 
 /**
@@ -2074,11 +2117,14 @@ export type WorkflowConnectionStatus = 'disconnected' | 'connecting' | 'connecte
  * Stored separately from workflow nodes - connections are workflow-scoped resources
  * that can be referenced by multiple nodes via connectionId.
  */
+export type ConnectionScope = 'global' | 'workspace'
+
 export interface WorkflowConnection {
   id: string
   name: string
   type: WorkflowConnectionType
   status: WorkflowConnectionStatus
+  scope: ConnectionScope
   lastConnected?: number
   lastError?: string
   config: WorkflowConnectionConfig
@@ -2140,9 +2186,13 @@ export interface GitHubConnectionConfig {
 
 export interface McpServerConnectionConfig {
   type: 'mcp-server'
-  serverUrl: string
+  serverUrl?: string
   serverName: string
-  transport: 'stdio' | 'http' | 'websocket'
+  transport: 'stdio' | 'http' | 'websocket' | 'streamable-http'
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  registryRef?: string
 }
 
 export interface WebSocketConnectionConfig {

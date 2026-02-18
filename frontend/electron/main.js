@@ -11,7 +11,7 @@ try {
   console.log('[Electron] Running without dotenv (production mode)')
 }
 
-const { app, BrowserWindow, ipcMain, dialog, Menu, shell, powerMonitor, net } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell, powerMonitor, net, protocol, nativeTheme, clipboard } = require('electron')
 const fs = require('fs-extra')
 const os = require('os')
 
@@ -24,6 +24,18 @@ function getAutoUpdater() {
   return autoUpdater
 }
 
+// Modular IPC registration (new pattern — migrate others here over time)
+const { McpIpcRegistration } = require('./ipc/McpIpcRegistration')
+const { McpServerIpcRegistration } = require('./ipc/McpServerIpcRegistration')
+const { TemplateIpcRegistration } = require('./ipc/TemplateIpcRegistration')
+const mcpService = require('./services/mcpService')
+const { mcpServerService } = require('./services/mcpServerService')
+const ipcModules = [
+  new McpIpcRegistration(),
+  new McpServerIpcRegistration(),
+  new TemplateIpcRegistration(),
+]
+
 // Tray and trigger services for background workflow execution
 const { trayManager } = require('./tray')
 const { DeploymentService } = require('@prompd/scheduler')
@@ -31,6 +43,7 @@ const { DeploymentService } = require('@prompd/scheduler')
 const { spawn } = require('child_process')
 const { Worker } = require('worker_threads')
 const yaml = require('yaml')
+const analytics = require('./services/analytics')
 
 // Lazy-loaded @prompd/cli compiler (ESM module, loaded on first use)
 let prompdCliModule = null
@@ -61,6 +74,12 @@ try {
 } catch (e) {
   // electron-squirrel-startup not available (NSIS installer), which is fine
 }
+
+// Register custom protocol scheme for serving generated content (images, etc.)
+// Must be called before app.whenReady() per Electron docs
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'prompd-gen', privileges: { bypassCSP: true, supportFetchAPI: true, stream: true, standard: true, secure: true } }
+])
 
 let mainWindow
 let currentWorkspacePath = null  // Track the current workspace path for git operations
@@ -94,11 +113,17 @@ if (!process.env.CLERK_OAUTH_CLIENT_ID || !process.env.CLERK_FRONTEND_API) {
 // Update window title based on workspace
 function updateWindowTitle() {
   if (!mainWindow) return
+  let title
   if (currentWorkspacePath) {
     const folderName = path.basename(currentWorkspacePath)
-    mainWindow.setTitle(`Prompd - ${folderName}`)
+    title = `Prompd - ${folderName}`
   } else {
-    mainWindow.setTitle('Prompd')
+    title = 'Prompd'
+  }
+  mainWindow.setTitle(title)
+  // Notify renderer for custom title bar
+  if (!mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('window-title-changed', title)
   }
 }
 
@@ -193,7 +218,14 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 768,
     icon: iconPath,
-    autoHideMenuBar: false, // Always show menu bar
+    // Custom title bar: hide native title bar, show OS window controls as overlay
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#0f172a',
+      symbolColor: '#f1f5f9',
+      height: 39
+    },
+    autoHideMenuBar: true, // Hide native menu bar (keep for keyboard accelerators)
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -202,7 +234,7 @@ function createWindow() {
       userAgent: `Prompd/${app.getVersion()} (${os.type()} ${os.arch()}) Electron/${process.versions.electron}`
     },
     title: 'Prompd',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#0b1220',
     show: false // Don't show until ready
   })
 
@@ -246,34 +278,44 @@ function createWindow() {
     mainWindow = null
   })
 
-  // Context menu for input fields (right-click cut/copy/paste)
+  // Context menu for input fields (right-click cut/copy/paste + spellcheck)
   mainWindow.webContents.on('context-menu', (_event, params) => {
-    const { isEditable, selectionText, editFlags } = params
+    const { isEditable, selectionText, editFlags, misspelledWord, dictionarySuggestions } = params
 
     if (isEditable) {
-      const contextMenu = Menu.buildFromTemplate([
-        {
-          label: 'Cut',
-          role: 'cut',
-          enabled: editFlags.canCut
-        },
-        {
-          label: 'Copy',
-          role: 'copy',
-          enabled: editFlags.canCopy
-        },
-        {
-          label: 'Paste',
-          role: 'paste',
-          enabled: editFlags.canPaste
-        },
-        { type: 'separator' },
-        {
-          label: 'Select All',
-          role: 'selectAll',
-          enabled: editFlags.canSelectAll
+      const menuItems = []
+
+      // Spelling suggestions when a misspelled word is detected
+      if (misspelledWord) {
+        if (dictionarySuggestions.length > 0) {
+          for (const suggestion of dictionarySuggestions) {
+            menuItems.push({
+              label: suggestion,
+              click: () => mainWindow.webContents.replaceMisspelling(suggestion)
+            })
+          }
+        } else {
+          menuItems.push({ label: 'No suggestions', enabled: false })
         }
-      ])
+        menuItems.push(
+          { type: 'separator' },
+          {
+            label: 'Add to Dictionary',
+            click: () => mainWindow.webContents.session.addWordToSpellCheckerDictionary(misspelledWord)
+          },
+          { type: 'separator' }
+        )
+      }
+
+      menuItems.push(
+        { label: 'Cut', role: 'cut', enabled: editFlags.canCut },
+        { label: 'Copy', role: 'copy', enabled: editFlags.canCopy },
+        { label: 'Paste', role: 'paste', enabled: editFlags.canPaste },
+        { type: 'separator' },
+        { label: 'Select All', role: 'selectAll', enabled: editFlags.canSelectAll }
+      )
+
+      const contextMenu = Menu.buildFromTemplate(menuItems)
       contextMenu.popup()
     } else if (selectionText) {
       // Non-editable text selection - just offer copy
@@ -738,6 +780,10 @@ function createMenu() {
 
   const menu = Menu.buildFromTemplate(template)
   Menu.setApplicationMenu(menu)
+  // Hide native menu bar but keep accelerators working
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setMenuBarVisibility(false)
+  }
 }
 
 // This method will be called when Electron has finished initialization
@@ -749,6 +795,24 @@ app.whenReady().then(() => {
   console.log('[Electron] Platform:', process.platform)
   console.log('[Electron] Node version:', process.version)
   console.log('[Electron] Electron version:', process.versions.electron)
+
+  // Register prompd-gen:// protocol to serve generated content from ~/.prompd/generated/
+  // This allows <img src="prompd-gen://images/abc123.png"> to load persisted images
+  // without file:// restrictions or CSP issues
+  protocol.handle('prompd-gen', (request) => {
+    // URL format: prompd-gen://images/filename.png → ~/.prompd/generated/images/filename.png
+    const url = new URL(request.url)
+    const relativePath = decodeURIComponent(url.hostname + url.pathname)
+    // Security: block path traversal
+    if (relativePath.includes('..')) {
+      return new Response('Forbidden', { status: 403 })
+    }
+    const filePath = path.join(os.homedir(), '.prompd', 'generated', relativePath)
+    // On Windows, path.join uses backslashes which break file:// URLs
+    const fileUrl = `file:///${filePath.replace(/\\/g, '/')}`
+    return net.fetch(fileUrl)
+  })
+  console.log('[Electron] Registered prompd-gen:// protocol')
 
   // Hide the default menu during loading - menu is shown when user authenticates
   Menu.setApplicationMenu(null)
@@ -764,6 +828,17 @@ app.whenReady().then(() => {
     console.log('[Electron] Checking for updates...')
     getAutoUpdater().checkForUpdatesAndNotify()
   }
+
+  // Initialize GA4 analytics (opt-in, anonymous)
+  // These are write-only credentials (can only send events, not read data).
+  // Safe to ship with the app — same as any website's GA tracking snippet.
+  // User preference is sent from renderer via analytics:setEnabled IPC
+  analytics.init({
+    measurementId: process.env.GA4_MEASUREMENT_ID || 'G-J7DDP24RMN',
+    apiSecret: process.env.GA4_API_SECRET || 'av2bdFP6QkCSyw8lWqMq5A',
+    appVersion: app.getVersion(),
+    enabled: false, // Always start disabled; renderer sends opt-in state
+  })
 
   // Power monitor events - notify renderer about sleep/wake to prevent unwanted reloads
   powerMonitor.on('suspend', () => {
@@ -927,6 +1002,33 @@ app.whenReady().then(() => {
       executeWorkflow: executeDeployedWorkflow
     })
     console.log('[Electron] Deployment service initialized')
+
+    // Initialize MCP server service with main-process references
+    const { loadConnections } = require('./services/connectionStorage')
+    mcpServerService.init({
+      compilePrompt,
+      getPrompdCli,
+      deploymentService,
+      connectionStorage: { loadConnections: () => loadConnections(currentWorkspacePath) },
+      workspacePath: currentWorkspacePath,
+    })
+    console.log('[Electron] MCP server service initialized')
+
+    // Auto-start MCP server if configured (async, non-blocking)
+    ;(async () => {
+      try {
+        const mcpConfig = await readConfigFile(getGlobalConfigPath())
+        if (mcpConfig?.services?.mcp_server?.auto_start) {
+          const mcpPort = mcpConfig.services.mcp_server.port || 18791
+          const mcpApiKey = mcpConfig.services.mcp_server.api_key || undefined
+          console.log('[Electron] Auto-starting MCP server on port', mcpPort)
+          await mcpServerService.start({ port: mcpPort, apiKey: mcpApiKey })
+          trayManager.setState({ mcpServerRunning: true, mcpServerPort: mcpPort })
+        }
+      } catch (mcpErr) {
+        console.error('[Electron] Failed to auto-start MCP server:', mcpErr.message)
+      }
+    })()
 
     // Update tray with deployments
     updateTrayWithDeployments()
@@ -1119,6 +1221,48 @@ app.whenReady().then(() => {
     }
   })
 
+  trayManager.on('mcp-server-start', async () => {
+    try {
+      await mcpServerService.start()
+      trayManager.setState({ mcpServerRunning: true, mcpServerPort: mcpServerService.port })
+    } catch (err) {
+      console.error('[Tray] Failed to start MCP server:', err.message)
+      trayManager.setState({ mcpServerRunning: false })
+    }
+  })
+
+  trayManager.on('mcp-server-stop', async () => {
+    try {
+      await mcpServerService.stop()
+      trayManager.setState({ mcpServerRunning: false, mcpServerPort: undefined })
+    } catch (err) {
+      console.error('[Tray] Failed to stop MCP server:', err.message)
+    }
+  })
+
+  trayManager.on('mcp-server-copy-config', () => {
+    const info = mcpServerService.getInfo()
+    if (info.running) {
+      const config = {
+        mcpServers: {
+          'prompd-desktop': {
+            url: info.url,
+            transport: 'streamable-http',
+            headers: {
+              Authorization: `Bearer ${info.apiKey}`,
+            },
+          },
+        },
+      }
+      clipboard.writeText(JSON.stringify(config, null, 2))
+      trayManager.showNotification({
+        title: 'MCP Config Copied',
+        body: 'Connection configuration copied to clipboard',
+        type: 'info'
+      })
+    }
+  })
+
   app.on('activate', () => {
     console.log('[Electron] App activated')
     // On macOS it's common to re-create a window when dock icon is clicked
@@ -1131,12 +1275,39 @@ app.whenReady().then(() => {
   })
 })
 
-// Handle app quitting - ensure deployment service shuts down cleanly
-app.on('before-quit', async () => {
+// Track whether the renderer has confirmed it's ready to quit
+let rendererReadyToQuit = false
+
+// Handle app quitting - ask renderer to save/discard dirty files first
+app.on('before-quit', async (event) => {
+  // If the renderer hasn't confirmed yet, prevent quit and ask it to handle dirty tabs
+  if (!rendererReadyToQuit && mainWindow && !mainWindow.isDestroyed()) {
+    event.preventDefault()
+    // Show the window if hidden (so save dialogs are visible)
+    if (!mainWindow.isVisible()) {
+      mainWindow.show()
+    }
+    mainWindow.webContents.send('app:before-quit')
+    return
+  }
+
+  // Renderer confirmed — proceed with cleanup
+  analytics.trackAppClose()
+  analytics.shutdown()
   trayManager.setQuitting(true)
   if (deploymentService) {
     deploymentService.close()
   }
+  // Cleanup modular IPC modules (e.g., disconnect MCP servers)
+  for (const m of ipcModules) {
+    if (m.cleanup) await m.cleanup()
+  }
+})
+
+// Renderer signals it has handled dirty tabs and is ready to quit
+ipcMain.on('app:ready-to-quit', () => {
+  rendererReadyToQuit = true
+  app.quit()
 })
 
 // Quit when all windows are closed (except on macOS or when minimizing to tray)
@@ -1151,6 +1322,22 @@ app.on('window-all-closed', () => {
     // Otherwise, the app stays running in the tray
   }
 })
+
+// Sync Electron native theme with renderer theme
+ipcMain.on('app:set-native-theme', (event, theme) => {
+  nativeTheme.themeSource = theme === 'dark' ? 'dark' : 'light'
+  const bgColor = theme === 'dark' ? '#0f172a' : '#ffffff'
+  const symbolColor = theme === 'dark' ? '#f1f5f9' : '#0f1117'
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setBackgroundColor(bgColor)
+    try {
+      mainWindow.setTitleBarOverlay({ color: bgColor, symbolColor, height: 39 })
+    } catch (_e) { /* titleBarOverlay not supported on this platform */ }
+  }
+})
+
+// Register modular IPC handlers
+ipcModules.forEach(m => m.register(ipcMain))
 
 // IPC Handlers for native file system operations
 ipcMain.handle('dialog:openFile', async () => {
@@ -1176,6 +1363,7 @@ ipcMain.handle('dialog:openFolder', async () => {
   }
   // Automatically set workspace path for git operations
   currentWorkspacePath = filePaths[0]
+  mcpServerService.setWorkspacePath(currentWorkspacePath)
   updateWindowTitle()
   return filePaths[0]
 })
@@ -1303,6 +1491,145 @@ ipcMain.handle('fs:createDir', async (event, dirPath) => {
     await fs.promises.mkdir(dirPath, { recursive: true })
     return { success: true }
   } catch (error) {
+    return { success: false, error: error.message }
+  }
+})
+
+// Generated content persistence - saves base64 images to ~/.prompd/generated/images/
+// Uses content-addressable hashing (SHA256) so duplicate images share storage
+ipcMain.handle('generated:saveImage', async (_event, base64Data, mimeType) => {
+  try {
+    if (!base64Data || typeof base64Data !== 'string') {
+      return { success: false, error: 'Invalid base64 data' }
+    }
+
+    // Determine file extension from mime type
+    const ext = (mimeType || 'image/png').split('/')[1]?.replace(/\+.*/, '') || 'png'
+
+    // Compute truncated SHA256 hash for content-addressable filename
+    const crypto = require('crypto')
+    const hash = crypto.createHash('sha256').update(base64Data).digest('hex').substring(0, 16)
+
+    const dir = path.join(os.homedir(), '.prompd', 'generated', 'images')
+    const fileName = `${hash}.${ext}`
+    const filePath = path.join(dir, fileName)
+
+    // Skip writing if file already exists (content-addressable dedup)
+    try {
+      await fs.promises.access(filePath)
+      return { success: true, filePath, fileName, existed: true }
+    } catch {
+      // File doesn't exist yet, proceed to save
+    }
+
+    await fs.promises.mkdir(dir, { recursive: true })
+
+    // Decode base64 and write binary
+    const buffer = Buffer.from(base64Data, 'base64')
+    await fs.promises.writeFile(filePath, buffer)
+
+    console.log(`[Generated] Saved image: ${fileName} (${buffer.length} bytes)`)
+    return { success: true, filePath, fileName }
+  } catch (error) {
+    console.error('[Generated] Error saving image:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// List all generated resources from ~/.prompd/generated/ grouped by type (subdirectory)
+ipcMain.handle('generated:list', async () => {
+  try {
+    const baseDir = path.join(os.homedir(), '.prompd', 'generated')
+
+    // Ensure directory exists
+    try {
+      await fs.promises.access(baseDir)
+    } catch {
+      return { success: true, resources: [] }
+    }
+
+    const resources = []
+    const entries = await fs.promises.readdir(baseDir, { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const typeDir = path.join(baseDir, entry.name)
+      const files = await fs.promises.readdir(typeDir, { withFileTypes: true })
+
+      for (const file of files) {
+        if (!file.isFile()) continue
+        const filePath = path.join(typeDir, file.name)
+        const stat = await fs.promises.stat(filePath)
+        resources.push({
+          fileName: file.name,
+          relativePath: `${entry.name}/${file.name}`,
+          type: entry.name,
+          protocolUrl: `prompd-gen://${entry.name}/${file.name}`,
+          size: stat.size,
+          modified: stat.mtimeMs
+        })
+      }
+    }
+
+    // Sort by most recently modified first
+    resources.sort((a, b) => b.modified - a.modified)
+    return { success: true, resources }
+  } catch (error) {
+    console.error('[Generated] Error listing resources:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// Delete a specific generated resource
+ipcMain.handle('generated:delete', async (_event, relativePath) => {
+  try {
+    if (!relativePath || typeof relativePath !== 'string') {
+      return { success: false, error: 'Invalid path' }
+    }
+    // Security: block path traversal
+    if (relativePath.includes('..')) {
+      return { success: false, error: 'Invalid path: parent directory references not allowed' }
+    }
+    const filePath = path.join(os.homedir(), '.prompd', 'generated', relativePath)
+    await fs.promises.unlink(filePath)
+    console.log(`[Generated] Deleted resource: ${relativePath}`)
+    return { success: true }
+  } catch (error) {
+    console.error('[Generated] Error deleting resource:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// Save text/code content as a generated resource
+ipcMain.handle('generated:saveText', async (_event, content, ext) => {
+  try {
+    if (!content || typeof content !== 'string') {
+      return { success: false, error: 'Invalid content' }
+    }
+
+    const fileExt = ext || 'md'
+    const crypto = require('crypto')
+    const hash = crypto.createHash('sha256').update(content).digest('hex').substring(0, 16)
+
+    const dir = path.join(os.homedir(), '.prompd', 'generated', 'text')
+    const fileName = `${hash}.${fileExt}`
+    const filePath = path.join(dir, fileName)
+
+    // Content-addressable dedup
+    try {
+      await fs.promises.access(filePath)
+      return { success: true, filePath, fileName, existed: true }
+    } catch {
+      // File doesn't exist yet
+    }
+
+    await fs.promises.mkdir(dir, { recursive: true })
+    await fs.promises.writeFile(filePath, content, 'utf-8')
+
+    console.log(`[Generated] Saved text: ${fileName} (${content.length} chars)`)
+    return { success: true, filePath, fileName }
+  } catch (error) {
+    console.error('[Generated] Error saving text:', error)
     return { success: false, error: error.message }
   }
 })
@@ -1467,19 +1794,22 @@ ipcMain.handle('api:request', async (_event, url, options) => {
         })
 
         response.on('end', () => {
-          const responseData = Buffer.concat(chunks).toString('utf8')
+          const buffer = Buffer.concat(chunks)
           const headers = {}
           const rawHeaders = response.rawHeaders
           for (let i = 0; i < rawHeaders.length; i += 2) {
             headers[rawHeaders[i].toLowerCase()] = rawHeaders[i + 1]
           }
 
+          // Return base64 for binary responses to preserve data integrity
+          const isBinary = options.responseType === 'arraybuffer'
           resolve({
             success: true,
             status: response.statusCode,
             statusText: response.statusMessage,
             headers: headers,
-            body: responseData,
+            body: isBinary ? buffer.toString('base64') : buffer.toString('utf8'),
+            binary: isBinary,
             ok: response.statusCode >= 200 && response.statusCode < 300
           })
         })
@@ -1561,21 +1891,79 @@ ipcMain.handle('connection:testSSH', async (_event, config) => {
 // Test Database connection
 ipcMain.handle('connection:testDatabase', async (_event, config) => {
   try {
-    console.log('[Electron] Testing database connection to:', config.host)
+    // Parse connection string to extract host/port if provided
+    let host = config.host
+    let port = config.port
+
+    if (config.connectionString) {
+      try {
+        const connStr = config.connectionString
+        // Strip protocol prefix to extract host
+        const withoutProtocol = connStr.replace(/^[a-z+]+:\/\//, '')
+        // Strip credentials (user:pass@)
+        const afterAuth = withoutProtocol.includes('@')
+          ? withoutProtocol.split('@').slice(1).join('@')
+          : withoutProtocol
+        // Extract host:port (before /dbname or ?params)
+        const hostPart = afterAuth.split('/')[0].split('?')[0]
+        // Handle comma-separated hosts (replica sets) - use first host
+        const firstHost = hostPart.split(',')[0]
+
+        if (firstHost.includes(':')) {
+          host = firstHost.split(':')[0]
+          port = parseInt(firstHost.split(':')[1]) || port
+        } else {
+          host = firstHost
+        }
+
+        // mongodb+srv:// uses SRV DNS records - test DNS resolution instead of TCP
+        if (connStr.startsWith('mongodb+srv://')) {
+          const dns = require('dns')
+          return new Promise((resolve) => {
+            dns.resolveSrv(`_mongodb._tcp.${host}`, (err, addresses) => {
+              if (err) {
+                resolve({
+                  success: false,
+                  message: `SRV lookup failed for ${host}: ${err.message}`
+                })
+              } else if (addresses && addresses.length > 0) {
+                resolve({
+                  success: true,
+                  message: `SRV resolved to ${addresses.length} host(s): ${addresses[0].name}:${addresses[0].port}`
+                })
+              } else {
+                resolve({
+                  success: false,
+                  message: `No SRV records found for ${host}`
+                })
+              }
+            })
+          })
+        }
+      } catch (parseErr) {
+        console.warn('[Electron] Failed to parse connection string, falling back to host field:', parseErr.message)
+      }
+    }
+
+    if (!host) {
+      return { success: false, message: 'No host specified' }
+    }
+
+    console.log('[Electron] Testing database connection to:', host)
+
+    const defaultPorts = {
+      postgresql: 5432,
+      mysql: 3306,
+      mongodb: 27017,
+      redis: 6379
+    }
+    const resolvedPort = port || defaultPorts[config.type] || 5432
 
     // Use net module to test TCP connectivity
     return new Promise((resolve) => {
-      const defaultPorts = {
-        postgresql: 5432,
-        mysql: 3306,
-        mongodb: 27017,
-        redis: 6379
-      }
-      const port = config.port || defaultPorts[config.type] || 5432
-
       const socket = require('net').createConnection({
-        host: config.host,
-        port: port,
+        host: host,
+        port: resolvedPort,
         timeout: 5000
       })
 
@@ -1583,7 +1971,7 @@ ipcMain.handle('connection:testDatabase', async (_event, config) => {
         socket.end()
         resolve({
           success: true,
-          message: `Database port reachable at ${config.host}:${port}`
+          message: `Database port reachable at ${host}:${resolvedPort}`
         })
       })
 
@@ -1682,6 +2070,7 @@ ipcMain.handle('workspace:setPath', async (event, workspacePath) => {
       const stats = await fs.promises.stat(workspacePath)
       if (stats.isDirectory()) {
         currentWorkspacePath = workspacePath
+        mcpServerService.setWorkspacePath(currentWorkspacePath)
         updateWindowTitle()
         return { success: true, path: workspacePath }
       }
@@ -2043,7 +2432,101 @@ ipcMain.handle('app:updateMenuState', async (_event, newState) => {
   menuState = { ...menuState, ...newState }
   // Rebuild menu with new state
   createMenu()
+  // Notify renderer for custom title bar menu
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('menu-state-changed', menuState)
+  }
   return true
+})
+
+// ── Custom title bar IPC handlers ──
+
+// Generic menu trigger: renderer fires same IPC events as native menu
+ipcMain.handle('menu:trigger', async (_event, action, ...args) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(action, ...args)
+  }
+})
+
+// Window title query
+ipcMain.handle('app:getWindowTitle', async () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return 'Prompd'
+  return mainWindow.getTitle()
+})
+
+// Menu state query
+ipcMain.handle('app:getMenuState', async () => {
+  return { ...menuState }
+})
+
+// Edit operations (for custom menu — proxy to webContents methods)
+ipcMain.handle('edit:undo', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.undo() })
+ipcMain.handle('edit:redo', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.redo() })
+ipcMain.handle('edit:cut', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.cut() })
+ipcMain.handle('edit:copy', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.copy() })
+ipcMain.handle('edit:paste', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.paste() })
+ipcMain.handle('edit:delete', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.delete() })
+ipcMain.handle('edit:selectAll', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.selectAll() })
+
+// View operations (for custom menu)
+ipcMain.handle('view:reload', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.reload() })
+ipcMain.handle('view:forceReload', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reloadIgnoringCache() })
+ipcMain.handle('view:toggleDevTools', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.toggleDevTools() })
+ipcMain.handle('view:resetZoom', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.setZoomLevel(0) })
+ipcMain.handle('view:zoomIn', async () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.setZoomLevel(mainWindow.webContents.getZoomLevel() + 0.5)
+  }
+})
+ipcMain.handle('view:zoomOut', async () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.setZoomLevel(mainWindow.webContents.getZoomLevel() - 0.5)
+  }
+})
+ipcMain.handle('view:toggleFullscreen', async () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setFullScreen(!mainWindow.isFullScreen())
+})
+
+// File dialog menu actions (require main-process dialog)
+ipcMain.handle('menu:openFileDialog', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [
+      { name: 'Prompd Files', extensions: ['prmd'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  })
+  if (!result.canceled && result.filePaths.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('menu-open-file', result.filePaths[0])
+  }
+})
+
+ipcMain.handle('menu:openFolderDialog', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory']
+  })
+  if (!result.canceled && result.filePaths.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('menu-open-folder', result.filePaths[0])
+  }
+})
+
+ipcMain.handle('menu:closeFolder', async () => {
+  currentWorkspacePath = null
+  updateWindowTitle()
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('menu-close-folder')
+  }
+})
+
+ipcMain.handle('app:quit', async () => { app.quit() })
+
+ipcMain.handle('app:checkForUpdates', async () => {
+  try {
+    const updater = getAutoUpdater()
+    updater.checkForUpdatesAndNotify()
+  } catch (e) {
+    console.warn('[Electron] Auto-updater check failed:', e.message)
+  }
 })
 
 // Hotkey accelerator storage - maps action IDs to Electron accelerator strings
@@ -2115,8 +2598,8 @@ ipcMain.handle('agent:runCommand', async (_event, command, cwd) => {
 
   // Validate all arguments for security
   for (const arg of args) {
-    // Prevent path traversal with ..
-    if (arg.includes('..')) {
+    // Prevent path traversal patterns (../ or ..\) not just '..' in text
+    if (/(?:^|[/\\])\.\.(?:[/\\]|$)/.test(arg)) {
       return { success: false, output: 'Path traversal (..) not allowed in arguments', exitCode: -1 }
     }
     // Prevent home directory expansion
@@ -2889,6 +3372,7 @@ const DEFAULT_CONFIG = {
   api_keys: {},
   custom_providers: {},
   provider_configs: {},
+  services: {},
   registry: {
     default: 'prompdhub',
     current_namespace: '',
@@ -3201,6 +3685,30 @@ ipcMain.handle('config:clearCache', async () => {
   console.log('[Config] Clearing config cache')
   configCache.clear()
   return { success: true }
+})
+
+// ============================================================================
+// Connection Storage (global + workspace persistence with safeStorage encryption)
+// ============================================================================
+
+ipcMain.handle('connections:load', async (_event, workspacePath) => {
+  try {
+    const { loadConnections } = require('./services/connectionStorage')
+    return await loadConnections(workspacePath || currentWorkspacePath)
+  } catch (error) {
+    console.error('[Connections] Load error:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('connections:save', async (_event, connections, workspacePath) => {
+  try {
+    const { saveConnections } = require('./services/connectionStorage')
+    return await saveConnections(connections, workspacePath || currentWorkspacePath)
+  } catch (error) {
+    console.error('[Connections] Save error:', error)
+    return { success: false, error: error.message }
+  }
 })
 
 // Get API key for a specific provider
@@ -3920,11 +4428,27 @@ ipcMain.handle('package:installAll', async (_event, workspacePath) => {
       }
     }
 
+    // Check for MCP dependencies in the workspace prompd.json
+    let missingMcps = []
+    try {
+      if (prompdJson.mcps && Array.isArray(prompdJson.mcps) && prompdJson.mcps.length > 0) {
+        const mcpConfig = mcpService.loadMcpConfig()
+        const configuredNames = new Set(Object.keys(mcpConfig.mcpServers || {}))
+        missingMcps = prompdJson.mcps.filter(name => !configuredNames.has(name))
+        if (missingMcps.length > 0) {
+          console.log('[Package] Workspace requires MCP servers not yet configured:', missingMcps)
+        }
+      }
+    } catch (mcpCheckErr) {
+      console.warn('[Package] MCP dependency check failed (non-fatal):', mcpCheckErr.message)
+    }
+
     return {
       success: failed.length === 0,
       message: `Installed ${installed.length} of ${depEntries.length} packages`,
       installed,
-      failed: failed.length > 0 ? failed : undefined
+      failed: failed.length > 0 ? failed : undefined,
+      missingMcps: missingMcps.length > 0 ? missingMcps : undefined
     }
 
   } catch (error) {
@@ -3934,6 +4458,170 @@ ipcMain.handle('package:installAll', async (_event, workspacePath) => {
       error: error.message || 'Installation failed'
     }
   }
+})
+
+// Install a single package by reference (e.g. "@prompd/core@0.0.1" or "@prompd/core")
+ipcMain.handle('package:install', async (_event, packageRef, workspacePath) => {
+  console.log('[Package] Installing single package:', packageRef, 'to:', workspacePath)
+
+  if (!packageRef || typeof packageRef !== 'string') {
+    return { success: false, error: 'No package reference provided' }
+  }
+  if (!workspacePath || typeof workspacePath !== 'string') {
+    return { success: false, error: 'No workspace folder open' }
+  }
+
+  try {
+    const { RegistryClient } = await import('@prompd/cli')
+    const client = new RegistryClient()
+    await client.install(packageRef, {
+      workspaceRoot: workspacePath,
+      skipCache: false
+    })
+
+    console.log('[Package] Installed:', packageRef)
+    analytics.trackPackageInstall(packageRef)
+
+    // Parse package name and version from ref
+    // Formats: @scope/name@version, @scope/name, name@version, name
+    let pkgName, pkgVersion
+    if (packageRef.startsWith('@')) {
+      const lastAt = packageRef.lastIndexOf('@')
+      if (lastAt > 0) {
+        pkgName = packageRef.substring(0, lastAt)
+        pkgVersion = packageRef.substring(lastAt + 1)
+      } else {
+        pkgName = packageRef
+      }
+    } else {
+      const atIdx = packageRef.indexOf('@')
+      if (atIdx > 0) {
+        pkgName = packageRef.substring(0, atIdx)
+        pkgVersion = packageRef.substring(atIdx + 1)
+      } else {
+        pkgName = packageRef
+      }
+    }
+
+    const cacheDir = path.join(workspacePath, '.prompd', 'cache')
+
+    // If no version in ref, find it from the installed cache directory
+    if (!pkgVersion && fs.existsSync(cacheDir)) {
+      try {
+        if (pkgName.startsWith('@')) {
+          // Scoped: cache structure is .prompd/cache/@scope/name@version/
+          const [scope, name] = pkgName.split('/')
+          const scopeDir = path.join(cacheDir, scope)
+          if (fs.existsSync(scopeDir)) {
+            const match = fs.readdirSync(scopeDir).find(e => e.startsWith(name + '@'))
+            if (match) pkgVersion = match.substring(name.length + 1)
+          }
+        } else {
+          const match = fs.readdirSync(cacheDir).find(e => e.startsWith(pkgName + '@'))
+          if (match) pkgVersion = match.substring(pkgName.length + 1)
+        }
+      } catch (lookupErr) {
+        console.warn('[Package] Cache version lookup failed:', lookupErr.message)
+      }
+    }
+
+    // Update prompd.json with the dependency
+    if (pkgName && pkgVersion) {
+      try {
+        const prompdJsonPath = path.join(workspacePath, 'prompd.json')
+        let prompdJson = { dependencies: {} }
+
+        if (fs.existsSync(prompdJsonPath)) {
+          const content = fs.readFileSync(prompdJsonPath, 'utf8')
+          if (content && content.trim() !== '') {
+            prompdJson = JSON.parse(content)
+          }
+        }
+
+        if (!prompdJson.dependencies) {
+          prompdJson.dependencies = {}
+        }
+
+        prompdJson.dependencies[pkgName] = pkgVersion
+
+        fs.writeFileSync(prompdJsonPath, JSON.stringify(prompdJson, null, 2) + '\n')
+        console.log('[Package] Updated prompd.json with dependency:', pkgName, '@', pkgVersion)
+      } catch (depErr) {
+        console.warn('[Package] Failed to update prompd.json (non-fatal):', depErr.message)
+      }
+    } else {
+      console.warn('[Package] Could not determine package name/version for prompd.json update')
+    }
+
+    // Check installed package for MCP dependencies
+    let missingMcps = []
+    try {
+      if (fs.existsSync(cacheDir)) {
+        // For scoped packages, build the cache path: @scope/name@version
+        let matchingCachePath
+        if (pkgName && pkgVersion) {
+          if (pkgName.startsWith('@')) {
+            const [scope, name] = pkgName.split('/')
+            matchingCachePath = path.join(cacheDir, scope, `${name}@${pkgVersion}`)
+          } else {
+            matchingCachePath = path.join(cacheDir, `${pkgName}@${pkgVersion}`)
+          }
+        }
+
+        // Fallback: scan top-level entries (original approach for non-scoped)
+        if (!matchingCachePath || !fs.existsSync(matchingCachePath)) {
+          const entries = fs.readdirSync(cacheDir)
+          const fallbackName = pkgName || packageRef
+          const matchingDir = entries.find(e => e.startsWith(fallbackName + '@') || e === fallbackName)
+          if (matchingDir) {
+            matchingCachePath = path.join(cacheDir, matchingDir)
+          }
+        }
+
+        if (matchingCachePath && fs.existsSync(matchingCachePath)) {
+          const pkgJsonPath = path.join(matchingCachePath, 'prompd.json')
+          if (fs.existsSync(pkgJsonPath)) {
+            const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'))
+            if (pkgJson.mcps && Array.isArray(pkgJson.mcps) && pkgJson.mcps.length > 0) {
+              const mcpConfig = mcpService.loadMcpConfig()
+              const configuredNames = new Set(Object.keys(mcpConfig.mcpServers || {}))
+              missingMcps = pkgJson.mcps.filter(name => !configuredNames.has(name))
+              if (missingMcps.length > 0) {
+                console.log('[Package] Package requires MCP servers not yet configured:', missingMcps)
+              }
+            }
+          }
+        }
+      }
+    } catch (mcpCheckErr) {
+      console.warn('[Package] MCP dependency check failed (non-fatal):', mcpCheckErr.message)
+    }
+
+    return {
+      success: true,
+      name: packageRef,
+      missingMcps: missingMcps.length > 0 ? missingMcps : undefined
+    }
+  } catch (error) {
+    console.error('[Package] Install failed:', packageRef, error.message)
+    return { success: false, error: error.message || 'Installation failed' }
+  }
+})
+
+// ============================================================================
+// Analytics IPC Handlers (GA4 Measurement Protocol)
+// ============================================================================
+
+ipcMain.handle('analytics:trackEvent', async (_event, eventName, params) => {
+  analytics.trackEvent(eventName, params || {})
+})
+
+ipcMain.handle('analytics:setEnabled', async (_event, enabled) => {
+  analytics.setEnabled(enabled)
+})
+
+ipcMain.handle('analytics:isEnabled', async () => {
+  return analytics.isEnabled()
 })
 
 // ============================================================================
@@ -3995,6 +4683,7 @@ ipcMain.handle('deployment:deploy', async (_event, workflowPath, options = {}) =
     }
 
     const deploymentId = await deploymentService.deploy(packagePath, deployOptions)
+    analytics.trackDeploymentCreate()
     return { success: true, deploymentId }
   } catch (err) {
     console.error('[Electron] Deployment failed:', err)
@@ -4437,13 +5126,22 @@ const pendingUserInputs = new Map() // requestId -> { resolve, reject }
 let popupWindow = null
 let currentPopupRequest = null
 
-function createInputPopupWindow(request, requestId, metadata) {
-  // Close existing popup if any
-  if (popupWindow && !popupWindow.isDestroyed()) {
-    popupWindow.close()
-  }
+// Track which executionId owns the popup so we can close it on completion
+let popupExecutionId = null
 
+function createInputPopupWindow(request, requestId, metadata) {
   currentPopupRequest = { request, requestId, metadata }
+  popupExecutionId = metadata?.executionId || null
+
+  // If popup already exists and is alive, push the new request into it
+  if (popupWindow && !popupWindow.isDestroyed()) {
+    popupWindow.webContents.send('popup:newRequest', {
+      request: currentPopupRequest.request,
+      metadata: currentPopupRequest.metadata
+    })
+    popupWindow.focus()
+    return
+  }
 
   // Resolve icon path (reuse same logic as main window)
   const isPackaged = app.isPackaged
@@ -4460,15 +5158,18 @@ function createInputPopupWindow(request, requestId, metadata) {
   }
 
   popupWindow = new BrowserWindow({
-    width: 450,
-    height: 500,
+    width: 520,
+    height: 600,
+    minWidth: 400,
+    minHeight: 400,
     resizable: true,
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
+    frame: false,
     icon: popupIcon,
     title: 'User Input Required - Prompd',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#0f172a',
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'popup-preload.js'),
@@ -4490,11 +5191,11 @@ function createInputPopupWindow(request, requestId, metadata) {
   })
 
   popupWindow.on('closed', () => {
-    // If user closed window without responding, cancel the request
-    if (currentPopupRequest && currentPopupRequest.requestId === requestId) {
-      const pending = pendingUserInputs.get(requestId)
+    // If user closed window without responding, cancel the pending request
+    if (currentPopupRequest) {
+      const pending = pendingUserInputs.get(currentPopupRequest.requestId)
       if (pending) {
-        pendingUserInputs.delete(requestId)
+        pendingUserInputs.delete(currentPopupRequest.requestId)
         if (currentPopupRequest.isCheckpoint) {
           pending.resolve(false)
         } else {
@@ -4504,7 +5205,26 @@ function createInputPopupWindow(request, requestId, metadata) {
       currentPopupRequest = null
     }
     popupWindow = null
+    popupExecutionId = null
   })
+}
+
+/**
+ * Close the popup window gracefully (called when workflow execution ends).
+ * Sends a 'done' message so the popup can show a completion state before closing.
+ */
+function closePopupWindow(status, message) {
+  if (popupWindow && !popupWindow.isDestroyed()) {
+    popupWindow.webContents.send('popup:done', { status, message })
+    // Auto-close after a short delay so the user sees the completion message
+    setTimeout(() => {
+      if (popupWindow && !popupWindow.isDestroyed()) {
+        currentPopupRequest = null
+        popupWindow.close()
+      }
+    }, 2500)
+  }
+  popupExecutionId = null
 }
 
 // Import CLI modules once at startup (prevents blocking on first execution)
@@ -4650,9 +5370,7 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               setTimeout(() => {
                 if (pendingUserInputs.has(requestId)) {
                   pendingUserInputs.delete(requestId)
-                  if (popupWindow && !popupWindow.isDestroyed()) {
-                    popupWindow.close()
-                  }
+                  closePopupWindow('error', 'Input timed out after 10 minutes')
                   reject(new Error('User input timed out after 10 minutes'))
                 }
               }, 600000)
@@ -4721,9 +5439,7 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               setTimeout(() => {
                 if (pendingUserInputs.has(requestId)) {
                   pendingUserInputs.delete(requestId)
-                  if (popupWindow && !popupWindow.isDestroyed()) {
-                    popupWindow.close()
-                  }
+                  closePopupWindow('error', 'Checkpoint timed out after 10 minutes')
                   reject(new Error('Checkpoint timed out after 10 minutes'))
                 }
               }, 600000)
@@ -4751,14 +5467,14 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
             }, 300000)
           })
         },
-        // Local prompt execution through CLI (centralized compilation + execution)
+        // Centralized .prmd execution — single path for all workflow prompt execution
         executePrompt: async (source, promptParams, provider, model) => {
           // Merge workflow-level params (includes defaults) into node-level prompt params
           // Node params take priority over workflow params
           const mergedParams = { ...params, ...promptParams }
           let tempFilePath = null
           try {
-            console.log(`[Workflow Executor] Executing prompt via CLI: ${source}`)
+            console.log(`[Workflow Executor] Executing prompt via CLI: ${source.substring(0, 80)}`)
 
             // Determine file path to execute
             let fileToExecute = source
@@ -4808,11 +5524,15 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
             }
 
             // Execute through CLI (centralized compilation + execution)
+            const resolvedWorkspaceRoot = options?.workflowFilePath
+              ? path.dirname(options.workflowFilePath)
+              : currentWorkspacePath
             const executeResult = await prompdExecutor.execute(fileToExecute, {
               provider: provider || 'openai',
               model: model || 'gpt-4o',
               apiKey,
-              params: mergedParams
+              params: mergedParams,
+              workspaceRoot: resolvedWorkspaceRoot || currentWorkspacePath
             })
 
             // Clean up temp file
@@ -4831,21 +5551,10 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
           }
         },
         // Agent LLM execution (for chat-agent nodes)
+        // Routes through executePrompt for single execution path
         onPromptExecute: async (request) => {
-          let tempFilePath = null
           try {
             console.log(`[Workflow Executor] Agent LLM request from node: ${request.nodeId}`)
-
-            // Get API key from config
-            const config = await configManager.load()
-            const apiKey = config.apiKeys?.[request.provider] || process.env[`${request.provider.toUpperCase()}_API_KEY`]
-
-            if (!apiKey) {
-              return {
-                success: false,
-                error: `No API key found for provider: ${request.provider}`
-              }
-            }
 
             // Format prompt with system message and conversation history
             let fullPrompt = request.prompt + '\n\n'
@@ -4858,7 +5567,7 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
             }
             fullPrompt += 'Assistant:'
 
-            // Write to temp .prmd file (PrompdExecutor requires file path)
+            // Build .prmd content and route through executePrompt (single execution path)
             const uniqueId = `agent-prompt-${Date.now()}`
             const promptContent = [
               '---',
@@ -4871,29 +5580,18 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               fullPrompt
             ].join('\n')
 
-            tempFilePath = path.join(app.getPath('temp'), `${uniqueId}.prmd`)
-            await fs.writeFile(tempFilePath, promptContent, 'utf-8')
-
-            // Execute through CLI (centralized compilation + execution)
-            const executeResult = await prompdExecutor.execute(tempFilePath, {
-              provider: request.provider || 'openai',
-              model: request.model || 'gpt-4o',
-              apiKey,
-              params: {}
-            })
-
-            // Clean up temp file
-            await fs.unlink(tempFilePath).catch(() => {})
+            const response = await executorOptions.executePrompt(
+              promptContent,
+              {},
+              request.provider || 'openai',
+              request.model || 'gpt-4o'
+            )
 
             return {
               success: true,
-              response: executeResult.response || executeResult.content || ''
+              response: response || ''
             }
           } catch (err) {
-            // Clean up temp file on error
-            if (tempFilePath) {
-              await fs.unlink(tempFilePath).catch(() => {})
-            }
             console.error('[Workflow Executor] onPromptExecute failed:', err)
             return {
               success: false,
@@ -5282,11 +5980,399 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               }
             }
 
+            // Handle database query execution
+            if (request.toolType === 'database-query') {
+              const dbConfig = request.databaseConfig
+              if (!dbConfig) {
+                return { success: false, error: 'Missing database configuration' }
+              }
+
+              // Resolve connection from workflow connections
+              const workflowFile = workflow.file || workflow
+              const wfConnections = workflowFile.connections || workflow.connections || []
+              const dbConnection = wfConnections.find(c => c.id === dbConfig.connectionId)
+
+              if (!dbConnection) {
+                return { success: false, error: `Database connection not found: ${dbConfig.connectionId}` }
+              }
+
+              const connConfig = dbConnection.config || {}
+              // Connection config is the source of truth for database type.
+              // The CLI may send a placeholder dbType — always prefer the actual connection config.
+              const dbType = connConfig.dbType || dbConfig.dbType || 'postgresql'
+
+              // Emit checkpoint event before query
+              sender.send('workflow:event', {
+                type: 'checkpoint-data',
+                executionId,
+                nodeId: request.nodeId,
+                data: {
+                  sourceNodeType: 'database-query',
+                  eventType: 'iteration',
+                  dbType,
+                  queryType: dbConfig.queryType,
+                  query: (dbConfig.query || '').slice(0, 200),
+                  timestamp: Date.now()
+                }
+              })
+
+              try {
+                let result
+
+                // Build connection URI/options from connection config
+                const host = connConfig.host || 'localhost'
+                const port = connConfig.port
+                const database = connConfig.database || ''
+                const username = connConfig.username || ''
+                const connectionString = connConfig.connectionString || ''
+                const ssl = connConfig.ssl || false
+                // Password is resolved from the connection's secure store
+                const password = dbConnection.password || connConfig.password || ''
+                const timeoutMs = dbConfig.timeoutMs || 30000
+
+                if (dbType === 'postgresql') {
+                  try {
+                    const { Pool } = require('pg')
+                    const poolConfig = connectionString
+                      ? { connectionString, ssl: ssl ? { rejectUnauthorized: false } : undefined }
+                      : { host, port: port || 5432, database, user: username, password, ssl: ssl ? { rejectUnauthorized: false } : undefined }
+                    poolConfig.connectionTimeoutMillis = timeoutMs
+                    poolConfig.query_timeout = timeoutMs
+
+                    const pool = new Pool(poolConfig)
+                    try {
+                      // Parse parameters from JSON string
+                      let params = undefined
+                      if (dbConfig.parameters) {
+                        try { params = JSON.parse(dbConfig.parameters) } catch { /* ignore parse errors */ }
+                      }
+
+                      const queryResult = await pool.query(dbConfig.query, params)
+                      const maxRows = dbConfig.maxRows || 1000
+                      result = {
+                        rows: queryResult.rows.slice(0, maxRows),
+                        rowCount: queryResult.rowCount,
+                        fields: queryResult.fields?.map(f => ({ name: f.name, dataTypeID: f.dataTypeID })),
+                      }
+                    } finally {
+                      await pool.end()
+                    }
+                  } catch (pgErr) {
+                    if (pgErr.code === 'MODULE_NOT_FOUND') {
+                      return { success: false, error: 'PostgreSQL driver (pg) not installed. Run: npm install pg' }
+                    }
+                    throw pgErr
+                  }
+                } else if (dbType === 'mysql') {
+                  try {
+                    const mysql = require('mysql2/promise')
+                    const connOpts = connectionString
+                      ? { uri: connectionString }
+                      : { host, port: port || 3306, database, user: username, password, ssl: ssl ? {} : undefined, connectTimeout: timeoutMs }
+
+                    const conn = await mysql.createConnection(connOpts)
+                    try {
+                      let params = undefined
+                      if (dbConfig.parameters) {
+                        try { params = JSON.parse(dbConfig.parameters) } catch { /* ignore */ }
+                      }
+
+                      const [rows, fields] = await conn.execute(dbConfig.query, params)
+                      const maxRows = dbConfig.maxRows || 1000
+                      result = {
+                        rows: Array.isArray(rows) ? rows.slice(0, maxRows) : rows,
+                        rowCount: Array.isArray(rows) ? rows.length : 0,
+                        fields: fields?.map(f => ({ name: f.name, type: f.type })),
+                      }
+                    } finally {
+                      await conn.end()
+                    }
+                  } catch (mysqlErr) {
+                    if (mysqlErr.code === 'MODULE_NOT_FOUND') {
+                      return { success: false, error: 'MySQL driver (mysql2) not installed. Run: npm install mysql2' }
+                    }
+                    throw mysqlErr
+                  }
+                } else if (dbType === 'sqlite') {
+                  try {
+                    const Database = require('better-sqlite3')
+                    const dbPath = connectionString || database
+                    if (!dbPath) {
+                      return { success: false, error: 'SQLite requires a database file path' }
+                    }
+
+                    const db = new Database(dbPath, { readonly: dbConfig.queryType === 'select', timeout: timeoutMs })
+                    try {
+                      let params = undefined
+                      if (dbConfig.parameters) {
+                        try { params = JSON.parse(dbConfig.parameters) } catch { /* ignore */ }
+                      }
+
+                      const maxRows = dbConfig.maxRows || 1000
+                      if (dbConfig.queryType === 'select' || dbConfig.queryType === 'raw') {
+                        // Use .all() for queries that return rows
+                        const stmt = db.prepare(dbConfig.query)
+                        const rows = params ? stmt.all(...params) : stmt.all()
+                        result = {
+                          rows: rows.slice(0, maxRows),
+                          rowCount: rows.length,
+                        }
+                      } else {
+                        // Use .run() for INSERT/UPDATE/DELETE
+                        const stmt = db.prepare(dbConfig.query)
+                        const info = params ? stmt.run(...params) : stmt.run()
+                        result = {
+                          changes: info.changes,
+                          lastInsertRowid: info.lastInsertRowid,
+                        }
+                      }
+                    } finally {
+                      db.close()
+                    }
+                  } catch (sqliteErr) {
+                    if (sqliteErr.code === 'MODULE_NOT_FOUND') {
+                      return { success: false, error: 'SQLite driver (better-sqlite3) not installed. Run: npm install better-sqlite3' }
+                    }
+                    throw sqliteErr
+                  }
+                } else if (dbType === 'mongodb') {
+                  try {
+                    const { MongoClient } = require('mongodb')
+                    const uri = connectionString || `mongodb://${username}:${password}@${host}:${port || 27017}/${database}`
+
+                    const client = new MongoClient(uri, {
+                      serverSelectionTimeoutMS: timeoutMs,
+                      connectTimeoutMS: timeoutMs,
+                    })
+                    try {
+                      await client.connect()
+                      const db = client.db(database || undefined)
+                      const collection = dbConfig.collection || 'test'
+                      const coll = db.collection(collection)
+                      const maxRows = dbConfig.maxRows || 1000
+
+                      // Parse the query from JSON string
+                      let queryDoc = {}
+                      try {
+                        queryDoc = JSON.parse(dbConfig.query || '{}')
+                      } catch {
+                        return { success: false, error: 'Invalid MongoDB query JSON' }
+                      }
+
+                      if (dbConfig.queryType === 'select') {
+                        // Support projection via array syntax: [filter, projection]
+                        let filter = queryDoc
+                        let projection = undefined
+                        if (Array.isArray(queryDoc)) {
+                          filter = queryDoc[0] || {}
+                          projection = queryDoc[1] || undefined
+                        }
+                        const findOptions = projection ? { projection } : {}
+                        const docs = await coll.find(filter, findOptions).limit(maxRows).toArray()
+                        result = { rows: docs, rowCount: docs.length }
+                      } else if (dbConfig.queryType === 'insert') {
+                        const insertResult = Array.isArray(queryDoc)
+                          ? await coll.insertMany(queryDoc)
+                          : await coll.insertOne(queryDoc)
+                        result = { insertedCount: insertResult.insertedCount || 1, insertedId: insertResult.insertedId }
+                      } else if (dbConfig.queryType === 'update') {
+                        // Expect { filter: {...}, update: {...} }
+                        const filter = queryDoc.filter || {}
+                        const update = queryDoc.update || queryDoc
+                        const updateResult = await coll.updateMany(filter, update)
+                        result = { matchedCount: updateResult.matchedCount, modifiedCount: updateResult.modifiedCount }
+                      } else if (dbConfig.queryType === 'delete') {
+                        const deleteResult = await coll.deleteMany(queryDoc)
+                        result = { deletedCount: deleteResult.deletedCount }
+                      } else if (dbConfig.queryType === 'aggregate') {
+                        const pipeline = Array.isArray(queryDoc) ? queryDoc : [queryDoc]
+                        const docs = await coll.aggregate(pipeline).toArray()
+                        result = { rows: docs.slice(0, maxRows), rowCount: docs.length }
+                      } else {
+                        // Raw command
+                        const cmdResult = await db.command(queryDoc)
+                        result = cmdResult
+                      }
+                    } finally {
+                      await client.close()
+                    }
+                  } catch (mongoErr) {
+                    if (mongoErr.code === 'MODULE_NOT_FOUND') {
+                      return { success: false, error: 'MongoDB driver (mongodb) not installed. Run: npm install mongodb' }
+                    }
+                    throw mongoErr
+                  }
+                } else if (dbType === 'redis') {
+                  try {
+                    const Redis = require('ioredis')
+                    const redisOpts = connectionString
+                      ? connectionString
+                      : { host, port: port || 6379, password: password || undefined, db: parseInt(database) || 0, connectTimeout: timeoutMs }
+
+                    const redis = new Redis(redisOpts)
+                    try {
+                      // Parse Redis command: "GET mykey" -> ["GET", "mykey"]
+                      const parts = (dbConfig.query || '').trim().split(/\s+/)
+                      if (parts.length === 0 || !parts[0]) {
+                        return { success: false, error: 'Empty Redis command' }
+                      }
+
+                      const redisResult = await redis.call(parts[0], ...parts.slice(1))
+                      result = { result: redisResult }
+                    } finally {
+                      redis.disconnect()
+                    }
+                  } catch (redisErr) {
+                    if (redisErr.code === 'MODULE_NOT_FOUND') {
+                      return { success: false, error: 'Redis driver (ioredis) not installed. Run: npm install ioredis' }
+                    }
+                    throw redisErr
+                  }
+                } else {
+                  return { success: false, error: `Unsupported database type: ${dbType}` }
+                }
+
+                // Emit checkpoint event with query results
+                sender.send('workflow:event', {
+                  type: 'checkpoint-data',
+                  executionId,
+                  nodeId: request.nodeId,
+                  data: {
+                    sourceNodeType: 'database-query',
+                    eventType: 'complete',
+                    dbType,
+                    queryType: dbConfig.queryType,
+                    rowCount: result?.rows?.length || result?.rowCount || 0,
+                    timestamp: Date.now()
+                  }
+                })
+
+                return { success: true, result }
+              } catch (dbErr) {
+                console.error('[Workflow Executor] Database query error:', dbErr)
+
+                // Emit error checkpoint event
+                sender.send('workflow:event', {
+                  type: 'checkpoint-data',
+                  executionId,
+                  nodeId: request.nodeId,
+                  data: {
+                    sourceNodeType: 'database-query',
+                    eventType: 'error',
+                    dbType,
+                    error: dbErr.message,
+                    timestamp: Date.now()
+                  }
+                })
+
+                return { success: false, error: dbErr.message }
+              }
+            }
+
+            // Handle MCP tool execution
+            if (request.toolType === 'mcp') {
+              const toolName = request.toolName
+              if (!toolName) {
+                return { success: false, error: 'MCP tool name is required' }
+              }
+
+              // Resolve server name: first from mcpConfig (inline), then from connectionId on the node
+              let serverName = request.mcpConfig?.serverName
+              if (!serverName && request.nodeId) {
+                const workflowFile = workflow.file || workflow
+                const wfNodes = workflowFile.nodes || workflow.nodes || []
+                const node = wfNodes.find(n => n.id === request.nodeId)
+                if (node && node.data?.connectionId) {
+                  const wfConnections = workflowFile.connections || workflow.connections || []
+                  const mcpConn = wfConnections.find(c => c.id === node.data.connectionId)
+                  if (mcpConn && mcpConn.config) {
+                    serverName = mcpConn.config.serverName
+                  }
+                }
+              }
+
+              if (!serverName) {
+                return { success: false, error: 'MCP server name could not be resolved. Check the connection configuration.' }
+              }
+
+              // Emit checkpoint event before MCP call
+              sender.send('workflow:event', {
+                type: 'checkpoint-data',
+                executionId,
+                nodeId: request.nodeId,
+                data: {
+                  sourceNodeType: 'mcp-tool',
+                  eventType: 'iteration',
+                  serverName,
+                  toolName,
+                  timestamp: Date.now()
+                }
+              })
+
+              try {
+                // Connect first (no-op if already connected; throws on failure)
+                await mcpService.connect(serverName)
+
+                // Call the tool with resolved parameters from the CLI
+                // mcpService.callTool returns the raw MCP SDK CallToolResult: { content, isError }
+                const toolArgs = request.parameters || {}
+                const callResult = await mcpService.callTool(serverName, toolName, toolArgs)
+
+                // MCP SDK signals errors via isError flag on the result
+                if (callResult.isError) {
+                  const errorText = (callResult.content || [])
+                    .filter(c => c.type === 'text')
+                    .map(c => c.text)
+                    .join('\n') || 'MCP tool call returned an error'
+                  sender.send('workflow:event', {
+                    type: 'checkpoint-data',
+                    executionId,
+                    nodeId: request.nodeId,
+                    data: {
+                      sourceNodeType: 'mcp-tool',
+                      eventType: 'error',
+                      serverName,
+                      toolName,
+                      error: errorText,
+                      timestamp: Date.now()
+                    }
+                  })
+                  return { success: false, error: errorText }
+                }
+
+                // Extract text content from the MCP result
+                const resultText = (callResult.content || [])
+                  .filter(c => c.type === 'text')
+                  .map(c => c.text)
+                  .join('\n')
+
+                return { success: true, result: resultText || callResult }
+              } catch (mcpErr) {
+                console.error('[Workflow Executor] MCP tool call error:', mcpErr)
+
+                sender.send('workflow:event', {
+                  type: 'checkpoint-data',
+                  executionId,
+                  nodeId: request.nodeId,
+                  data: {
+                    sourceNodeType: 'mcp-tool',
+                    eventType: 'error',
+                    serverName,
+                    toolName,
+                    error: mcpErr.message,
+                    timestamp: Date.now()
+                  }
+                })
+
+                return { success: false, error: mcpErr.message }
+              }
+            }
+
             // Handle command execution
             if (request.toolType !== 'command') {
               return {
                 success: false,
-                error: `Unsupported tool type: ${request.toolType}. Supported: 'command', 'http', 'web-search'.`
+                error: `Unsupported tool type: ${request.toolType}. Supported: 'command', 'http', 'web-search', 'database-query', 'mcp'.`
               }
             }
 
@@ -5356,7 +6442,8 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
 
             // Validate all arguments for security
             for (const arg of args) {
-              if (arg.includes('..')) {
+              // Check for actual path traversal patterns (../ or ..\) not just '..' in text
+              if (/(?:^|[/\\])\.\.(?:[/\\]|$)/.test(arg)) {
                 return { success: false, result: 'Path traversal (..) not allowed in arguments', error: 'Path traversal not allowed' }
               }
               if (arg.startsWith('~')) {
@@ -5477,6 +6564,11 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
       // Cleanup
       runningExecutions.delete(executionId)
 
+      // Close popup if it belongs to this execution
+      if (popupExecutionId === executionId) {
+        closePopupWindow('complete', 'Workflow completed')
+      }
+
       console.log(`[Workflow Executor] Execution completed: ${executionId}`)
     } catch (err) {
       console.error(`[Workflow Executor] Execution failed: ${executionId}`, err)
@@ -5491,6 +6583,11 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
 
       // Cleanup
       runningExecutions.delete(executionId)
+
+      // Close popup if it belongs to this execution
+      if (popupExecutionId === executionId) {
+        closePopupWindow('error', err.message)
+      }
     }
   })
 
@@ -5576,11 +6673,10 @@ ipcMain.handle('popup:submitInput', async (_event, response) => {
 
     console.log(`[Popup] Input received for: ${requestId}`)
 
-    // Close popup (will clear currentPopupRequest via closed handler)
-    if (popupWindow && !popupWindow.isDestroyed()) {
-      currentPopupRequest = null
-      popupWindow.close()
-    }
+    // Don't close popup — keep it alive for the next request in the loop.
+    // The popup will be closed when the workflow execution finishes
+    // (via closePopupWindow) or when the user manually closes it.
+    currentPopupRequest = null
 
     return { success: true }
   }

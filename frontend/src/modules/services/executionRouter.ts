@@ -33,6 +33,8 @@ export interface ExecutionOptions {
   mode?: GenerationMode
   /** Whether to stream the response */
   stream?: boolean
+  /** Enable image generation output for models that support it */
+  enableImageGeneration?: boolean
   /** If true, compile the prompt first using local compiler */
   compile?: boolean
   /** Compilation format (if compile is true) */
@@ -189,6 +191,7 @@ class ExecutionRouterService {
           temperature: options.temperature,
           mode: options.mode,
           stream: true,
+          enableImageGeneration: options.enableImageGeneration,
           customConfig: options.customConfig
         }
 
@@ -266,6 +269,7 @@ class ExecutionRouterService {
       temperature: options.temperature,
       mode: options.mode,
       stream: false,
+      enableImageGeneration: options.enableImageGeneration,
       customConfig: options.customConfig
     }
 

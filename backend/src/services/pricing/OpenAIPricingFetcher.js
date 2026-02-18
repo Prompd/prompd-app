@@ -71,10 +71,19 @@ export class OpenAIPricingFetcher extends BasePricingFetcher {
     }
   }
 
+  /**
+   * OpenAI: GPT models support native image generation (via DALL-E integration).
+   * Reasoning models (o1, o3, o4) and ChatGPT-branded models do not.
+   */
+  inferImageGenerationSupport(modelId) {
+    if (modelId.startsWith('gpt-')) return true
+    return false
+  }
+
   getDefaultPricing() {
     // Pricing as of February 2026 - https://openai.com/api/pricing/
     return [
-      // --- Reasoning models ---
+      // --- Reasoning models (no image generation) ---
       {
         model: 'o3',
         displayName: 'o3',
@@ -139,7 +148,7 @@ export class OpenAIPricingFetcher extends BasePricingFetcher {
           supportsStreaming: true
         }
       },
-      // --- GPT models ---
+      // --- GPT models (support native image generation) ---
       {
         model: 'gpt-4.1',
         displayName: 'GPT-4.1',

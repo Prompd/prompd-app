@@ -4,7 +4,7 @@
 import type * as monacoEditor from 'monaco-editor'
 
 export interface Context {
-  type: 'using' | 'inherits' | 'parameter' | 'frontmatter' | 'section' | 'variable' | 'version' | 'filepath' | 'paramtype' | 'paramprop' | 'filter' | 'envvar' | 'include' | 'none'
+  type: 'using' | 'inherits' | 'parameter' | 'frontmatter' | 'section' | 'variable' | 'version' | 'filepath' | 'paramtype' | 'paramprop' | 'filter' | 'envvar' | 'workflowvar' | 'include' | 'none'
   query?: string
   field?: string
   packageName?: string // For version completion context
@@ -13,7 +13,7 @@ export interface Context {
 }
 
 export interface HoverContext {
-  type: 'package' | 'parameter' | 'filter' | 'envvar' | 'inherits' | 'none'
+  type: 'package' | 'parameter' | 'filter' | 'envvar' | 'workflowvar' | 'inherits' | 'none'
   value: string
 }
 

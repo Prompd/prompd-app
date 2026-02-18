@@ -4,7 +4,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { FileText, AlignLeft, Package, Search, Shield, ChevronDown, ChevronRight } from 'lucide-react'
+import { FileText, AlignLeft, Package, Search, Shield, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
 import type { PromptNodeData } from '../../../services/workflowTypes'
 import { useEditorStore } from '../../../../stores/editorStore'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
@@ -16,9 +16,10 @@ export interface PromptNodePropertiesProps {
   data: PromptNodeData
   onChange: (field: string, value: unknown) => void
   nodeId?: string
+  onOpenPrompd?: () => void
 }
 
-export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesProps) {
+export function PromptNodeProperties({ data, onChange, onOpenPrompd }: PromptNodePropertiesProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Array<{ name: string; version: string; description?: string }>>([])
   const [localFileResults, setLocalFileResults] = useState<string[]>([])
@@ -369,6 +370,27 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
             }}>
               {data.source}
             </code>
+            {onOpenPrompd && (
+              <button
+                onClick={onOpenPrompd}
+                title="Open in editor"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '4px',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  borderRadius: '3px',
+                  transition: 'color 0.15s'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+              >
+                <ExternalLink size={13} />
+              </button>
+            )}
             <button
               onClick={() => onChange('source', '')}
               style={{
@@ -702,6 +724,15 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Shield size={14} style={{ color: 'var(--accent)' }} />
             Guardrail Settings
+            <span style={{
+              fontSize: '10px',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              background: data.guardrail?.enabled ? 'color-mix(in srgb, var(--node-amber) 20%, transparent)' : 'var(--panel)',
+              color: data.guardrail?.enabled ? 'var(--node-amber)' : 'var(--muted)',
+            }}>
+              {data.guardrail?.enabled ? 'Enabled' : 'Disabled'}
+            </span>
           </div>
           {guardrailExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </button>
@@ -717,6 +748,29 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
             flexDirection: 'column',
             gap: '12px'
           }}>
+            {/* Enable/Disable Toggle */}
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={data.guardrail?.enabled || false}
+                onChange={(e) => onChange('guardrail', {
+                  ...data.guardrail,
+                  enabled: e.target.checked
+                })}
+                style={{ margin: 0, width: '16px', height: '16px' }}
+              />
+              <span style={{ fontSize: '13px', color: 'var(--text)' }}>
+                Validate output before passing to next node
+              </span>
+            </label>
+
+            {data.guardrail?.enabled && (
+            <>
             {/* Output Mode */}
             <div>
               <label style={labelStyle}>Output Mode</label>
@@ -878,6 +932,8 @@ export function PromptNodeProperties({ data, onChange }: PromptNodePropertiesPro
                 4. If false → throw error
               </code>
             </div>
+            </>
+            )}
           </div>
         )}
       </div>

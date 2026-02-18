@@ -16,6 +16,15 @@ export interface ApiRequestResponse {
   error?: string
 }
 
+export interface MenuState {
+  hasWorkspace: boolean
+  hasActiveTab: boolean
+  isPrompdFile: boolean
+  isWorkflowFile: boolean
+  canExecute: boolean
+  isExecutionActive: boolean
+}
+
 export interface ElectronAPI {
   // System info
   getHomePath: () => Promise<string>
@@ -23,6 +32,47 @@ export interface ElectronAPI {
   // Environment variables (filtered by prefix for security)
   // Returns env vars with prefix stripped: PROMPD_API_KEY -> { API_KEY: value }
   getSystemEnvVars: (prefix: string) => Promise<Record<string, string>>
+
+  // Theme
+  setNativeTheme: (theme: 'light' | 'dark') => void
+
+  // Platform
+  platform: string
+
+  // Custom title bar support
+  triggerMenuAction: (action: string, ...args: unknown[]) => Promise<void>
+  getWindowTitle: () => Promise<string>
+  onWindowTitleChanged: (callback: (title: string) => void) => () => void
+  getMenuState: () => Promise<MenuState>
+  onMenuStateChanged: (callback: (state: MenuState) => void) => () => void
+
+  // Edit operations (for custom menu bar)
+  editUndo: () => Promise<void>
+  editRedo: () => Promise<void>
+  editCut: () => Promise<void>
+  editCopy: () => Promise<void>
+  editPaste: () => Promise<void>
+  editDelete: () => Promise<void>
+  editSelectAll: () => Promise<void>
+
+  // View operations (for custom menu bar)
+  viewReload: () => Promise<void>
+  viewForceReload: () => Promise<void>
+  viewToggleDevTools: () => Promise<void>
+  viewResetZoom: () => Promise<void>
+  viewZoomIn: () => Promise<void>
+  viewZoomOut: () => Promise<void>
+  viewToggleFullscreen: () => Promise<void>
+
+  // File/App operations (for custom menu bar)
+  openFileDialog: () => Promise<void>
+  openFolderDialog: () => Promise<void>
+  closeFolder: () => Promise<void>
+  quit: () => Promise<void>
+  checkForUpdates: () => Promise<void>
+
+  // Shell operations
+  openExternal: (url: string) => Promise<void>
 
   // File dialogs
   openFile: () => Promise<string | null>
@@ -59,7 +109,7 @@ export interface ElectronAPI {
 
   // Connection testing (for workflow connections)
   testSSHConnection?: (config: { host: string; port?: number; username?: string }) => Promise<{ success: boolean; message: string }>
-  testDatabaseConnection?: (config: { host: string; port?: number; type?: string }) => Promise<{ success: boolean; message: string }>
+  testDatabaseConnection?: (config: { host?: string; port?: number; type?: string; connectionString?: string }) => Promise<{ success: boolean; message: string }>
   testMCPConnection?: (config: { serverUrl: string }) => Promise<{ success: boolean; message: string }>
 
   // Agent command execution (for workflow Command nodes and AI agent tool calls)
@@ -236,6 +286,27 @@ export interface ElectronAPI {
     ) => Promise<DiagnosticsResult>
   }
 
+  // Connection storage (global + workspace persistence with safeStorage encryption)
+  connections?: {
+    load: (workspacePath?: string) => Promise<{
+      success: boolean
+      connections?: Array<{
+        id: string
+        name: string
+        type: string
+        status: string
+        scope: 'global' | 'workspace'
+        config: unknown
+      }>
+      sources?: { globalPath: string; workspacePath: string | null }
+      error?: string
+    }>
+    save: (
+      connections: Array<{ name: string; type: string; scope?: 'global' | 'workspace'; config: unknown }>,
+      workspacePath?: string
+    ) => Promise<{ success: boolean; results?: unknown; error?: string }>
+  }
+
   // Local package creation using @prompd/cli library
   package?: {
     // Create package from prompd.json in workspace
@@ -244,8 +315,54 @@ export interface ElectronAPI {
       outputDir?: string
     ) => Promise<CreatePackageResult>
 
+    // Install a single package by reference (e.g. "@prompd/core@0.0.1")
+    install: (packageRef: string, workspacePath: string) => Promise<{ success: boolean; name?: string; error?: string; missingMcps?: string[] }>
+
     // Install all dependencies from prompd.json
     installAll: (workspacePath: string) => Promise<InstallAllResult>
+  }
+
+  // Node template management - save/restore workflow node configurations
+  templates?: {
+    save: (
+      workspacePath: string,
+      templateData: Record<string, unknown>,
+      scope?: 'workspace' | 'user',
+      workflowFilePath?: string
+    ) => Promise<{ success: boolean; fileName?: string; scope?: string; error?: string }>
+
+    list: (workspacePath: string) => Promise<{
+      success: boolean
+      templates: Array<{
+        fileName: string
+        name: string
+        description?: string
+        nodeType: string
+        nodeTypeLabel: string
+        scope: 'workspace' | 'user'
+        createdAt: string
+      }>
+      error?: string
+    }>
+
+    delete: (
+      workspacePath: string,
+      fileName: string,
+      scope: 'workspace' | 'user'
+    ) => Promise<{ success: boolean; error?: string }>
+
+    insert: (
+      workspacePath: string,
+      fileName: string,
+      scope: 'workspace' | 'user',
+      workflowFilePath?: string
+    ) => Promise<{
+      success: boolean
+      template?: Record<string, unknown>
+      extractedFiles?: string[]
+      skippedFiles?: string[]
+      error?: string
+    }>
   }
 
   // Workflow trigger management (schedule, webhook, file-watch)
@@ -507,6 +624,149 @@ export interface ElectronAPI {
   registry?: {
     getConfig: () => Promise<{ success: boolean; config?: RegistryConfig; error?: string }>
   }
+
+  // Analytics - GA4 event tracking (opt-in, anonymous)
+  analytics?: {
+    trackEvent: (eventName: string, params?: Record<string, unknown>) => Promise<void>
+    setEnabled: (enabled: boolean) => Promise<void>
+    isEnabled: () => Promise<boolean>
+  }
+
+  // MCP server management (config, connections, tool discovery, registry search)
+  mcp?: {
+    listServers: () => Promise<{
+      success: boolean
+      servers?: McpServerEntry[]
+      error?: string
+    }>
+    addServer: (name: string, config: McpServerConfig) => Promise<{
+      success: boolean
+      error?: string
+    }>
+    removeServer: (name: string) => Promise<{
+      success: boolean
+      error?: string
+    }>
+    testConnection: (serverName: string, config: McpServerConfig) => Promise<{
+      success: boolean
+      tools?: McpToolDefinition[]
+      error?: string
+    }>
+    connect: (serverName: string) => Promise<{
+      success: boolean
+      tools?: McpToolDefinition[]
+      error?: string
+    }>
+    disconnect: (serverName: string) => Promise<{
+      success: boolean
+      error?: string
+    }>
+    listTools: (serverName: string) => Promise<{
+      success: boolean
+      tools?: McpToolDefinition[]
+      error?: string
+    }>
+    callTool: (serverName: string, toolName: string, args?: Record<string, unknown>) => Promise<{
+      success: boolean
+      result?: McpToolResult
+      error?: string
+    }>
+    searchRegistry: (query: string, limit?: number) => Promise<{
+      success: boolean
+      servers?: McpRegistryServer[]
+      error?: string
+    }>
+  }
+
+  // MCP server (Prompd-as-server for OpenClaw and other MCP clients)
+  mcpServer?: {
+    start: (opts?: { port?: number; apiKey?: string }) => Promise<{
+      success: boolean
+      running?: boolean
+      port?: number
+      url?: string | null
+      apiKey?: string
+      error?: string
+    }>
+    stop: () => Promise<{ success: boolean; error?: string }>
+    status: () => Promise<{
+      success: boolean
+      running?: boolean
+      port?: number
+      url?: string | null
+      apiKey?: string
+      workspacePath?: string | null
+      toolCount?: number
+      error?: string
+    }>
+    getConfig: (format?: string) => Promise<{
+      success: boolean
+      config?: Record<string, unknown>
+      format?: string
+      error?: string
+    }>
+    regenerateApiKey: () => Promise<{
+      success: boolean
+      apiKey?: string
+      error?: string
+    }>
+    getClients: () => Promise<{
+      success: boolean
+      clients?: Array<{
+        ip: string
+        userAgent: string
+        lastSeen: string
+        requestCount: number
+      }>
+      error?: string
+    }>
+  }
+
+  // Generated content persistence and resource management (~/.prompd/generated/)
+  generated?: {
+    saveImage: (base64Data: string, mimeType?: string) => Promise<{
+      success: boolean
+      filePath?: string
+      fileName?: string
+      existed?: boolean
+      error?: string
+    }>
+    list: () => Promise<{
+      success: boolean
+      resources?: GeneratedResource[]
+      error?: string
+    }>
+    delete: (relativePath: string) => Promise<{
+      success: boolean
+      error?: string
+    }>
+    saveText: (content: string, ext?: string) => Promise<{
+      success: boolean
+      filePath?: string
+      fileName?: string
+      existed?: boolean
+      error?: string
+    }>
+  }
+
+  // App lifecycle — clean close with save/discard prompt
+  onBeforeQuit?: (callback: () => void) => void
+  readyToQuit?: () => void
+
+  // Storage monitoring
+  storage?: {
+    getUsage: () => { usedBytes: number; quotaBytes: number }
+  }
+}
+
+// Generated resource entry from ~/.prompd/generated/
+export interface GeneratedResource {
+  fileName: string
+  relativePath: string
+  type: string           // subdirectory name: 'images', 'text', etc.
+  protocolUrl: string    // prompd-gen://type/filename
+  size: number
+  modified: number       // timestamp ms
 }
 
 // Workflow execution event types (single event channel with type-based routing)
@@ -639,6 +899,7 @@ export interface InstallAllResult {
     version: string
     error: string
   }>
+  missingMcps?: string[]  // MCP servers required but not configured
   error?: string
 }
 
@@ -838,12 +1099,30 @@ export interface PrompdConfig {
   max_retries?: number
   verbose?: boolean
   disabled_providers?: string[]  // List of provider IDs to disable (preserves API keys)
+  services?: {
+    mcp_server?: {
+      auto_start?: boolean
+      port?: number
+      api_key?: string
+    }
+  }
+}
+
+export interface CustomProviderModelConfig {
+  id: string
+  name: string
+  supports_text?: boolean
+  supports_vision?: boolean
+  supports_image_generation?: boolean
+  supports_tools?: boolean
+  context_window?: number
 }
 
 export interface CustomProviderConfig {
+  display_name?: string
   base_url: string
   api_key?: string
-  models?: string[]
+  models?: (string | CustomProviderModelConfig)[]
   type?: string
   enabled?: boolean
 }
@@ -866,6 +1145,72 @@ export interface ProviderInfo {
   configured: boolean
   baseUrl?: string
   models: string[]
+}
+
+// MCP (Model Context Protocol) types
+export interface McpServerConfig {
+  command?: string              // e.g., 'npx'
+  args?: string[]               // e.g., ['-y', '@package/mcp-server']
+  env?: Record<string, string>  // Environment variables (encrypted at rest)
+  transport?: 'stdio' | 'http' | 'streamable-http'
+  serverUrl?: string            // For HTTP transport
+  serverName?: string           // Display name
+  registryRef?: string          // Official MCP registry name
+  headers?: Record<string, string>  // Custom HTTP headers (encrypted at rest)
+}
+
+export interface McpServerEntry {
+  name: string
+  config: McpServerConfig
+  status: 'connected' | 'disconnected' | 'connecting' | 'error'
+  toolCount: number
+}
+
+export interface McpToolDefinition {
+  name: string
+  description: string
+  inputSchema: Record<string, unknown> // JSON Schema
+}
+
+export interface McpToolResult {
+  content?: Array<{
+    type: string
+    text?: string
+    data?: string
+    mimeType?: string
+  }>
+  isError?: boolean
+}
+
+export interface McpRegistryServer {
+  name: string
+  description?: string
+  version?: string
+  packages?: Array<{
+    registry_name: string
+    name: string
+    version?: string
+    runtime?: string
+    transport_type?: string  // e.g., 'stdio', 'sse'
+    environment_variables?: Array<{
+      name: string
+      description?: string
+      required?: boolean
+    }>
+  }>
+  remotes?: Array<{
+    type: string              // e.g., 'streamable-http'
+    url: string               // e.g., 'https://server.smithery.ai/@user/server/mcp'
+    headers?: Array<{
+      name: string            // e.g., 'Authorization'
+      description?: string
+      value?: string          // Template e.g., 'Bearer {smithery_api_key}'
+      isRequired?: boolean
+      isSecret?: boolean
+    }>
+  }>
+  // Additional fields from registry API
+  [key: string]: unknown
 }
 
 declare global {

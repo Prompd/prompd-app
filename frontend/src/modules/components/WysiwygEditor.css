@@ -1,0 +1,610 @@
+/* WysiwygEditor.css - Styles matching MarkdownPreview.tsx */
+
+/* Container */
+.wysiwyg-container {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: auto;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Auto-height mode: no fixed height, grows with content */
+.wysiwyg-container.wysiwyg-auto-height {
+  overflow: visible;
+  min-height: 120px;
+  border: none;
+  border-radius: 0;
+}
+
+/* Tiptap editor content area */
+.wysiwyg-editor {
+  padding: 20px 24px;
+  color: var(--text);
+  line-height: 1.7;
+  font-size: 15px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  outline: none;
+  min-height: 100%;
+  flex: 1;
+}
+
+.wysiwyg-editor:focus {
+  outline: none;
+}
+
+/* ─── Headings ─── */
+.wysiwyg-editor h1 {
+  margin-top: 32px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  font-size: 2em;
+  font-weight: 700;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  line-height: 1.3;
+}
+
+.wysiwyg-editor h2 {
+  margin-top: 28px;
+  margin-bottom: 14px;
+  padding-bottom: 6px;
+  font-size: 1.5em;
+  font-weight: 600;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  line-height: 1.35;
+}
+
+.wysiwyg-editor h3 {
+  margin-top: 24px;
+  margin-bottom: 12px;
+  font-size: 1.25em;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.wysiwyg-editor h4 {
+  margin-top: 20px;
+  margin-bottom: 10px;
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.wysiwyg-editor h5 {
+  margin-top: 16px;
+  margin-bottom: 8px;
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wysiwyg-editor h6 {
+  margin-top: 16px;
+  margin-bottom: 8px;
+  font-size: 0.9em;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* First heading shouldn't have top margin */
+.wysiwyg-editor > h1:first-child,
+.wysiwyg-editor > h2:first-child,
+.wysiwyg-editor > h3:first-child,
+.wysiwyg-editor > h4:first-child {
+  margin-top: 0;
+}
+
+/* ─── Paragraphs ─── */
+.wysiwyg-editor p {
+  margin-top: 0;
+  margin-bottom: 16px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+/* ─── Lists ─── */
+.wysiwyg-editor ul {
+  margin-top: 0;
+  margin-bottom: 16px;
+  padding-left: 28px;
+  color: var(--text);
+  line-height: 1.7;
+  list-style-type: disc;
+  list-style-position: outside;
+}
+
+.wysiwyg-editor ol {
+  margin-top: 0;
+  margin-bottom: 16px;
+  padding-left: 28px;
+  color: var(--text);
+  line-height: 1.7;
+  list-style-type: decimal;
+  list-style-position: outside;
+}
+
+.wysiwyg-editor li {
+  margin-bottom: 8px;
+  line-height: 1.6;
+  padding-left: 4px;
+}
+
+.wysiwyg-editor li p {
+  margin-bottom: 4px;
+}
+
+/* Task lists */
+.wysiwyg-editor ul[data-type="taskList"] {
+  list-style-type: none;
+  padding-left: 24px;
+}
+
+.wysiwyg-editor ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.wysiwyg-editor ul[data-type="taskList"] li label {
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.wysiwyg-editor ul[data-type="taskList"] li input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ─── Inline Code ─── */
+.wysiwyg-editor code {
+  display: inline-block;
+  background: rgba(110, 118, 129, 0.25);
+  padding: 2px 6px;
+  margin: 0 1px;
+  border-radius: 6px;
+  font-size: 0.85em;
+  font-family: "JetBrains Mono", "Fira Code", Monaco, Consolas, monospace;
+  color: var(--text);
+  border: 1px solid rgba(110, 118, 129, 0.3);
+  word-break: break-word;
+  white-space: nowrap;
+  vertical-align: baseline;
+  line-height: 1.4;
+}
+
+/* ─── Code Blocks ─── */
+.wysiwyg-editor pre {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.wysiwyg-editor pre code {
+  display: block;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  font-size: 13px;
+  font-family: "JetBrains Mono", "Fira Code", Monaco, Consolas, monospace;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre;
+  tab-size: 2;
+  word-break: normal;
+}
+
+/* ─── Blockquotes ─── */
+.wysiwyg-editor blockquote {
+  border-left: 4px solid var(--accent);
+  padding: 12px 20px;
+  margin-left: 0;
+  margin-right: 0;
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: var(--text-secondary);
+  font-style: italic;
+  background: rgba(59, 130, 246, 0.05);
+  border-radius: 0 8px 8px 0;
+}
+
+.wysiwyg-editor blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* ─── Links ─── */
+.wysiwyg-editor a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s;
+  cursor: pointer;
+}
+
+.wysiwyg-editor a:hover {
+  border-bottom-color: var(--accent);
+}
+
+/* ─── Horizontal Rule ─── */
+.wysiwyg-editor hr {
+  height: 1px;
+  border: none;
+  background: linear-gradient(to right, transparent, var(--border), transparent);
+  margin: 32px 0;
+}
+
+/* ─── Images ─── */
+.wysiwyg-editor img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  margin: 16px 0;
+}
+
+/* ─── Tables ─── */
+.wysiwyg-editor table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.wysiwyg-editor thead {
+  background: var(--panel-2);
+}
+
+.wysiwyg-editor th {
+  padding: 12px 16px;
+  font-weight: 600;
+  text-align: left;
+  border-bottom: 2px solid var(--border);
+  color: var(--text);
+}
+
+.wysiwyg-editor td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+/* ─── Strong / Emphasis ─── */
+.wysiwyg-editor strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wysiwyg-editor em {
+  font-style: italic;
+}
+
+.wysiwyg-editor s {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+/* ─── Placeholder ─── */
+.wysiwyg-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-secondary);
+  pointer-events: none;
+  height: 0;
+  opacity: 0.5;
+}
+
+/* ─── Dark theme code block overrides ─── */
+[data-theme="dark"] .wysiwyg-editor pre {
+  background: #0d1117;
+}
+
+[data-theme="dark"] .wysiwyg-editor pre code {
+  color: #e6edf3;
+}
+
+[data-theme="dark"] .wysiwyg-editor :not(pre) > code {
+  background: rgba(110, 118, 129, 0.25);
+  color: #e6edf3;
+  border-color: rgba(110, 118, 129, 0.3);
+}
+
+/* Light theme code overrides */
+[data-theme="light"] .wysiwyg-editor :not(pre) > code {
+  background: rgba(175, 184, 193, 0.3);
+  color: #24292f;
+  border-color: rgba(175, 184, 193, 0.4);
+}
+
+[data-theme="light"] .wysiwyg-editor pre {
+  background: #f6f8fa;
+}
+
+[data-theme="light"] .wysiwyg-editor pre code {
+  color: #24292f;
+}
+
+/* ─── Nunjucks Expressions ─── */
+.nunjucks-expression {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: "JetBrains Mono", Monaco, Consolas, monospace;
+  font-size: 0.9em;
+  color: #ff8800;
+  white-space: nowrap;
+  cursor: default;
+}
+
+/* ─── Nunjucks Hover Tooltip ─── */
+.nunjucks-tooltip {
+  position: fixed;
+  z-index: 10000;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  max-width: 320px;
+  pointer-events: none;
+  white-space: normal;
+}
+
+.nunjucks-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.nunjucks-tooltip-name {
+  font-family: "JetBrains Mono", Monaco, Consolas, monospace;
+  font-weight: 600;
+  color: #ff8800;
+}
+
+.nunjucks-tooltip-tag {
+  font-family: "JetBrains Mono", Monaco, Consolas, monospace;
+  font-weight: 600;
+  color: #c084fc;
+}
+
+.nunjucks-tooltip-label {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.nunjucks-tooltip-desc {
+  color: var(--text-secondary);
+}
+
+.nunjucks-tooltip-type {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-family: "JetBrains Mono", Monaco, Consolas, monospace;
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  font-weight: 500;
+}
+
+.nunjucks-tooltip-required {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  font-weight: 500;
+}
+
+.nunjucks-tooltip-warning {
+  color: #fbbf24;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.nunjucks-tooltip-description {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.nunjucks-tooltip-default,
+.nunjucks-tooltip-enum {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.nunjucks-tooltip-default code,
+.nunjucks-tooltip-enum code {
+  font-family: "JetBrains Mono", Monaco, Consolas, monospace;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--panel-2);
+  color: var(--text-secondary);
+}
+
+/* ─── Bubble Menu ─── */
+.wysiwyg-bubble-menu {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.wysiwyg-bubble-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.wysiwyg-bubble-menu button:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.wysiwyg-bubble-menu button.is-active {
+  background: var(--accent);
+  color: white;
+}
+
+.wysiwyg-bubble-menu .separator {
+  width: 1px;
+  background: var(--border);
+  margin: 2px 4px;
+}
+
+/* ─── Toolbar ─── */
+.wysiwyg-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.wysiwyg-toolbar .toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.wysiwyg-toolbar .toolbar-group + .toolbar-group {
+  margin-left: 4px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border);
+}
+
+.wysiwyg-toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.wysiwyg-toolbar button:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.wysiwyg-toolbar button.is-active {
+  background: var(--accent);
+  color: white;
+}
+
+.wysiwyg-toolbar button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.wysiwyg-toolbar select {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+}
+
+.wysiwyg-toolbar select:focus {
+  border-color: var(--accent);
+}
+
+/* ─── Suggestion / Autocomplete List ─── */
+.wysiwyg-suggestion-list {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+  min-width: 200px;
+}
+
+.wysiwyg-suggestion-list button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  gap: 12px;
+}
+
+.wysiwyg-suggestion-list button:hover,
+.wysiwyg-suggestion-list button.is-selected {
+  background: var(--accent);
+  color: white;
+}
+
+.wysiwyg-suggestion-list .suggestion-name {
+  font-weight: 500;
+}
+
+.wysiwyg-suggestion-list .suggestion-type {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: "JetBrains Mono", monospace;
+}
+
+.wysiwyg-suggestion-list button:hover .suggestion-type,
+.wysiwyg-suggestion-list button.is-selected .suggestion-type {
+  color: rgba(255, 255, 255, 0.7);
+}

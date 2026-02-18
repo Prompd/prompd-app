@@ -1,7 +1,7 @@
-import { Files, Package, GitBranch, History } from 'lucide-react'
+import { Files, Package, GitBranch, History, FolderOpen } from 'lucide-react'
 import { PrompdIcon } from '../components/PrompdIcon'
 
-type SideKey = 'explorer' | 'packages' | 'ai' | 'git' | 'history'
+type SideKey = 'explorer' | 'packages' | 'ai' | 'git' | 'history' | 'resources'
 
 type Props = {
   showSidebar: boolean
@@ -81,6 +81,16 @@ export default function ActivityBar({ showSidebar, active, onSelect, onToggleSid
           <History
             size={iconSize}
             color={active === 'history' && showSidebar ? iconColor : inactiveIconColor}
+          />
+        </button>
+        <button
+          className={`ab-item ${active === 'resources' && showSidebar ? 'active' : ''}`}
+          title="Generated Resources"
+          onClick={() => handleClick('resources')}
+        >
+          <FolderOpen
+            size={iconSize}
+            color={active === 'resources' && showSidebar ? iconColor : inactiveIconColor}
           />
         </button>
       </div>

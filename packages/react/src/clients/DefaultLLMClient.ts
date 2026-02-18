@@ -62,6 +62,7 @@ export class DefaultLLMClient implements IPrompdLLMClient {
         method: 'POST',
         headers,
         credentials: 'include', // Include credentials for cross-origin requests
+        signal: request.signal,
         body: JSON.stringify({
           messages: request.messages,
           provider,

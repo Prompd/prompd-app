@@ -134,7 +134,7 @@ export const McpToolNode = memo(({ id, data, selected }: McpToolNodeProps) => {
 
   return (
     <div
-      className={nodeData.disabled ? 'workflow-node-disabled' : ''}
+      className={[nodeData.disabled && 'workflow-node-disabled', nodeData.locked && 'workflow-node-locked'].filter(Boolean).join(' ')}
       style={{
         minWidth: 200,
         padding: '12px',

@@ -10,9 +10,10 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import {
   Copy, Scissors, Clipboard, Files, Power, PowerOff, Trash2,
-  Unlink, Plus, Zap, Settings, ChevronRight,
+  Unlink, Plus, Zap, Settings, ChevronRight, Save,
 } from 'lucide-react'
 import type { WorkflowNodeType } from '../../services/workflowTypes'
+import type { TemplateListItem, TemplateScope } from '../../services/nodeTemplateTypes'
 import { getNodeColor } from './nodeColors'
 import { NODE_TYPE_CATEGORIES, NODE_TYPE_REGISTRY } from '../../services/nodeTypeRegistry'
 
@@ -40,6 +41,9 @@ export interface ContextMenuProps {
   edgeSource?: string
   edgeTarget?: string
 
+  // Templates
+  templates?: TemplateListItem[]
+
   // Actions
   onCopy?: () => void
   onCut?: () => void
@@ -48,7 +52,9 @@ export interface ContextMenuProps {
   onToggleDisabled?: () => void
   onDelete?: () => void
   onUndock?: () => void
+  onSaveAsTemplate?: () => void
   onAddNode?: (nodeType: WorkflowNodeType) => void
+  onInsertTemplate?: (fileName: string, scope: TemplateScope) => void
   onHighlightPath?: () => void
   onWorkflowSettings?: () => void
 }
@@ -97,9 +103,12 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
     onToggleDisabled,
     onDelete,
     onUndock,
+    onSaveAsTemplate,
     onAddNode,
+    onInsertTemplate,
     onHighlightPath,
     onWorkflowSettings,
+    templates,
   } = props
 
   const menuRef = useRef<HTMLDivElement>(null)
@@ -145,6 +154,7 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
         onClick: onToggleDisabled,
         shortcut: 'Ctrl+E'
       },
+      { id: 'save-template', label: 'Save as Template', icon: Save, onClick: onSaveAsTemplate },
       { id: 'sep2', label: '', separator: true },
       { id: 'delete', label: 'Delete', icon: Trash2, onClick: onDelete, shortcut: 'Del', danger: true }
     )
@@ -205,6 +215,21 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
         submenu.push({ id: `sep-${groupIdx}`, label: '', separator: true })
       }
     })
+
+    // Append saved templates
+    if (templates && templates.length > 0) {
+      submenu.push({ id: 'sep-templates', label: '', separator: true })
+      for (const tpl of templates) {
+        const regEntry = NODE_TYPE_REGISTRY[tpl.nodeType as WorkflowNodeType]
+        submenu.push({
+          id: `tpl-${tpl.scope}-${tpl.fileName}`,
+          label: tpl.name,
+          icon: regEntry?.icon,
+          nodeType: tpl.nodeType as WorkflowNodeType,
+          onClick: () => onInsertTemplate?.(tpl.fileName, tpl.scope),
+        })
+      }
+    }
 
     menuItems.push({
       id: 'add-node',

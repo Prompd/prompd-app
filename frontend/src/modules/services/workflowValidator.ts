@@ -15,6 +15,7 @@ import type {
   PromptNodeData,
   ConditionNodeData,
   LoopNodeData,
+  ParallelNodeData,
   AgentNodeData,
   BaseNodeData,
 } from './workflowTypes'
@@ -145,7 +146,9 @@ function validateNode(node: WorkflowNode, workflow: WorkflowFile): WorkflowValid
   }
 
   // Validate container nodes have proper children
-  if (['loop', 'parallel', 'tool-call-router', 'chat-agent'].includes(node.type)) {
+  // Parallel nodes in 'fork' mode are edge-based (not containers), so skip the empty check
+  const isParallelFork = node.type === 'parallel' && (node.data as ParallelNodeData)?.mode === 'fork'
+  if (['loop', 'parallel', 'tool-call-router', 'chat-agent'].includes(node.type) && !isParallelFork) {
     const children = workflow.nodes.filter(n => n.parentId === node.id)
     if (children.length === 0 && node.type !== 'chat-agent') {
       const containerTypeHelp: Record<string, string> = {

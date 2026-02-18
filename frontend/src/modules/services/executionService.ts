@@ -117,6 +117,19 @@ function calculateEstimatedCost(
 }
 
 /**
+ * Check if the selected model supports image generation
+ * Uses pricing data from uiStore (populated from backend API)
+ */
+function modelSupportsImageGeneration(provider: string, model: string): boolean {
+  const providersWithPricing = useUIStore.getState().llmProvider.providersWithPricing
+  if (!providersWithPricing) return false
+  const providerData = providersWithPricing.find(p => p.providerId === provider)
+  if (!providerData) return false
+  const modelData = providerData.models.find(m => m.model === model)
+  return modelData?.supportsImageGeneration === true
+}
+
+/**
  * Parse compiled markdown prompt into sections
  * Splits the prompt by markdown headers (# System, # User, # Context, etc.)
  */
@@ -466,7 +479,8 @@ export async function executePrompdConfig(
       parameters: config.parameters,
       maxTokens: config.maxTokens ?? 4096,
       temperature: config.temperature ?? 0.7,
-      mode: config.mode ?? 'default'
+      mode: config.mode ?? 'default',
+      enableImageGeneration: modelSupportsImageGeneration(config.provider, config.model)
     })
 
     console.log('[executionService] Router result:', {

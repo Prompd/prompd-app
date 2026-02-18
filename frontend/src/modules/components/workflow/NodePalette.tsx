@@ -5,8 +5,8 @@
  * derived from the single-source-of-truth nodeTypeRegistry.
  */
 
-import { useState, useMemo, useCallback } from 'react'
-import { ChevronDown, ChevronRight, Search, X, Star } from 'lucide-react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
+import { ChevronDown, ChevronRight, Search, X, Star, Trash2, Save, Globe } from 'lucide-react'
 import type { WorkflowNodeType } from '../../services/workflowTypes'
 import {
   NODE_TYPE_CATEGORIES,
@@ -14,6 +14,9 @@ import {
   NODE_TYPE_REGISTRY,
   type NodeTypeEntry,
 } from '../../services/nodeTypeRegistry'
+import type { TemplateListItem } from '../../services/nodeTemplateTypes'
+import { useConfirmDialog } from '../ConfirmDialog'
+import { useEditorStore } from '../../../stores/editorStore'
 
 // Local storage key for favorites
 const FAVORITES_STORAGE_KEY = 'workflow-node-favorites'
@@ -214,9 +217,160 @@ function CollapsibleSection({ title, nodeTypes, defaultExpanded = false, filter 
   )
 }
 
+interface TemplatePaletteItemProps {
+  template: TemplateListItem
+  onDelete: (fileName: string, scope: 'workspace' | 'user') => void
+  showConfirm: (options: { title: string; message: string; confirmLabel?: string; confirmVariant?: 'danger' | 'primary' | 'warning' }) => Promise<boolean>
+}
+
+function TemplatePaletteItem({ template, onDelete, showConfirm }: TemplatePaletteItemProps) {
+  const [hovered, setHovered] = useState(false)
+  const registry = NODE_TYPE_REGISTRY[template.nodeType as WorkflowNodeType]
+  const Icon = registry?.icon || Save
+  const color = registry ? `var(--node-${registry.colorVar}, var(--accent))` : 'var(--accent)'
+
+  const handleDragStart = (event: React.DragEvent) => {
+    event.dataTransfer.setData(
+      'application/workflow-template',
+      JSON.stringify({ fileName: template.fileName, scope: template.scope })
+    )
+    event.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDeleteClick = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const confirmed = await showConfirm({
+      title: 'Delete Template',
+      message: `Are you sure you want to delete "${template.name}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      confirmVariant: 'danger'
+    })
+    if (confirmed) {
+      onDelete(template.fileName, template.scope)
+    }
+  }
+
+  return (
+    <div
+      draggable={true}
+      onDragStart={handleDragStart}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        padding: '8px 10px',
+        borderRadius: '6px',
+        border: '1px solid var(--border)',
+        background: 'var(--panel)',
+        cursor: 'grab',
+        transition: 'box-shadow 0.2s',
+        position: 'relative',
+        boxShadow: hovered ? '0 2px 8px rgba(0,0,0,0.1)' : 'none',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <Icon style={{ width: '14px', height: '14px', color, flexShrink: 0 }} />
+        <span style={{ fontWeight: 500, fontSize: '12px', color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {template.name}
+        </span>
+        {template.scope === 'user' && (
+          <span title="Global template (shared across workspaces)" style={{ display: 'flex', flexShrink: 0 }}>
+            <Globe style={{ width: 11, height: 11, color: 'var(--muted)' }} />
+          </span>
+        )}
+        <button
+          onClick={handleDeleteClick}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '2px',
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            color: hovered ? 'var(--muted)' : 'transparent',
+            transition: 'color 0.15s',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--error, #ef4444)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = hovered ? 'var(--muted)' : 'transparent' }}
+          title="Delete template"
+        >
+          <Trash2 style={{ width: 11, height: 11 }} />
+        </button>
+      </div>
+      {template.description && (
+        <p style={{ fontSize: '10px', color: 'var(--muted)', margin: '2px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {template.description}
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function NodePalette() {
   const [filter, setFilter] = useState('')
   const [favorites, setFavorites] = useState<WorkflowNodeType[]>(() => loadFavorites())
+  const [templates, setTemplates] = useState<TemplateListItem[]>([])
+  const [templatesExpanded, setTemplatesExpanded] = useState(true)
+  const { showConfirm, ConfirmDialogComponent } = useConfirmDialog()
+
+  // Subscribe to workspace path so templates reload when workspace is restored
+  const workspacePath = useEditorStore(state => state.explorerDirPath)
+
+  // Load templates from IPC
+  const loadTemplates = useCallback(async () => {
+    if (!window.electronAPI?.templates) {
+      console.debug('[NodePalette] Templates API not available (browser mode)')
+      return
+    }
+
+    try {
+      const wsPath = workspacePath || await window.electronAPI.getWorkspacePath()
+      if (!wsPath) {
+        console.debug('[NodePalette] No workspace path — skipping template load')
+        return
+      }
+
+      const result = await window.electronAPI.templates.list(wsPath)
+
+      if (result.success) {
+        setTemplates(result.templates as TemplateListItem[])
+      } else {
+        console.warn('[NodePalette] Template list returned error:', result.error)
+      }
+    } catch (err) {
+      console.warn('[NodePalette] Failed to load templates:', err)
+    }
+  }, [workspacePath])
+
+  useEffect(() => {
+    loadTemplates()
+  }, [loadTemplates])
+
+  // Expose refresh function for external callers
+  useEffect(() => {
+    (window as unknown as Record<string, unknown>).__refreshNodePaletteTemplates = loadTemplates
+    return () => {
+      delete (window as unknown as Record<string, unknown>).__refreshNodePaletteTemplates
+    }
+  }, [loadTemplates])
+
+  const handleDeleteTemplate = useCallback(async (fileName: string, scope: 'workspace' | 'user') => {
+    if (!window.electronAPI?.templates) return
+
+    try {
+      const workspacePath = await window.electronAPI.getWorkspacePath()
+      if (!workspacePath) return
+
+      const result = await window.electronAPI.templates.delete(workspacePath, fileName, scope)
+
+      if (result.success) {
+        setTemplates(prev => prev.filter(t => !(t.fileName === fileName && t.scope === scope)))
+      }
+    } catch (err) {
+      console.warn('[NodePalette] Failed to delete template:', err)
+    }
+  }, [])
 
   const toggleFavorite = useCallback((type: WorkflowNodeType) => {
     setFavorites(prev => {
@@ -245,6 +399,8 @@ export function NodePalette() {
   }, [favoriteItems, filter])
 
   return (
+    <>
+    <ConfirmDialogComponent />
     <div
       className="node-palette"
       style={{
@@ -385,6 +541,98 @@ export function NodePalette() {
           }} />
         )}
 
+        {/* Templates section */}
+        {(() => {
+          const lowerFilter = filter.toLowerCase()
+          const filteredTemplates = filter
+            ? templates.filter(t =>
+              t.name.toLowerCase().includes(lowerFilter) ||
+              t.nodeTypeLabel.toLowerCase().includes(lowerFilter) ||
+              (t.description || '').toLowerCase().includes(lowerFilter)
+            )
+            : templates
+          const effectiveExpanded = filter ? filteredTemplates.length > 0 : templatesExpanded
+
+          if (filteredTemplates.length === 0 && !filter) return null
+
+          // Group by scope
+          const workspaceTemplates = filteredTemplates.filter(t => t.scope === 'workspace')
+          const userTemplates = filteredTemplates.filter(t => t.scope === 'user')
+          const hasMultipleScopes = workspaceTemplates.length > 0 && userTemplates.length > 0
+
+          return filteredTemplates.length > 0 ? (
+            <div style={{ marginBottom: '8px' }}>
+              <button
+                onClick={() => !filter && setTemplatesExpanded(!templatesExpanded)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  width: '100%',
+                  padding: '4px 0',
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: filter ? 'default' : 'pointer',
+                  marginBottom: effectiveExpanded ? '8px' : '0',
+                }}
+              >
+                {!filter && (
+                  effectiveExpanded
+                    ? <ChevronDown style={{ width: 12, height: 12, color: 'var(--muted)' }} />
+                    : <ChevronRight style={{ width: 12, height: 12, color: 'var(--muted)' }} />
+                )}
+                <Save style={{ width: 12, height: 12, color: 'var(--accent)' }} />
+                <h4 style={{
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  color: 'var(--accent)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  margin: 0,
+                }}>
+                  Templates
+                </h4>
+                <span style={{
+                  fontSize: '9px',
+                  color: 'var(--muted)',
+                  marginLeft: 'auto',
+                  opacity: 0.7,
+                }}>
+                  {filteredTemplates.length}
+                </span>
+              </button>
+              {effectiveExpanded && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {hasMultipleScopes && workspaceTemplates.length > 0 && (
+                    <div style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 2, marginBottom: 2, paddingLeft: 4 }}>
+                      Project
+                    </div>
+                  )}
+                  {workspaceTemplates.map(t => (
+                    <TemplatePaletteItem key={`ws-${t.fileName}`} template={t} onDelete={handleDeleteTemplate} showConfirm={showConfirm} />
+                  ))}
+                  {hasMultipleScopes && userTemplates.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 6, marginBottom: 2, paddingLeft: 4 }}>
+                      <Globe style={{ width: 9, height: 9 }} />
+                      Global
+                    </div>
+                  )}
+                  {userTemplates.map(t => (
+                    <TemplatePaletteItem key={`user-${t.fileName}`} template={t} onDelete={handleDeleteTemplate} showConfirm={showConfirm} />
+                  ))}
+                </div>
+              )}
+              {!filter && (
+                <div style={{
+                  height: '1px',
+                  background: 'var(--border)',
+                  margin: '8px 0',
+                }} />
+              )}
+            </div>
+          ) : null
+        })()}
+
         {NODE_TYPE_CATEGORIES.map(cat => (
           <CollapsibleSection
             key={cat.key}
@@ -397,5 +645,6 @@ export function NodePalette() {
         ))}
       </div>
     </div>
+    </>
   )
 }

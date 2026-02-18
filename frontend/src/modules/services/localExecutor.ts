@@ -6,10 +6,12 @@
  */
 
 import { configService } from './configService'
+import { persistBase64Images } from './imageStorage'
 import {
   createProvider,
   getProviderConfig,
   listKnownProviders,
+  isKnownProvider,
   KNOWN_PROVIDERS
 } from './providers'
 import type {
@@ -41,6 +43,8 @@ export interface LocalExecuteOptions {
   mode?: GenerationMode
   /** Whether to stream the response */
   stream?: boolean
+  /** Enable image generation output for models that support it */
+  enableImageGeneration?: boolean
   /** Custom provider config (for custom endpoints) */
   customConfig?: {
     baseUrl: string
@@ -97,9 +101,42 @@ class LocalExecutorService {
       return true
     }
 
+    // Custom providers may not need an API key (e.g. local models)
+    if (!isKnownProvider(provider)) {
+      const customConfig = await this.resolveCustomProviderConfig(provider)
+      if (customConfig) return true
+    }
+
     // Check if API key is available for provider
     const apiKey = await configService.getApiKey(provider)
     return !!apiKey
+  }
+
+  /**
+   * Resolve custom provider config from configService when provider is not in KNOWN_PROVIDERS.
+   * Returns the customConfig object for createProvider, or null if not found.
+   */
+  private async resolveCustomProviderConfig(provider: string): Promise<{ baseUrl: string; displayName: string } | null> {
+    try {
+      const config = await configService.getConfig()
+      if (config.custom_providers) {
+        const providerConfig = config.custom_providers[provider]
+        if (providerConfig) {
+          // Normalize base URL: strip /chat/completions suffix since OpenAICompatibleProvider appends it
+          let baseUrl = (providerConfig.base_url || '').replace(/\/+$/, '')
+          if (baseUrl.endsWith('/chat/completions')) {
+            baseUrl = baseUrl.slice(0, -'/chat/completions'.length)
+          }
+          return {
+            baseUrl,
+            displayName: provider.charAt(0).toUpperCase() + provider.slice(1)
+          }
+        }
+      }
+    } catch {
+      // Config load failure
+    }
+    return null
   }
 
   /**
@@ -112,13 +149,17 @@ class LocalExecutorService {
       // Get API key from config
       const apiKey = await this.getApiKey(options.provider)
 
+      // Resolve custom config: use explicit config, or auto-resolve from configService
+      const resolvedCustomConfig = options.customConfig
+        || (!isKnownProvider(options.provider) ? await this.resolveCustomProviderConfig(options.provider) : null)
+
       // Create provider instance
       const providerInstance = createProvider(
         options.provider,
-        options.customConfig ? {
+        resolvedCustomConfig ? {
           name: options.provider,
-          displayName: options.customConfig.displayName || options.provider,
-          baseUrl: options.customConfig.baseUrl
+          displayName: resolvedCustomConfig.displayName || options.provider,
+          baseUrl: resolvedCustomConfig.baseUrl
         } : undefined
       )
 
@@ -131,15 +172,21 @@ class LocalExecutorService {
         temperature: options.temperature,
         systemPrompt: options.systemPrompt,
         stream: false,
-        mode: options.mode
+        mode: options.mode,
+        enableImageGeneration: options.enableImageGeneration
       }
 
       // Execute
       const result = await providerInstance.execute(request)
 
+      // Persist any inline base64 images to disk to avoid store bloat
+      const response = result.response
+        ? await persistBase64Images(result.response)
+        : result.response
+
       return {
         success: result.success,
-        response: result.response,
+        response,
         error: result.error,
         usage: result.usage,
         metadata: {
@@ -177,13 +224,17 @@ class LocalExecutorService {
       // Get API key from config
       const apiKey = await this.getApiKey(options.provider)
 
+      // Resolve custom config: use explicit config, or auto-resolve from configService
+      const resolvedCustomConfig = options.customConfig
+        || (!isKnownProvider(options.provider) ? await this.resolveCustomProviderConfig(options.provider) : null)
+
       // Create provider instance
       const providerInstance = createProvider(
         options.provider,
-        options.customConfig ? {
+        resolvedCustomConfig ? {
           name: options.provider,
-          displayName: options.customConfig.displayName || options.provider,
-          baseUrl: options.customConfig.baseUrl
+          displayName: resolvedCustomConfig.displayName || options.provider,
+          baseUrl: resolvedCustomConfig.baseUrl
         } : undefined
       )
 
@@ -196,7 +247,8 @@ class LocalExecutorService {
         temperature: options.temperature,
         systemPrompt: options.systemPrompt,
         stream: true,
-        mode: options.mode
+        mode: options.mode,
+        enableImageGeneration: options.enableImageGeneration
       }
 
       // Stream
@@ -213,9 +265,12 @@ class LocalExecutorService {
 
       const duration = Date.now() - startTime
 
+      // Persist any inline base64 images to disk to avoid store bloat
+      const persistedResponse = await persistBase64Images(fullResponse)
+
       return {
         success: true,
-        response: fullResponse,
+        response: persistedResponse,
         usage: finalUsage,
         metadata: {
           provider: options.provider,
@@ -245,7 +300,7 @@ class LocalExecutorService {
   /**
    * Get available providers with their configuration status
    */
-  async getAvailableProviders(): Promise<Array<ProviderEntry & { hasKey: boolean; isDefault: boolean }>> {
+  async getAvailableProviders(): Promise<Array<ProviderEntry & { hasKey: boolean; isDefault: boolean; isCustom?: boolean }>> {
     const providers = listKnownProviders()
     const defaultProvider = await configService.getDefaultProvider()
 
@@ -264,7 +319,44 @@ class LocalExecutorService {
       })
     )
 
-    return result.filter((p): p is NonNullable<typeof p> => p !== null)
+    type ProviderResult = ProviderEntry & { hasKey: boolean; isDefault: boolean; isCustom?: boolean }
+    const allProviders: ProviderResult[] = result.filter((p): p is NonNullable<typeof p> => p !== null)
+
+    // Include custom providers from config.yaml
+    try {
+      const config = await configService.getConfig()
+      if (config.custom_providers) {
+        for (const [name, providerConfig] of Object.entries(config.custom_providers)) {
+          if (providers.includes(name)) continue
+          const hasKey = !!(await configService.getApiKey(name))
+          // Parse models: support both string[] and CustomProviderModelConfig[]
+          const models: ModelInfo[] = (providerConfig.models || []).map(m => {
+            if (typeof m === 'string') {
+              return { id: m, name: m }
+            }
+            return {
+              id: m.id,
+              name: m.name || m.id,
+              contextWindow: m.context_window
+            }
+          })
+          allProviders.push({
+            name,
+            displayName: providerConfig.display_name || name.charAt(0).toUpperCase() + name.slice(1),
+            baseUrl: providerConfig.base_url || '',
+            isOpenAICompatible: (providerConfig.type || 'openai-compatible') === 'openai-compatible',
+            models,
+            hasKey: hasKey || providerConfig.enabled !== false,
+            isDefault: name === defaultProvider,
+            isCustom: true
+          })
+        }
+      }
+    } catch {
+      // Config load failure - skip custom providers
+    }
+
+    return allProviders
   }
 
   /**
@@ -301,6 +393,13 @@ class LocalExecutorService {
 
     const apiKey = await configService.getApiKey(provider)
     if (!apiKey) {
+      // Custom providers may not require an API key (e.g. local models)
+      if (!isKnownProvider(provider)) {
+        const customConfig = await this.resolveCustomProviderConfig(provider)
+        if (customConfig) {
+          return ''  // Allow empty key for custom providers
+        }
+      }
       throw new Error(`No API key configured for ${provider}. Add it to ~/.prompd/config.yaml or set ${provider.toUpperCase()}_API_KEY environment variable.`)
     }
     return apiKey

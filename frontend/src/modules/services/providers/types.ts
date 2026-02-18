@@ -27,6 +27,8 @@ export interface ExecutionRequest {
   stream?: boolean
   /** Generation mode (default, thinking, json, code) */
   mode?: GenerationMode
+  /** Enable image generation output for models that support it */
+  enableImageGeneration?: boolean
 }
 
 /**

@@ -1,4 +1,5 @@
 import { AlertCircle, CheckCircle } from 'lucide-react'
+import { APP_VERSION } from '../../constants/app'
 
 type Props = {
   fileName?: string
@@ -54,7 +55,7 @@ export default function StatusBar({ fileName, dirty, line, column, issuesCount, 
           fontWeight: 400
         }}
       >
-        v0.1.0
+        v{APP_VERSION}
       </div>
       <div
         className="item"
@@ -66,6 +67,23 @@ export default function StatusBar({ fileName, dirty, line, column, issuesCount, 
       >
         BETA
       </div>
+      {import.meta.env.DEV && (
+        <div
+          className="item"
+          style={{
+            color: '#000',
+            background: '#f59e0b',
+            fontWeight: 700,
+            fontSize: '10px',
+            letterSpacing: '1px',
+            padding: '1px 6px',
+            borderRadius: '3px',
+            lineHeight: '16px',
+          }}
+        >
+          DEV
+        </div>
+      )}
     </div>
   )
 }

@@ -11,7 +11,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Check, Zap, DollarSign } from 'lucide-react'
+import { ChevronDown, Check, Zap, DollarSign, FileText, Key, Eye, Wrench, ImageIcon } from 'lucide-react'
 import type { ProviderWithPricing, ModelWithPricing } from '../../stores/uiStore'
 import { formatPricePerMillion } from '../lib/formatters'
 
@@ -26,6 +26,7 @@ interface ProviderModelSelectorProps {
   disabled?: boolean
   forceDropdown?: boolean  // Force provider selector to use dropdown even with <= 3 providers
   shrinkModel?: boolean    // Use a more compact model selector
+  onOpenPrompd?: () => void // Optional handler — shows a button that opens the .prmd editor modal
 }
 
 /**
@@ -64,7 +65,8 @@ export function ProviderModelSelector({
   showPricing = true,
   disabled = false,
   forceDropdown = false,
-  shrinkModel = false
+  shrinkModel = false,
+  onOpenPrompd
 }: ProviderModelSelectorProps) {
   const [showProviderDropdown, setShowProviderDropdown] = useState(false)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
@@ -73,9 +75,9 @@ export function ProviderModelSelector({
   const providerButtonRef = useRef<HTMLButtonElement>(null)
   const modelButtonRef = useRef<HTMLButtonElement>(null)
 
-  // Filter to providers with keys configured only
+  // Filter to providers with keys configured, or custom providers (which may not need a key)
   const availableProviders = useMemo(() => {
-    return providers.filter(p => p.hasKey)
+    return providers.filter(p => p.hasKey || p.isCustom)
   }, [providers])
 
   // Use tabs if <= 3 providers and not forced to dropdown, otherwise dropdown
@@ -173,19 +175,37 @@ export function ProviderModelSelector({
     return ((currentModel.inputPrice + currentModel.outputPrice) / 2) / 1000
   }, [currentModel])
 
-  // Show message if no providers have API keys configured
+  // Show actionable message if no providers have API keys configured
   if (availableProviders.length === 0) {
     return (
-      <div style={{
-        padding: layout === 'compact' ? '6px 12px' : '12px',
-        fontSize: '12px',
-        color: 'var(--text-secondary)',
-        background: 'var(--panel-2)',
-        borderRadius: '6px',
-        border: '1px solid var(--border)'
-      }}>
-        No API keys configured
-      </div>
+      <button
+        onClick={() => {
+          window.dispatchEvent(new CustomEvent('prompd:openSettings', { detail: { tab: 'api-keys' } }))
+        }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: layout === 'compact' ? '6px 12px' : '10px 16px',
+          fontSize: '12px',
+          fontWeight: 500,
+          color: 'var(--accent)',
+          background: 'var(--panel-2)',
+          borderRadius: '6px',
+          border: '1px solid var(--accent)',
+          cursor: 'pointer',
+          transition: 'all 0.15s'
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'var(--panel-2)'
+        }}
+      >
+        <Key size={14} />
+        Configure API Keys
+      </button>
     )
   }
 
@@ -565,28 +585,21 @@ export function ProviderModelSelector({
                         </span>
                       )}
                     </div>
-                    {/* Feature badges on the right */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    {/* Feature icons on the right */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                       {model.supportsVision && (
-                        <span style={{
-                          fontSize: '9px',
-                          background: 'rgba(139, 92, 246, 0.2)',
-                          color: '#8b5cf6',
-                          padding: '2px 5px',
-                          borderRadius: '3px'
-                        }}>
-                          Vision
+                        <span title="Supports vision (image input)" style={{ color: '#8b5cf6', display: 'flex' }}>
+                          <Eye size={13} />
                         </span>
                       )}
                       {model.supportsTools && (
-                        <span style={{
-                          fontSize: '9px',
-                          background: 'rgba(59, 130, 246, 0.2)',
-                          color: '#3b82f6',
-                          padding: '2px 5px',
-                          borderRadius: '3px'
-                        }}>
-                          Tools
+                        <span title="Supports tool use" style={{ color: '#3b82f6', display: 'flex' }}>
+                          <Wrench size={13} />
+                        </span>
+                      )}
+                      {model.supportsImageGeneration && (
+                        <span title="Supports image generation" style={{ color: '#f59e0b', display: 'flex' }}>
+                          <ImageIcon size={13} />
                         </span>
                       )}
                     </div>
@@ -598,6 +611,37 @@ export function ProviderModelSelector({
           )}
         </div>
       </div>
+
+      {/* Open .prmd editor button — only shown when handler is provided */}
+      {onOpenPrompd && (
+        <button
+          onClick={onOpenPrompd}
+          title="Open prompt editor"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: shrinkModel ? '4px' : '6px',
+            background: 'var(--panel-2)',
+            border: '1px solid var(--border)',
+            borderRadius: '6px',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            flexShrink: 0,
+            transition: 'all 0.15s'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'var(--accent)'
+            e.currentTarget.style.borderColor = 'var(--accent)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--text-secondary)'
+            e.currentTarget.style.borderColor = 'var(--border)'
+          }}
+        >
+          <FileText size={shrinkModel ? 12 : 14} />
+        </button>
+      )}
 
       {/* Cost estimate badge (compact layout only) */}
       {layout === 'compact' && showPricing && estimatedCostPer1K !== null && (

@@ -1,10 +1,11 @@
-import { Code2, Palette, Settings, Play, LogOut, User, Moon, Sun, SplitSquareHorizontal, HelpCircle } from 'lucide-react'
+import { Code2, Palette, Settings, Play, Square, LogOut, User, Moon, Sun, HelpCircle, KeyRound } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { PrompdIcon } from '../components/PrompdIcon'
+import { PreviewToggle, ChatToggle } from './SplitViewToggles'
 import { useAuthenticatedUser, useElectronAuth, isElectron } from '../auth/ClerkWrapper'
 import { UserButton } from '@clerk/clerk-react'
 import { useUIStore } from '../../stores/uiStore'
+import { useWorkflowStore } from '../../stores/workflowStore'
 import { ProviderModelSelector } from '../components/ProviderModelSelector'
 import { EnvFileSelector } from '../components/EnvFileSelector'
 
@@ -323,6 +324,11 @@ export default function EditorHeader({
   const [isVeryCompact, setIsVeryCompact] = useState(false)
   const isFirstMeasure = useRef(true)
 
+  // Workflow execution state for play/stop button behavior
+  const isExecuting = useWorkflowStore(state => state.isExecuting)
+  const executionStatus = useWorkflowStore(state => state.executionState?.status)
+  const isPaused = isExecuting && executionStatus === 'paused'
+
   // Responsive breakpoints based on container width
   // Priority: Right side controls (Design/Code, Execute) should hide LAST
   // Breakpoints with hysteresis to prevent flickering at edges:
@@ -422,21 +428,52 @@ export default function EditorHeader({
       {/* LLM Provider/Model Selector - Show when user is logged in and providers are loaded */}
       {/* Hide entirely in very compact mode, use responsive layout at other breakpoints */}
       {!isVeryCompact && isAuthenticated && !llmProvider.isLoading && llmProvider.providersWithPricing && llmProvider.providersWithPricing.length > 0 && (
-        <ProviderModelSelector
-          providers={llmProvider.providersWithPricing}
-          selectedProvider={llmProvider.provider}
-          selectedModel={llmProvider.model}
-          onProviderChange={(providerId: string) => {
-            setLLMProvider(providerId)
-          }}
-          onModelChange={(modelId: string) => {
-            setLLMModel(modelId)
-          }}
-          layout="compact"
-          showPricing={!isCompact}
-          forceDropdown={isCompact}
-          shrinkModel={isMediumCompact}
-        />
+        <>
+          <button
+            onClick={onOpenSettings}
+            title="API Key Settings"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: '-7px',
+              padding: '8px',
+              background: 'transparent',
+              border: '1px solid var(--border)',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+              flexShrink: 0,
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--accent)'
+              e.currentTarget.style.borderColor = 'var(--accent)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--text-secondary)'
+              e.currentTarget.style.borderColor = 'var(--border)'
+            }}
+          >
+            <KeyRound size={14} />
+          </button>
+
+          <ProviderModelSelector
+            providers={llmProvider.providersWithPricing}
+            selectedProvider={llmProvider.provider}
+            selectedModel={llmProvider.model}
+            onProviderChange={(providerId: string) => {
+              setLLMProvider(providerId)
+            }}
+            onModelChange={(modelId: string) => {
+              setLLMModel(modelId)
+            }}
+            layout="compact"
+            showPricing={!isCompact}
+            forceDropdown={isCompact}
+            shrinkModel={isMediumCompact}
+          />
+        </>
       )}
       {/* Loading indicator while providers are being fetched */}
       {!isVeryCompact && isAuthenticated && llmProvider.isLoading && (
@@ -522,36 +559,78 @@ export default function EditorHeader({
             <Play size={14} />
           </button>
         )}
-        {/* Show for .pdflow workflow files */}
+        {/* Show for .pdflow workflow files — play/continue + stop */}
         {isWorkflowFile && onExecuteWorkflow && (
-          <button
-            onClick={onExecuteWorkflow}
-            data-hint-target="execute-workflow-button"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: isVeryCompact ? '4px 8px' : '5px 10px',
-              border: '1px solid #10b981',
-              borderRadius: '6px',
-              background: 'transparent',
-              color: '#10b981',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              flexShrink: 0
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.background = '#10b981'
-              e.currentTarget.style.color = 'white'
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.background = 'transparent'
-              e.currentTarget.style.color = '#10b981'
-            }}
-            title="Run workflow (F5)"
-          >
-            <Play size={14} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+            {/* Play / Continue button */}
+            <button
+              onClick={() => {
+                if (isPaused) {
+                  window.dispatchEvent(new CustomEvent('resume-workflow'))
+                } else if (!isExecuting) {
+                  onExecuteWorkflow()
+                }
+              }}
+              disabled={isExecuting && !isPaused}
+              data-hint-target="execute-workflow-button"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: isVeryCompact ? '4px 8px' : '5px 10px',
+                border: `1px solid ${isExecuting && !isPaused ? 'var(--border)' : '#10b981'}`,
+                borderRadius: '6px',
+                background: 'transparent',
+                color: isExecuting && !isPaused ? 'var(--text-secondary)' : '#10b981',
+                cursor: isExecuting && !isPaused ? 'default' : 'pointer',
+                transition: 'all 0.2s',
+                opacity: isExecuting && !isPaused ? 0.5 : 1,
+                flexShrink: 0,
+              }}
+              onMouseOver={(e) => {
+                if (isExecuting && !isPaused) return
+                e.currentTarget.style.background = '#10b981'
+                e.currentTarget.style.color = 'white'
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = 'transparent'
+                e.currentTarget.style.color = isExecuting && !isPaused ? 'var(--text-secondary)' : '#10b981'
+              }}
+              title={isPaused ? 'Continue execution' : isExecuting ? 'Running...' : 'Run workflow (F5)'}
+            >
+              <Play size={14} />
+            </button>
+            {/* Stop button — only visible while executing */}
+            {isExecuting && (
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('stop-workflow'))}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: isVeryCompact ? '4px 8px' : '5px 10px',
+                  border: '1px solid #ef4444',
+                  borderRadius: '6px',
+                  background: 'transparent',
+                  color: '#ef4444',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  flexShrink: 0,
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = '#ef4444'
+                  e.currentTarget.style.color = 'white'
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.color = '#ef4444'
+                }}
+                title="Stop execution"
+              >
+                <Square size={14} />
+              </button>
+            )}
+          </div>
         )}
 
         {/* Env File Selector - Show when workspace is open (visible on execution tabs too) */}
@@ -625,56 +704,21 @@ export default function EditorHeader({
             </button>
             {/* Preview toggle - available in Code mode for .prmd files, visible but disabled in Design mode */}
             {isPrompdFile && onTogglePreview && (
-              <button
-                onClick={mode === 'code' ? onTogglePreview : undefined}
+              <PreviewToggle
+                active={showPreview && mode === 'code'}
+                onClick={onTogglePreview}
                 disabled={mode !== 'code'}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: isMediumCompact ? '0' : '4px',
-                  padding: isMediumCompact ? '4px 6px' : '4px 10px',
-                  fontSize: '11px',
-                  fontWeight: 500,
-                  border: 'none',
-                  borderRadius: '4px',
-                  // Use a muted/secondary accent color for Preview toggle
-                  background: showPreview && mode === 'code' ? 'rgba(99, 102, 241, 0.85)' : 'transparent',
-                  color: showPreview && mode === 'code' ? 'white' : 'var(--text-secondary)',
-                  cursor: mode === 'code' ? 'pointer' : 'not-allowed',
-                  opacity: mode === 'code' ? 1 : 0.4,
-                  transition: 'all 0.2s'
-                }}
-                title={mode !== 'code' ? 'Preview only available in Code mode' : (showPreview ? 'Hide preview panel' : 'Show compiled preview')}
-              >
-                <SplitSquareHorizontal size={14} />
-                {!isMediumCompact && <span>Preview</span>}
-              </button>
+                compact={isMediumCompact}
+              />
             )}
             {/* Chat toggle - opens AI chat in split view, available in Code mode for .prmd files */}
             {isPrompdFile && onToggleChat && (
-              <button
-                onClick={mode === 'code' ? onToggleChat : undefined}
+              <ChatToggle
+                active={showChat && mode === 'code'}
+                onClick={onToggleChat}
                 disabled={mode !== 'code'}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: isMediumCompact ? '0' : '4px',
-                  padding: isMediumCompact ? '4px 6px' : '4px 10px',
-                  fontSize: '11px',
-                  fontWeight: 500,
-                  border: 'none',
-                  borderRadius: '4px',
-                  background: showChat && mode === 'code' ? 'rgba(99, 102, 241, 0.85)' : 'transparent',
-                  color: showChat && mode === 'code' ? 'white' : 'var(--text-secondary)',
-                  cursor: mode === 'code' ? 'pointer' : 'not-allowed',
-                  opacity: mode === 'code' ? 1 : 0.4,
-                  transition: 'all 0.2s'
-                }}
-                title={mode !== 'code' ? 'Chat only available in Code mode' : (showChat ? 'Hide chat panel' : 'Open AI chat')}
-              >
-                <PrompdIcon size={14} />
-                {!isMediumCompact && <span>Chat</span>}
-              </button>
+                compact={isMediumCompact}
+              />
             )}
           </div>
         )}

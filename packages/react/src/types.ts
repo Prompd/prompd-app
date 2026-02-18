@@ -41,6 +41,7 @@ export interface PrompdLLMRequest {
   temperature?: number
   maxTokens?: number
   stream?: boolean
+  signal?: AbortSignal
 }
 
 export interface PrompdLLMResponse {

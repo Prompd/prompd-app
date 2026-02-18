@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Environment variables (filtered by prefix for security)
   // Only PROMPD_* vars are exposed - returns { VAR_NAME: value } with prefix stripped
   getSystemEnvVars: (prefix) => ipcRenderer.invoke('env:getFiltered', prefix),
+
+  // Theme
+  setNativeTheme: (theme) => ipcRenderer.send('app:set-native-theme', theme),
+
   // File dialogs
   openFile: () => ipcRenderer.invoke('dialog:openFile'),
   openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
@@ -35,6 +39,44 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // API requests (bypasses CORS by using main process)
   apiRequest: (url, options) => ipcRenderer.invoke('api:request', url, options),
+
+  // Custom title bar support
+  platform: process.platform,
+  triggerMenuAction: (action, ...args) => ipcRenderer.invoke('menu:trigger', action, ...args),
+  getWindowTitle: () => ipcRenderer.invoke('app:getWindowTitle'),
+  onWindowTitleChanged: (callback) => {
+    const handler = (_event, title) => callback(title)
+    ipcRenderer.on('window-title-changed', handler)
+    return () => ipcRenderer.removeListener('window-title-changed', handler)
+  },
+  getMenuState: () => ipcRenderer.invoke('app:getMenuState'),
+  onMenuStateChanged: (callback) => {
+    const handler = (_event, state) => callback(state)
+    ipcRenderer.on('menu-state-changed', handler)
+    return () => ipcRenderer.removeListener('menu-state-changed', handler)
+  },
+  // Edit operations (for custom menu bar)
+  editUndo: () => ipcRenderer.invoke('edit:undo'),
+  editRedo: () => ipcRenderer.invoke('edit:redo'),
+  editCut: () => ipcRenderer.invoke('edit:cut'),
+  editCopy: () => ipcRenderer.invoke('edit:copy'),
+  editPaste: () => ipcRenderer.invoke('edit:paste'),
+  editDelete: () => ipcRenderer.invoke('edit:delete'),
+  editSelectAll: () => ipcRenderer.invoke('edit:selectAll'),
+  // View operations (for custom menu bar)
+  viewReload: () => ipcRenderer.invoke('view:reload'),
+  viewForceReload: () => ipcRenderer.invoke('view:forceReload'),
+  viewToggleDevTools: () => ipcRenderer.invoke('view:toggleDevTools'),
+  viewResetZoom: () => ipcRenderer.invoke('view:resetZoom'),
+  viewZoomIn: () => ipcRenderer.invoke('view:zoomIn'),
+  viewZoomOut: () => ipcRenderer.invoke('view:zoomOut'),
+  viewToggleFullscreen: () => ipcRenderer.invoke('view:toggleFullscreen'),
+  // File/App operations (for custom menu bar)
+  openFileDialog: () => ipcRenderer.invoke('menu:openFileDialog'),
+  openFolderDialog: () => ipcRenderer.invoke('menu:openFolderDialog'),
+  closeFolder: () => ipcRenderer.invoke('menu:closeFolder'),
+  quit: () => ipcRenderer.invoke('app:quit'),
+  checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
 
   // Connection testing
   testSSHConnection: (config) => ipcRenderer.invoke('connection:testSSH', config),
@@ -294,6 +336,36 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearCache: () => ipcRenderer.invoke('config:clearCache')
   },
 
+  // Connection storage (workspace-level persistence with safeStorage encryption)
+  connections: {
+    load: (workspacePath) => ipcRenderer.invoke('connections:load', workspacePath),
+    save: (connections, workspacePath) =>
+      ipcRenderer.invoke('connections:save', connections, workspacePath),
+  },
+
+  // MCP client management (config, connections, tool discovery, registry search)
+  mcp: {
+    listServers: () => ipcRenderer.invoke('mcp:listServers'),
+    addServer: (name, config) => ipcRenderer.invoke('mcp:addServer', name, config),
+    removeServer: (name) => ipcRenderer.invoke('mcp:removeServer', name),
+    testConnection: (serverName, config) => ipcRenderer.invoke('mcp:testConnection', serverName, config),
+    connect: (serverName) => ipcRenderer.invoke('mcp:connect', serverName),
+    disconnect: (serverName) => ipcRenderer.invoke('mcp:disconnect', serverName),
+    listTools: (serverName) => ipcRenderer.invoke('mcp:listTools', serverName),
+    callTool: (serverName, toolName, args) => ipcRenderer.invoke('mcp:callTool', serverName, toolName, args),
+    searchRegistry: (query, limit) => ipcRenderer.invoke('mcp:searchRegistry', query, limit),
+  },
+
+  // MCP server (Prompd-as-server for OpenClaw and other MCP clients)
+  mcpServer: {
+    start: (opts) => ipcRenderer.invoke('mcpServer:start', opts),
+    stop: () => ipcRenderer.invoke('mcpServer:stop'),
+    status: () => ipcRenderer.invoke('mcpServer:status'),
+    getConfig: (format) => ipcRenderer.invoke('mcpServer:getConfig', format),
+    regenerateApiKey: () => ipcRenderer.invoke('mcpServer:regenerateApiKey'),
+    getClients: () => ipcRenderer.invoke('mcpServer:getClients'),
+  },
+
   // Local compilation using @prompd/cli library
   // Compiles prompts without needing the backend
   compiler: {
@@ -329,10 +401,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
     createLocal: (workspacePath, outputDir) =>
       ipcRenderer.invoke('package:createLocal', workspacePath, outputDir),
 
+    // Install a single package by reference (e.g. "@prompd/core@0.0.1")
+    install: (packageRef, workspacePath) =>
+      ipcRenderer.invoke('package:install', packageRef, workspacePath),
+
     // Install all dependencies from prompd.json
     // Returns: { success, message, installed: [{name, version, status}], failed?: [{name, version, error}] }
     installAll: (workspacePath) =>
       ipcRenderer.invoke('package:installAll', workspacePath)
+  },
+
+  // Node template management - save/restore workflow node configurations
+  templates: {
+    save: (workspacePath, templateData, scope, workflowFilePath) =>
+      ipcRenderer.invoke('template:save', workspacePath, templateData, scope || 'workspace', workflowFilePath),
+    list: (workspacePath) =>
+      ipcRenderer.invoke('template:list', workspacePath),
+    delete: (workspacePath, fileName, scope) =>
+      ipcRenderer.invoke('template:delete', workspacePath, fileName, scope),
+    insert: (workspacePath, fileName, scope, workflowFilePath) =>
+      ipcRenderer.invoke('template:insert', workspacePath, fileName, scope, workflowFilePath),
   },
 
   // Trigger service - background workflow execution management
@@ -617,5 +705,46 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // options: { exportType: 'docker' | 'kubernetes', kubernetesOptions?: {...} }
     // Returns: Promise<{ success: boolean, outputDir?: string, files?: string[], error?: string }>
     exportToPath: (workflow, workflowPath, outputDir, prompdjson, options) => ipcRenderer.invoke('workflow:exportToPath', workflow, workflowPath, outputDir, prompdjson, options)
+  },
+
+  // Analytics - GA4 event tracking (opt-in, anonymous)
+  analytics: {
+    // Track a custom event
+    trackEvent: (eventName, params) => ipcRenderer.invoke('analytics:trackEvent', eventName, params),
+
+    // Enable or disable analytics
+    setEnabled: (enabled) => ipcRenderer.invoke('analytics:setEnabled', enabled),
+
+    // Check if analytics is currently enabled
+    isEnabled: () => ipcRenderer.invoke('analytics:isEnabled'),
+  },
+
+  // Generated content persistence (images saved to ~/.prompd/generated/)
+  generated: {
+    // Save a base64-encoded image to disk, returns { success, filePath, fileName }
+    saveImage: (base64Data, mimeType) => ipcRenderer.invoke('generated:saveImage', base64Data, mimeType),
+    // List all generated resources grouped by type
+    list: () => ipcRenderer.invoke('generated:list'),
+    // Delete a generated resource by relative path
+    delete: (relativePath) => ipcRenderer.invoke('generated:delete', relativePath),
+    // Save text/code content as a generated resource
+    saveText: (content, ext) => ipcRenderer.invoke('generated:saveText', content, ext),
+  },
+
+  // App lifecycle — clean close with save/discard prompt
+  onBeforeQuit: (callback) => ipcRenderer.on('app:before-quit', callback),
+  readyToQuit: () => ipcRenderer.send('app:ready-to-quit'),
+
+  // Storage monitoring
+  storage: {
+    // Get localStorage usage info
+    getUsage: () => {
+      try {
+        const total = JSON.stringify(localStorage).length
+        return { usedBytes: total * 2, quotaBytes: 5 * 1024 * 1024 } // UTF-16 = 2 bytes/char, 5MB limit
+      } catch {
+        return { usedBytes: 0, quotaBytes: 5 * 1024 * 1024 }
+      }
+    }
   }
 })

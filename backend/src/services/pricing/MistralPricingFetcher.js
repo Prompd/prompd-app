@@ -101,6 +101,11 @@ export class MistralPricingFetcher extends BasePricingFetcher {
       .trim()
   }
 
+  /**
+   * Mistral: No models currently support native image generation.
+   * Base class default (false) applies.
+   */
+
   getDefaultPricing() {
     // Pricing as of February 2026 - https://mistral.ai/pricing / https://docs.mistral.ai/deployment/ai-studio/pricing
     return [

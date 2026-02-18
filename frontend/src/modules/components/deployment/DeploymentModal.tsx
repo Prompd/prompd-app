@@ -11,13 +11,14 @@
  * - Execution history view
  */
 
-import { useState, useEffect, useRef } from 'react'
-import { Upload, Play, Pause, Trash2, Clock, CheckCircle, XCircle, AlertCircle, RefreshCw, Package, X, Zap, Globe, FolderOpen, ChevronDown, ChevronUp, RotateCw, Power, ArrowRight, Activity, ExternalLink } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { Upload, Play, Pause, Trash2, Clock, CheckCircle, XCircle, AlertCircle, RefreshCw, Package, X, Zap, Globe, FolderOpen, ChevronDown, ChevronUp, RotateCw, Power, ArrowRight, Activity, ExternalLink, Search, Plus, Square, Loader2 } from 'lucide-react'
 import type { DeploymentInfo, TriggerInfo, DeploymentExecution, DeploymentVersionInfo } from '../../../electron'
 import { useConfirmDialog } from '../ConfirmDialog'
 import { useUIStore } from '../../../stores/uiStore'
 import { useEditorStore } from '../../../stores/editorStore'
 import { ParameterInputModal, type WorkflowParameter } from './ParameterInputModal'
+import { JsonTreeViewer, tryParseJsonValue } from '../common/JsonTreeViewer'
 import './DeploymentModal.css'
 
 interface DeploymentModalProps {
@@ -57,6 +58,20 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
   const [parameterModalDeployment, setParameterModalDeployment] = useState<{ id: string; name: string } | null>(null)
   const [workflowParameters, setWorkflowParameters] = useState<WorkflowParameter[]>([])
 
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('')
+
+  // Bulk selection state for active deployments
+  const [selectedDeployments, setSelectedDeployments] = useState<Set<string>>(new Set())
+  const [bulkMode, setBulkMode] = useState(false)
+
+  // Bulk selection state for deleted deployments
+  const [selectedDeletedDeployments, setSelectedDeletedDeployments] = useState<Set<string>>(new Set())
+  const [deletedBulkMode, setDeletedBulkMode] = useState(false)
+
+  // Selected index for keyboard navigation
+  const [selectedIndex, setSelectedIndex] = useState(-1)
+
   const { showConfirm, ConfirmDialogComponent } = useConfirmDialog()
   const addToast = useUIStore(state => state.addToast)
   const addTab = useEditorStore(state => state.addTab)
@@ -74,6 +89,155 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
       viewMode: 'code'
     })
     onClose()
+  }
+
+  // Filtered deployments based on search and status filter
+  const filteredDeployments = useMemo(() => {
+    let filtered = deployments.filter(d => d.status !== 'deleted')
+    
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(d => d.status === statusFilter)
+    }
+    
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(d => 
+        d.name.toLowerCase().includes(query) ||
+        d.id.toLowerCase().includes(query)
+      )
+    }
+    
+    return filtered
+  }, [deployments, statusFilter, searchQuery])
+
+  // Keyboard navigation
+  useEffect(() => {
+    if (!open || activeTab !== 'deployments') return
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip hotkeys when typing in inputs or when a sub-modal is open
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return
+      if (parameterModalOpen) return
+
+      // Escape to close modal
+      if (e.key === 'Escape') {
+        if (bulkMode) {
+          setBulkMode(false)
+          setSelectedDeployments(new Set())
+        } else {
+          onClose()
+        }
+        return
+      }
+
+      if (filteredDeployments.length === 0) return
+
+      switch (e.key) {
+        case 'ArrowDown':
+          e.preventDefault()
+          setSelectedIndex(prev => {
+            const next = prev < filteredDeployments.length - 1 ? prev + 1 : prev
+            if (next >= 0) {
+              handleViewDetails(filteredDeployments[next])
+            }
+            return next
+          })
+          break
+        case 'ArrowUp':
+          e.preventDefault()
+          setSelectedIndex(prev => {
+            const next = prev > 0 ? prev - 1 : 0
+            handleViewDetails(filteredDeployments[next])
+            return next
+          })
+          break
+        case 'Enter':
+          if (selectedDeployment && !bulkMode) {
+            handleExecuteNow(selectedDeployment.id, selectedDeployment.name)
+          }
+          break
+        case 'e':
+          if (selectedDeployment && !bulkMode && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault()
+            handleToggleStatus(selectedDeployment)
+          }
+          break
+        case 'Delete':
+        case 'Backspace':
+          if (selectedDeployment && !bulkMode) {
+            e.preventDefault()
+            handleDelete(selectedDeployment.id, selectedDeployment.name)
+          }
+          break
+        case ' ': // Space to toggle selection in bulk mode
+          if (bulkMode && selectedDeployment) {
+            e.preventDefault()
+            toggleDeploymentSelection(selectedDeployment.id)
+          }
+          break
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [open, activeTab, filteredDeployments, selectedDeployment, bulkMode, selectedIndex, parameterModalOpen])
+
+  // Reset selection when filter changes
+  useEffect(() => {
+    setSelectedIndex(-1)
+    setSelectedDeployment(null)
+  }, [searchQuery, statusFilter])
+
+  const toggleDeploymentSelection = (deploymentId: string) => {
+    setSelectedDeployments(prev => {
+      const next = new Set(prev)
+      if (next.has(deploymentId)) {
+        next.delete(deploymentId)
+      } else {
+        next.add(deploymentId)
+      }
+      return next
+    })
+  }
+
+  const handleBulkToggle = async () => {
+    if (selectedDeployments.size === 0) return
+    
+    const targetStatus = deployments.find(d => selectedDeployments.has(d.id))?.status === 'enabled' ? 'disabled' : 'enabled'
+    
+    for (const deploymentId of selectedDeployments) {
+      const deployment = deployments.find(d => d.id === deploymentId)
+      if (deployment && deployment.status !== targetStatus) {
+        await handleToggleStatus(deployment)
+      }
+    }
+    
+    setSelectedDeployments(new Set())
+    setBulkMode(false)
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedDeployments.size === 0) return
+    
+    const confirmed = await showConfirm({
+      title: 'Delete Deployments',
+      message: `Are you sure you want to delete ${selectedDeployments.size} deployment(s)?`,
+      confirmLabel: 'Delete',
+      confirmVariant: 'danger'
+    })
+
+    if (!confirmed) return
+
+    for (const deploymentId of selectedDeployments) {
+      const deployment = deployments.find(d => d.id === deploymentId)
+      if (deployment) {
+        await handleDelete(deployment.id, deployment.name)
+      }
+    }
+    
+    setSelectedDeployments(new Set())
+    setBulkMode(false)
   }
 
   // Ref to track current selection without triggering effect re-runs
@@ -293,42 +457,73 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
     }
   }
 
-  const handlePurgeDeleted = async () => {
-    if (!window.electronAPI?.deployment?.purgeDeleted) return
+  const handlePurgeDeleted = async (specificIds?: string[]) => {
+    if (!window.electronAPI?.deployment) return
 
-    const deletedCount = deployments.filter(d => d.status === 'deleted').length
-    if (deletedCount === 0) {
+    const deletedDeployments = deployments.filter(d => d.status === 'deleted')
+    const targets = specificIds 
+      ? deletedDeployments.filter(d => specificIds.includes(d.id))
+      : deletedDeployments
+    
+    if (targets.length === 0) {
       addToast('No deleted deployments to purge', 'info')
       return
     }
 
     const confirmed = await showConfirm({
       title: 'Purge Deleted Deployments',
-      message: `Are you sure you want to permanently delete ${deletedCount} deployment(s)? This will remove all files and cannot be undone.`,
+      message: `Are you sure you want to permanently delete ${targets.length} deployment(s)? This will remove all files and cannot be undone.`,
       confirmLabel: 'Purge',
       confirmVariant: 'danger'
     })
 
     if (!confirmed) return
 
-    try {
-      const result = await window.electronAPI.deployment.purgeDeleted()
-      if (result.success) {
-        addToast(`Purged ${result.purgedCount} deployment(s)`, 'success')
-        window.dispatchEvent(new CustomEvent('deployment-updated'))
-        await loadDeployments()
-        if (selectedDeployment && selectedDeployment.status === 'deleted') {
-          setSelectedDeployment(null)
-          setTriggers([])
-          setDeploymentExecutions([])
+    // Purge each deployment individually since there's no deleteMany
+    let purgedCount = 0
+    let failedCount = 0
+
+    for (const deployment of targets) {
+      try {
+        // Use undeploy with deleteFiles to permanently remove
+        const result = await window.electronAPI.deployment.undeploy(deployment.id, { deleteFiles: true })
+        if (result.success) {
+          purgedCount++
+        } else {
+          failedCount++
+          console.error(`Failed to purge ${deployment.id}:`, result.error)
         }
-      } else {
-        addToast('Failed to purge: ' + result.error, 'error')
+      } catch (error) {
+        failedCount++
+        console.error(`Failed to purge ${deployment.id}:`, error)
       }
-    } catch (error) {
-      console.error('Failed to purge:', error)
-      addToast('Failed to purge: ' + (error as Error).message, 'error')
     }
+
+    if (purgedCount > 0) {
+      addToast(`Purged ${purgedCount} deployment(s)${failedCount > 0 ? `, ${failedCount} failed` : ''}`, failedCount > 0 ? 'warning' : 'success')
+      window.dispatchEvent(new CustomEvent('deployment-updated'))
+      await loadDeployments()
+      setSelectedDeletedDeployments(new Set())
+      if (selectedDeployment && targets.some(t => t.id === selectedDeployment.id)) {
+        setSelectedDeployment(null)
+        setTriggers([])
+        setDeploymentExecutions([])
+      }
+    } else {
+      addToast('Failed to purge deployments', 'error')
+    }
+  }
+
+  const toggleDeletedDeploymentSelection = (deploymentId: string) => {
+    setSelectedDeletedDeployments(prev => {
+      const next = new Set(prev)
+      if (next.has(deploymentId)) {
+        next.delete(deploymentId)
+      } else {
+        next.add(deploymentId)
+      }
+      return next
+    })
   }
 
   const handleToggleTrigger = async (trigger: TriggerInfo) => {
@@ -452,6 +647,16 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
 
   const formatTimestamp = (timestamp: number) => {
     const date = new Date(timestamp)
+    const now = new Date()
+    const isToday = date.toDateString() === now.toDateString()
+    const yesterday = new Date(now)
+    yesterday.setDate(yesterday.getDate() - 1)
+    const isYesterday = date.toDateString() === yesterday.toDateString()
+    
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    
+    if (isToday) return `Today, ${timeStr}`
+    if (isYesterday) return `Yesterday, ${timeStr}`
     return date.toLocaleString()
   }
 
@@ -482,27 +687,45 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
         return <XCircle size={16} className="status-icon-failed" />
       case 'deleted':
         return <AlertCircle size={16} className="status-icon-deleted" />
+      case 'running':
+        return <Loader2 size={16} className="status-icon-running" />
       default:
         return <Clock size={16} />
     }
   }
 
   const getTriggerTypeIcon = (triggerType: string) => {
+    const iconProps = { size: 14, className: `trigger-icon-${triggerType}` }
     switch (triggerType) {
       case 'schedule':
-        return <Clock size={14} />
+        return <Clock {...iconProps} />
       case 'webhook':
-        return <Globe size={14} />
+        return <Globe {...iconProps} />
       case 'file-watch':
-        return <FolderOpen size={14} />
+        return <FolderOpen {...iconProps} />
       case 'event':
-        return <Zap size={14} />
+        return <Zap {...iconProps} />
       case 'manual':
-        return <Play size={14} />
+        return <Play {...iconProps} />
       default:
-        return <Zap size={14} />
+        return <Zap {...iconProps} />
     }
   }
+
+  // Skeleton loading component
+  const DeploymentSkeleton = () => (
+    <div className="skeleton-list">
+      {[1, 2, 3, 4].map(i => (
+        <div key={i} className="skeleton-item">
+          <div className="skeleton-dot" />
+          <div className="skeleton-content">
+            <div className="skeleton-line" />
+            <div className="skeleton-line short" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 
   const toggleExecutionExpansion = (executionId: string) => {
     setExpandedExecutions(prev => {
@@ -664,9 +887,21 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
       <div className="deployment-modal" onClick={(e) => e.stopPropagation()}>
         <div className="deployment-modal-header">
           <h2>Workflow Deployments</h2>
-          <button className="modal-close-button" onClick={onClose}>
-            <X size={20} />
-          </button>
+          <div className="deployment-header-actions">
+            {activeTab === 'deployments' && deployments.filter(d => d.status !== 'deleted').length > 0 && (
+              <button
+                className="button primary"
+                onClick={handleDeploy}
+                title="Deploy new workflow package"
+              >
+                <Plus size={16} />
+                Deploy
+              </button>
+            )}
+            <button className="modal-close-button" onClick={onClose} aria-label="Close">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         <div className="deployment-tabs">
@@ -697,7 +932,7 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
           {activeTab === 'deployments' ? (
             <>
               {loading ? (
-                <div className="deployment-loading">Loading deployments...</div>
+                <DeploymentSkeleton />
               ) : deployments.filter(d => d.status !== 'deleted').length === 0 ? (
                 <div className="deployment-empty">
                   <Package size={48} />
@@ -712,39 +947,137 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                 <div className="deployment-split-panel">
                   {/* Left Panel: deployment list */}
                   <div className="deployment-list-panel">
-                    <div className="deployment-list-filters">
-                      {(['all', 'enabled', 'disabled', 'failed'] as const).map((filter) => {
-                        const count = filter === 'all'
-                          ? deployments.filter(d => d.status !== 'deleted').length
-                          : deployments.filter(d => d.status === filter).length
-                        return (
-                          <button
-                            key={filter}
-                            className={`filter-tab ${statusFilter === filter ? 'active' : ''}`}
-                            onClick={() => setStatusFilter(filter)}
-                          >
-                            {filter.charAt(0).toUpperCase() + filter.slice(1)} ({count})
-                          </button>
-                        )
-                      })}
-                    </div>
-                    <div className="deployment-list-items">
-                      {deployments.filter(d => d.status !== 'deleted' && (statusFilter === 'all' || d.status === statusFilter)).map((deployment) => (
-                        <div
-                          key={deployment.id}
-                          className={`deployment-list-item ${selectedDeployment?.id === deployment.id ? 'selected' : ''} status-${deployment.status}`}
-                          onClick={() => handleViewDetails(deployment)}
+                    {/* Search Bar */}
+                    <div className="deployment-search-container">
+                      <Search size={16} className="search-icon" />
+                      <input
+                        type="text"
+                        className="deployment-search"
+                        placeholder="Search deployments..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                      />
+                      {searchQuery && (
+                        <button
+                          className="search-clear"
+                          onClick={() => setSearchQuery('')}
+                          aria-label="Clear search"
                         >
-                          <span className={`deployment-status-dot status-${deployment.status}`} />
-                          <div className="deployment-list-item-info">
-                            <span className="deployment-list-item-name">{deployment.name}</span>
-                            <span className="deployment-list-item-version">v{deployment.version || '1.0.0'}</span>
-                          </div>
-                          {deployment.lastExecutionStatus && (
-                            <span className={`deployment-exec-dot status-${deployment.lastExecutionStatus}`} title={`Last run: ${deployment.lastExecutionStatus}`} />
-                          )}
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                    
+                    {/* Bulk Actions Bar */}
+                    {bulkMode && (
+                      <div className="bulk-actions-bar">
+                        <span className="bulk-count">{selectedDeployments.size} selected</span>
+                        <div className="bulk-actions">
+                          <button
+                            className="button small secondary"
+                            onClick={handleBulkToggle}
+                            disabled={selectedDeployments.size === 0}
+                          >
+                            <Power size={14} />
+                            Toggle
+                          </button>
+                          <button
+                            className="button small danger"
+                            onClick={handleBulkDelete}
+                            disabled={selectedDeployments.size === 0}
+                          >
+                            <Trash2 size={14} />
+                            Delete
+                          </button>
+                          <button
+                            className="button small secondary"
+                            onClick={() => {
+                              setBulkMode(false)
+                              setSelectedDeployments(new Set())
+                            }}
+                          >
+                            Cancel
+                          </button>
                         </div>
-                      ))}
+                      </div>
+                    )}
+                    
+                    {/* Bulk Mode Toggle */}
+                    <div className="deployment-list-toolbar">
+                      <div className="deployment-list-filters">
+                        {(['all', 'enabled', 'disabled', 'failed'] as const).map((filter) => {
+                          const count = filter === 'all'
+                            ? deployments.filter(d => d.status !== 'deleted').length
+                            : deployments.filter(d => d.status === filter).length
+                          return (
+                            <button
+                              key={filter}
+                              className={`filter-tab ${statusFilter === filter ? 'active' : ''}`}
+                              onClick={() => setStatusFilter(filter)}
+                            >
+                              {filter.charAt(0).toUpperCase() + filter.slice(1)} ({count})
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <button
+                        className={`icon-button small bulk-toggle ${bulkMode ? 'active' : ''}`}
+                        onClick={() => {
+                          setBulkMode(!bulkMode)
+                          setSelectedDeployments(new Set())
+                        }}
+                        title={bulkMode ? 'Exit bulk mode' : 'Bulk select'}
+                      >
+                        <Square size={14} />
+                      </button>
+                    </div>
+                    
+                    <div className="deployment-list-items">
+                      {filteredDeployments.length === 0 ? (
+                        <div className="deployment-list-empty">
+                          {searchQuery ? (
+                            <>
+                              <Search size={32} />
+                              <p>No deployments match "{searchQuery}"</p>
+                              <button className="link" onClick={() => setSearchQuery('')}>Clear search</button>
+                            </>
+                          ) : statusFilter !== 'all' ? (
+                            <>
+                              <AlertCircle size={32} />
+                              <p>No {statusFilter} deployments</p>
+                            </>
+                          ) : null}
+                        </div>
+                      ) : (
+                        filteredDeployments.map((deployment, index) => (
+                          <div
+                            key={deployment.id}
+                            className={`deployment-list-item ${selectedDeployment?.id === deployment.id ? 'selected' : ''} status-${deployment.status}`}
+                            onClick={() => {
+                              if (bulkMode) {
+                                toggleDeploymentSelection(deployment.id)
+                              } else {
+                                handleViewDetails(deployment)
+                                setSelectedIndex(index)
+                              }
+                            }}
+                          >
+                            {bulkMode && (
+                              <div className={`bulk-checkbox ${selectedDeployments.has(deployment.id) ? 'checked' : ''}`}>
+                                {selectedDeployments.has(deployment.id) && <CheckCircle size={14} />}
+                              </div>
+                            )}
+                            <span className={`deployment-status-dot status-${deployment.status}`} />
+                            <div className="deployment-list-item-info">
+                              <span className="deployment-list-item-name">{deployment.name}</span>
+                              <span className="deployment-list-item-version">v{deployment.version || '1.0.0'}</span>
+                            </div>
+                            {deployment.lastExecutionStatus && (
+                              <span className={`deployment-exec-dot status-${deployment.lastExecutionStatus}`} title={`Last run: ${deployment.lastExecutionStatus}`} />
+                            )}
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
 
@@ -759,22 +1092,25 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                               <button
                                 className="icon-button"
                                 onClick={() => handleToggleStatus(selectedDeployment)}
-                                title={selectedDeployment.status === 'enabled' ? 'Disable' : 'Enable'}
+                                title={selectedDeployment.status === 'enabled' ? 'Disable (E)' : 'Enable (E)'}
+                                aria-label={selectedDeployment.status === 'enabled' ? 'Disable deployment' : 'Enable deployment'}
                               >
                                 <Power size={16} className={selectedDeployment.status === 'enabled' ? 'status-enabled' : 'status-disabled'} />
                               </button>
                               <button
                                 className="icon-button"
                                 onClick={() => handleExecuteNow(selectedDeployment.id, selectedDeployment.name)}
-                                title="Execute now"
+                                title="Execute now (Enter)"
                                 disabled={selectedDeployment.status !== 'enabled'}
+                                aria-label="Execute workflow now"
                               >
                                 <Play size={16} />
                               </button>
                               <button
                                 className="icon-button danger"
                                 onClick={() => handleDelete(selectedDeployment.id, selectedDeployment.name)}
-                                title="Delete"
+                                title="Delete (Del)"
+                                aria-label="Delete deployment"
                               >
                                 <Trash2 size={16} />
                               </button>
@@ -856,41 +1192,47 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                         <div className="deployment-detail-content">
                           {detailTab === 'triggers' ? (
                             triggers.length === 0 ? (
-                              <p className="no-triggers">No triggers configured</p>
+                              <div className="no-triggers">
+                                <Zap size={32} />
+                                <p>No triggers configured</p>
+                                <span className="hint">This workflow can only be executed manually</span>
+                              </div>
                             ) : (
                               <div className="triggers-list">
                                 {triggers.map((trigger) => (
                                   <div key={trigger.id} className={`trigger-item ${!trigger.enabled ? 'disabled' : ''}`}>
-                                    <div className="trigger-icon">
+                                    <div className={`trigger-icon trigger-type-${trigger.triggerType}`}>
                                       {getTriggerTypeIcon(trigger.triggerType)}
                                     </div>
                                     <div className="trigger-info">
                                       <div className="trigger-type">{trigger.triggerType}</div>
                                       <div className="trigger-config">
-                                        {trigger.scheduleCron && <span>Cron: {trigger.scheduleCron}</span>}
-                                        {trigger.scheduleTimezone && <span> ({trigger.scheduleTimezone})</span>}
-                                        {trigger.webhookPath && <span>Path: {trigger.webhookPath}</span>}
-                                        {trigger.eventName && <span>Event: {trigger.eventName}</span>}
-                                        {trigger.fileWatchPaths && <span>Files: {trigger.fileWatchPaths}</span>}
+                                        {trigger.scheduleCron && <span className="config-cron">{trigger.scheduleCron}</span>}
+                                        {trigger.scheduleTimezone && <span className="config-tz">{trigger.scheduleTimezone}</span>}
+                                        {trigger.webhookPath && <span className="config-path">{trigger.webhookPath}</span>}
+                                        {trigger.eventName && <span className="config-event">{trigger.eventName}</span>}
+                                        {trigger.fileWatchPaths && <span className="config-files">{trigger.fileWatchPaths}</span>}
                                       </div>
                                       <div className="trigger-stats">
                                         {trigger.triggerCount != null && trigger.triggerCount > 0 && (
-                                          <span className="trigger-stat">
-                                            <Activity size={10} />
-                                            {trigger.triggerCount} fires
+                                          <span className="trigger-stat fires">
+                                            <Activity size={12} />
+                                            {trigger.triggerCount.toLocaleString()} fires
                                           </span>
                                         )}
                                         {trigger.lastTriggeredAt && (
-                                          <span className={`trigger-stat ${trigger.lastTriggerStatus === 'error' ? 'stat-error' : ''}`} title={formatTimestamp(trigger.lastTriggeredAt)}>
-                                            Last: {formatRelativeTime(trigger.lastTriggeredAt)}
+                                          <span className={`trigger-stat last-fired ${trigger.lastTriggerStatus === 'error' ? 'stat-error' : ''}`} title={formatTimestamp(trigger.lastTriggeredAt)}>
+                                            <Clock size={12} />
+                                            {formatRelativeTime(trigger.lastTriggeredAt)}
                                             {trigger.lastTriggerStatus && (
-                                              <span className={`detail-stat-dot status-${trigger.lastTriggerStatus}`} />
+                                              <span className={`status-pill status-${trigger.lastTriggerStatus}`} />
                                             )}
                                           </span>
                                         )}
                                         {trigger.nextRunAt && trigger.enabled && (
-                                          <span className="trigger-stat" title={formatTimestamp(trigger.nextRunAt)}>
-                                            Next: {formatRelativeTime(trigger.nextRunAt)}
+                                          <span className="trigger-stat next-run" title={formatTimestamp(trigger.nextRunAt)}>
+                                            <ArrowRight size={12} />
+                                            {formatRelativeTime(trigger.nextRunAt)}
                                           </span>
                                         )}
                                       </div>
@@ -898,7 +1240,8 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                     <button
                                       className="icon-button"
                                       onClick={() => handleToggleTrigger(trigger)}
-                                      title={trigger.enabled ? 'Disable' : 'Enable'}
+                                      title={trigger.enabled ? 'Disable trigger' : 'Enable trigger'}
+                                      aria-label={trigger.enabled ? 'Disable trigger' : 'Enable trigger'}
                                     >
                                       {trigger.enabled ? <Pause size={14} /> : <Play size={14} />}
                                     </button>
@@ -983,11 +1326,17 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                                   <ExternalLink size={12} />
                                                 </button>
                                               </h6>
-                                              <pre className="detail-exec-output">
-                                                {typeof result.output === 'string'
-                                                  ? result.output
-                                                  : JSON.stringify(result.output, null, 2)}
-                                              </pre>
+                                              {(() => { const parsed = tryParseJsonValue(result.output); return parsed !== null ? (
+                                                <div className="detail-exec-output">
+                                                  <JsonTreeViewer data={parsed} rootPath="output" defaultExpandDepth={2} maxStringPreview={80} />
+                                                </div>
+                                              ) : (
+                                                <pre className="detail-exec-output">
+                                                  {typeof result.output === 'string'
+                                                    ? result.output
+                                                    : JSON.stringify(result.output, null, 2)}
+                                                </pre>
+                                              ) })()}
                                             </div>
                                           )}
                                           {execution.error && (
@@ -999,9 +1348,9 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                           {execution.parameters && Object.keys(execution.parameters).length > 0 && (
                                             <div className="detail-exec-section">
                                               <h6>Parameters</h6>
-                                              <pre className="detail-exec-output">
-                                                {JSON.stringify(execution.parameters, null, 2)}
-                                              </pre>
+                                              <div className="detail-exec-output">
+                                                <JsonTreeViewer data={execution.parameters} rootPath="parameters" defaultExpandDepth={2} maxStringPreview={60} />
+                                              </div>
                                             </div>
                                           )}
                                         </div>
@@ -1061,8 +1410,15 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                       </>
                     ) : (
                       <div className="deployment-detail-empty">
-                        <Package size={40} />
-                        <p>Select a deployment</p>
+                        <Package size={48} />
+                        <h4>No Deployment Selected</h4>
+                        <p>Select a deployment from the list to view triggers, execution history, and version information.</p>
+                        <div className="keyboard-hints">
+                          <span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span>
+                          <span><kbd>Enter</kbd> Execute</span>
+                          <span><kbd>E</kbd> Toggle</span>
+                          <span><kbd>Del</kbd> Delete</span>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1230,6 +1586,18 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
 
                       {isExpanded && (
                         <div className="execution-details-expanded">
+                          <div className="execution-actions-bar">
+                            <button
+                              className="button small secondary"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleRerunExecution(execution)
+                              }}
+                            >
+                              <RotateCw size={14} />
+                              Re-run Workflow
+                            </button>
+                          </div>
                           <div className="execution-details-section">
                             <h5>Execution Details</h5>
                             <div className="execution-details-grid">
@@ -1271,9 +1639,9 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                           {execution.parameters && Object.keys(execution.parameters).length > 0 && (
                             <div className="execution-details-section">
                               <h5>Parameters</h5>
-                              <pre className="execution-json">
-                                {JSON.stringify(execution.parameters, null, 2)}
-                              </pre>
+                              <div className="execution-json">
+                                <JsonTreeViewer data={execution.parameters} rootPath="parameters" defaultExpandDepth={2} maxStringPreview={80} />
+                              </div>
                             </div>
                           )}
 
@@ -1295,11 +1663,17 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                           <ExternalLink size={12} />
                                         </button>
                                       </h5>
-                                      <pre className="execution-json execution-result">
-                                        {typeof (execution.result as Record<string, unknown>).output === 'string'
-                                          ? (execution.result as Record<string, unknown>).output as string
-                                          : JSON.stringify((execution.result as Record<string, unknown>).output, null, 2)}
-                                      </pre>
+                                      {(() => { const parsed = tryParseJsonValue((execution.result as Record<string, unknown>).output); return parsed !== null ? (
+                                        <div className="execution-json execution-result">
+                                          <JsonTreeViewer data={parsed} rootPath="output" defaultExpandDepth={3} maxStringPreview={100} />
+                                        </div>
+                                      ) : (
+                                        <pre className="execution-json execution-result">
+                                          {typeof (execution.result as Record<string, unknown>).output === 'string'
+                                            ? (execution.result as Record<string, unknown>).output as string
+                                            : JSON.stringify((execution.result as Record<string, unknown>).output, null, 2)}
+                                        </pre>
+                                      ) })()}
                                     </div>
                                   )}
 
@@ -1316,9 +1690,15 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                           <ExternalLink size={12} />
                                         </button>
                                       </h5>
-                                      <pre className="execution-json execution-result">
-                                        {JSON.stringify((execution.result as Record<string, unknown>).trace, null, 2)}
-                                      </pre>
+                                      {(() => { const parsed = tryParseJsonValue((execution.result as Record<string, unknown>).trace); return parsed !== null ? (
+                                        <div className="execution-json execution-result">
+                                          <JsonTreeViewer data={parsed} rootPath="trace" defaultExpandDepth={2} maxStringPreview={80} />
+                                        </div>
+                                      ) : (
+                                        <pre className="execution-json execution-result">
+                                          {JSON.stringify((execution.result as Record<string, unknown>).trace, null, 2)}
+                                        </pre>
+                                      ) })()}
                                     </div>
                                   )}
 
@@ -1335,9 +1715,15 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                           <ExternalLink size={12} />
                                         </button>
                                       </h5>
-                                      <pre className="execution-json">
-                                        {JSON.stringify((execution.result as Record<string, unknown>).nodeOutputs, null, 2)}
-                                      </pre>
+                                      {(() => { const parsed = tryParseJsonValue((execution.result as Record<string, unknown>).nodeOutputs); return parsed !== null ? (
+                                        <div className="execution-json">
+                                          <JsonTreeViewer data={parsed} rootPath="nodeOutputs" defaultExpandDepth={2} maxStringPreview={80} />
+                                        </div>
+                                      ) : (
+                                        <pre className="execution-json">
+                                          {JSON.stringify((execution.result as Record<string, unknown>).nodeOutputs, null, 2)}
+                                        </pre>
+                                      ) })()}
                                     </div>
                                   )}
 
@@ -1354,9 +1740,15 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                           <ExternalLink size={12} />
                                         </button>
                                       </h5>
-                                      <pre className="execution-json">
-                                        {JSON.stringify((execution.result as Record<string, unknown>).metrics, null, 2)}
-                                      </pre>
+                                      {(() => { const parsed = tryParseJsonValue((execution.result as Record<string, unknown>).metrics); return parsed !== null ? (
+                                        <div className="execution-json">
+                                          <JsonTreeViewer data={parsed} rootPath="metrics" defaultExpandDepth={2} maxStringPreview={60} />
+                                        </div>
+                                      ) : (
+                                        <pre className="execution-json">
+                                          {JSON.stringify((execution.result as Record<string, unknown>).metrics, null, 2)}
+                                        </pre>
+                                      ) })()}
                                     </div>
                                   )}
                                 </>
@@ -1375,11 +1767,17 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                                       <ExternalLink size={12} />
                                     </button>
                                   </h5>
-                                  <pre className="execution-json execution-result">
-                                    {typeof execution.result === 'string'
-                                      ? execution.result
-                                      : JSON.stringify(execution.result, null, 2)}
-                                  </pre>
+                                  {(() => { const parsed = tryParseJsonValue(execution.result); return parsed !== null ? (
+                                    <div className="execution-json execution-result">
+                                      <JsonTreeViewer data={parsed} rootPath="result" defaultExpandDepth={3} maxStringPreview={100} />
+                                    </div>
+                                  ) : (
+                                    <pre className="execution-json execution-result">
+                                      {typeof execution.result === 'string'
+                                        ? execution.result
+                                        : JSON.stringify(execution.result, null, 2)}
+                                    </pre>
+                                  ) })()}
                                 </div>
                               )}
                             </>
@@ -1409,10 +1807,47 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                   <>
                     {deletedDeployments.length > 0 && (
                       <div className="deployment-actions-bar">
-                        <button className="button danger" onClick={handlePurgeDeleted}>
-                          <Trash2 size={16} />
-                          Purge All ({deletedDeployments.length})
-                        </button>
+                        {deletedBulkMode ? (
+                          <>
+                            <span className="bulk-count">{selectedDeletedDeployments.size} selected</span>
+                            <div className="bulk-actions">
+                              <button 
+                                className="button danger" 
+                                onClick={() => handlePurgeDeleted(Array.from(selectedDeletedDeployments))}
+                                disabled={selectedDeletedDeployments.size === 0}
+                              >
+                                <Trash2 size={16} />
+                                Purge Selected
+                              </button>
+                              <button 
+                                className="button secondary"
+                                onClick={() => {
+                                  setDeletedBulkMode(false)
+                                  setSelectedDeletedDeployments(new Set())
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <button className="button danger" onClick={() => handlePurgeDeleted()}>
+                              <Trash2 size={16} />
+                              Purge All ({deletedDeployments.length})
+                            </button>
+                            <button 
+                              className={`icon-button ${deletedBulkMode ? 'active' : ''}`}
+                              onClick={() => {
+                                setDeletedBulkMode(!deletedBulkMode)
+                                setSelectedDeletedDeployments(new Set())
+                              }}
+                              title="Select multiple to purge"
+                            >
+                              <Square size={16} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
 
@@ -1425,8 +1860,17 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
                     ) : (
                       <div className="deployments-list">
                         {deletedDeployments.map((deployment) => (
-                          <div key={deployment.id} className="deployment-card status-deleted">
+                          <div 
+                            key={deployment.id} 
+                            className={`deployment-card status-deleted ${selectedDeletedDeployments.has(deployment.id) ? 'selected' : ''}`}
+                            onClick={() => deletedBulkMode && toggleDeletedDeploymentSelection(deployment.id)}
+                          >
                             <div className="deployment-card-header">
+                              {deletedBulkMode && (
+                                <div className={`bulk-checkbox ${selectedDeletedDeployments.has(deployment.id) ? 'checked' : ''}`}>
+                                  {selectedDeletedDeployments.has(deployment.id) && <CheckCircle size={14} />}
+                                </div>
+                              )}
                               <div className="deployment-info">
                                 <div className="deployment-title">
                                   <h4>{deployment.name}</h4>

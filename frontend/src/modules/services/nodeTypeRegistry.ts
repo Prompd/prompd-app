@@ -24,7 +24,7 @@ import {
   Play, Flag, MessageSquare, Cpu, Bot, MessagesSquare, Server,
   ShieldCheck, Wrench, Terminal, Search, FileCode, Globe, Plug,
   ScanSearch, Route, GitBranch, Repeat, GitFork, Combine,
-  Wand2, Database, UserCircle, Eye, AlertTriangle, Workflow,
+  Wand2, Database, TableProperties, UserCircle, Eye, AlertTriangle, Workflow,
 } from 'lucide-react'
 import type { WorkflowNodeType } from './workflowTypes'
 
@@ -114,6 +114,11 @@ export const NODE_TYPE_REGISTRY: Record<WorkflowNodeType, NodeTypeEntry> = {
     type: 'mcp-tool', label: 'MCP Tool', description: 'External MCP server tool',
     icon: Plug, color: 'var(--node-orange)', colorVar: 'cyan',
   },
+  'database-query': {
+    type: 'database-query', label: 'DB Query', description: 'Query a database connection',
+    icon: TableProperties, color: 'var(--node-teal)', colorVar: 'teal',
+  },
+  // --- Add new tool/execution node types here ---
 
   // Tool Routing
   'tool-call-parser': {
@@ -199,7 +204,7 @@ export const NODE_TYPE_CATEGORIES: NodeTypeCategory[] = [
     key: 'tools-execution',
     label: 'Tools & Execution',
     paletteLabel: 'Tools & Execution',
-    types: ['tool', 'command', 'web-search', 'code', 'api', 'mcp-tool'],
+    types: ['tool', 'command', 'web-search', 'code', 'api', 'mcp-tool', 'database-query'],
   },
   {
     key: 'tool-routing',

@@ -183,7 +183,8 @@ export function extractParameterReferences(
 
     while ((match = templateVarRegex.exec(line)) !== null) {
       const fullRef = match[1] // e.g., "user.name" or "count"
-      const rootVar = fullRef.split('.')[0] // e.g., "user" or "count"
+      const parts = fullRef.split('.')
+      const rootVar = parts[0] // e.g., "user" or "count"
 
       references.push({
         name: rootVar,
@@ -191,6 +192,16 @@ export function extractParameterReferences(
         column: match.index + 1,
         context: line.trim()
       })
+
+      // workflow.paramName proxies to the parameter — count paramName as used
+      if (rootVar === 'workflow' && parts.length > 1) {
+        references.push({
+          name: parts[1],
+          lineNumber: bodyStartLine + i,
+          column: match.index + 1,
+          context: line.trim()
+        })
+      }
     }
   }
 
@@ -209,7 +220,8 @@ export function extractParameterReferences(
     let forMatch: RegExpExecArray | null
     while ((forMatch = forLoopRegex.exec(line)) !== null) {
       const collection = forMatch[2] // e.g., "items" or "stakeholders"
-      const rootVar = collection.split('.')[0] // Handle nested like "config.items"
+      const parts = collection.split('.')
+      const rootVar = parts[0] // Handle nested like "config.items"
 
       references.push({
         name: rootVar,
@@ -217,6 +229,16 @@ export function extractParameterReferences(
         column: line.indexOf(collection) + 1,
         context: line.trim()
       })
+
+      // workflow.paramName proxies to the parameter
+      if (rootVar === 'workflow' && parts.length > 1) {
+        references.push({
+          name: parts[1],
+          lineNumber: bodyStartLine + i,
+          column: line.indexOf(collection) + 1,
+          context: line.trim()
+        })
+      }
     }
 
     // Find set statements - extract variables from the right-hand side expression
@@ -312,11 +334,16 @@ export function analyzeParameterUsage(
 
   // Built-in variables that shouldn't be flagged as undefined
   const builtInVars = new Set([
-    'env',      // Environment variables ({{ env.VAR }})
-    'loop',     // Nunjucks loop variable
-    'range',    // Nunjucks range function
-    'joiner',   // Nunjucks joiner function
-    'cycler'    // Nunjucks cycler function
+    'env',              // Environment variables ({{ env.VAR }})
+    'loop',             // Nunjucks loop variable
+    'range',            // Nunjucks range function
+    'joiner',           // Nunjucks joiner function
+    'cycler',           // Nunjucks cycler function
+    // Workflow runtime variables (injected by workflowExecutor.ts when .prmd runs in a workflow)
+    'workflow',         // Workflow parameters ({{ workflow.param_name }})
+    'previous_output',  // Output from connected upstream node
+    'previous_step',    // Alias for previous_output
+    'input',            // Alias for previous_output in code/transform nodes
   ])
 
   // Template-defined variables (from {% set %} and {% for %})

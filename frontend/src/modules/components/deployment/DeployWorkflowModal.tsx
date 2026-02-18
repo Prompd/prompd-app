@@ -11,6 +11,7 @@
 import { useState, useEffect } from 'react'
 import { X, Package, FileText, Link, AlertCircle, CheckCircle, Loader, Download, FolderOpen, Info } from 'lucide-react'
 import type { WorkflowFile } from '@/modules/services/workflowTypes'
+import { validateWorkflow, type ValidationResult } from '@/modules/services/workflowValidator'
 import type { DeploymentInfo } from '../../../electron'
 import { useEditorStore } from '../../../stores/editorStore'
 import { useUIStore } from '../../../stores/uiStore'
@@ -54,6 +55,7 @@ export function DeployWorkflowModal({ open, onClose, workflow, workflowPath }: D
   const [description, setDescription] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [existingDeployment, setExistingDeployment] = useState<DeploymentInfo | null>(null)
+  const [validation, setValidation] = useState<ValidationResult | null>(null)
 
   // Export tab states
   const [exporting, setExporting] = useState(false)
@@ -126,8 +128,18 @@ export function DeployWorkflowModal({ open, onClose, workflow, workflowPath }: D
 
     setAnalyzing(true)
     setError(null)
+    setValidation(null)
 
     try {
+      // Validate workflow before allowing deployment
+      const validationResult = validateWorkflow(workflow)
+      setValidation(validationResult)
+
+      if (!validationResult.isValid) {
+        setAnalyzing(false)
+        return
+      }
+
       // Find all prompt nodes
       const promptNodes = workflow.nodes?.filter((n) => n.type === 'prompt') || []
 
@@ -212,14 +224,20 @@ export function DeployWorkflowModal({ open, onClose, workflow, workflowPath }: D
         totalFiles
       })
 
-      // Set default deployment name from workflow metadata or filename
+      // Set default deployment name from workflow metadata or filename (kebab-case + version)
       let defaultName = 'workflow'
       if (workflow.metadata?.name) {
         defaultName = workflow.metadata.name
       } else if (workflowPath) {
         defaultName = workflowPath.split(/[\\/]/).pop()?.replace('.pdflow', '') || 'workflow'
       }
-      setDeploymentName(defaultName)
+      const kebabName = defaultName
+        .toLowerCase()
+        .replace(/[\s_]+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        || 'workflow'
+      const deployVersion = workflow.version || '1.0.0'
+      setDeploymentName(`${kebabName}-${deployVersion}`)
 
       // Set version from workflow (top-level field)
       const defaultVersion = workflow.version || '1.0.0'
@@ -753,7 +771,7 @@ export function DeployWorkflowModal({ open, onClose, workflow, workflowPath }: D
                 <button
                   className="button primary"
                   onClick={handleDeploy}
-                  disabled={deploying || !deploymentName.trim()}
+                  disabled={deploying || !deploymentName.trim() || (validation != null && !validation.isValid)}
                 >
                   {deploying ? (
                     <>

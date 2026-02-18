@@ -12,7 +12,7 @@ import React, { useRef, useState, useEffect, useCallback } from 'react'
 
 export interface MinimapSection {
   id: string
-  type: 'metadata' | 'params' | 'content' | 'heading' | 'element' | 'text' | 'comment'
+  type: 'metadata' | 'params' | 'context' | 'content' | 'heading' | 'element' | 'text' | 'comment'
   label: string
   depth?: number
 }
@@ -73,6 +73,8 @@ export function ContentMinimap({ sections, theme, containerRef, onScrollToSectio
         return isDark ? '#60a5fa' : '#3b82f6' // blue
       case 'params':
         return isDark ? '#fbbf24' : '#d97706' // amber/yellow
+      case 'context':
+        return isDark ? '#f472b6' : '#db2777' // pink
       case 'heading':
         return isDark ? '#4ade80' : '#16a34a' // green
       case 'element':
@@ -90,7 +92,7 @@ export function ContentMinimap({ sections, theme, containerRef, onScrollToSectio
   // Width based on depth - root items span full width, nested items get smaller
   const getWidth = (type: MinimapSection['type'], depth: number) => {
     // Main headers (metadata, params, content) at depth 0 get full width (~92px to leave room for glow)
-    if (depth === 0 && (type === 'params' || type === 'metadata' || type === 'content')) {
+    if (depth === 0 && (type === 'params' || type === 'metadata' || type === 'context' || type === 'content')) {
       return 92
     }
     // Other root items get slightly less
@@ -108,6 +110,7 @@ export function ContentMinimap({ sections, theme, containerRef, onScrollToSectio
     switch (type) {
       case 'metadata':
       case 'params':
+      case 'context':
       case 'element':
       case 'content':
         return 0.85

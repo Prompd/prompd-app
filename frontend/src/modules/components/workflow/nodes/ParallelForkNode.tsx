@@ -111,10 +111,10 @@ export const ParallelForkNode = memo(({ id, data, selected }: ParallelForkNodePr
 
   return (
     <div
-      className={nodeData.disabled ? 'workflow-node-disabled' : ''}
+      className={[nodeData.disabled && 'workflow-node-disabled', nodeData.locked && 'workflow-node-locked'].filter(Boolean).join(' ')}
       style={{
         width: forkNodeWidth,
-        height: forkNodeHeight,
+        minHeight: forkNodeHeight,
         borderRadius: '8px',
         background: 'var(--panel)',
         border: `2px solid ${selected ? 'var(--node-indigo)' : 'var(--border)'}`,
@@ -138,12 +138,6 @@ export const ParallelForkNode = memo(({ id, data, selected }: ParallelForkNodePr
           border: '2px solid var(--panel)',
           top: forkNodeHeight / 2,
         }}
-      />
-
-      {/* Execution debug footer */}
-      <NodeExecutionFooter
-        nodeState={nodeState}
-        allNodeStates={executionState?.nodeStates}
       />
 
       {/* Fork output handles - positioned at node edge, aligned with branch rows */}
@@ -240,6 +234,14 @@ export const ParallelForkNode = memo(({ id, data, selected }: ParallelForkNodePr
         }}>
           {getWaitLabel()}
         </div>
+      </div>
+
+      {/* Execution debug footer — renders below the fixed layout, grows node height */}
+      <div style={{ padding: '0 8px 4px' }}>
+        <NodeExecutionFooter
+          nodeState={nodeState}
+          allNodeStates={executionState?.nodeStates}
+        />
       </div>
     </div>
   )

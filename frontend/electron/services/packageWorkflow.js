@@ -18,12 +18,228 @@ const { app } = require('electron')
 const yaml = require('yaml')
 
 /**
+ * Recursively trace a .prmd file and all its dependencies.
+ *
+ * Standalone export — used by both workflow packaging (traceDependencyTree)
+ * and node template packaging (TemplateIpcRegistration).
+ *
+ * @param {string} workspaceRoot - Workspace root directory
+ * @param {string} relativePath - File path relative to workspace root
+ * @param {object} [state] - Shared tracing state (for batching multiple files).
+ *   If null, creates fresh state. Pass the same state object when tracing
+ *   multiple files to share visited/dedup sets.
+ * @returns {Promise<{referencedFiles: string[], scannedDependencies: object}>}
+ */
+async function tracePromptFileDeps(workspaceRoot, relativePath, state = null) {
+  const referencedFiles = state?.referencedFiles || new Set()
+  const scannedDependencies = state?.scannedDependencies || {}
+  const visited = state?.visited || new Set()
+  const sharedState = { referencedFiles, scannedDependencies, visited }
+
+  if (visited.has(relativePath)) {
+    return { referencedFiles: Array.from(referencedFiles), scannedDependencies }
+  }
+  visited.add(relativePath)
+
+  const absolutePath = path.join(workspaceRoot, relativePath)
+
+  if (!await fs.pathExists(absolutePath)) {
+    console.warn('[PackageWorkflow] File not found:', relativePath)
+    return { referencedFiles: Array.from(referencedFiles), scannedDependencies }
+  }
+
+  // Add file to referenced set
+  referencedFiles.add(relativePath)
+
+  try {
+    // Normalize line endings (Windows CRLF -> LF) before parsing
+    const content = (await fs.readFile(absolutePath, 'utf-8')).replace(/\r\n/g, '\n')
+
+    // Parse YAML frontmatter
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/)
+    if (!frontmatterMatch) {
+      return { referencedFiles: Array.from(referencedFiles), scannedDependencies }
+    }
+
+    const frontmatter = yaml.parse(frontmatterMatch[1])
+
+    // 1. Check for package inheritance (inherits: @namespace/package@version)
+    if (frontmatter.inherits) {
+      if (frontmatter.inherits.startsWith('@')) {
+        const atIndex = frontmatter.inherits.lastIndexOf('@')
+        if (atIndex > 0) {
+          const packageName = frontmatter.inherits.substring(0, atIndex)
+          const versionAndPath = frontmatter.inherits.substring(atIndex + 1)
+          const version = versionAndPath.split('/')[0]
+          scannedDependencies[packageName] = version
+          console.log('[PackageWorkflow] Found package dependency:', packageName, '@', version)
+        }
+      } else if (frontmatter.inherits.endsWith('.prmd')) {
+        const inheritPath = path.isAbsolute(frontmatter.inherits)
+          ? path.relative(workspaceRoot, frontmatter.inherits)
+          : path.join(path.dirname(relativePath), frontmatter.inherits).replace(/\\/g, '/')
+        await tracePromptFileDeps(workspaceRoot, inheritPath, sharedState)
+      }
+    }
+
+    // 2. Check for attached files (files: [file1.txt, file2.json])
+    if (frontmatter.files && Array.isArray(frontmatter.files)) {
+      for (const fileRef of frontmatter.files) {
+        const filePath = path.isAbsolute(fileRef)
+          ? path.relative(workspaceRoot, fileRef)
+          : path.join(path.dirname(relativePath), fileRef).replace(/\\/g, '/')
+
+        if (await fs.pathExists(path.join(workspaceRoot, filePath))) {
+          referencedFiles.add(filePath)
+        }
+      }
+    }
+
+    // 2b. Check for context files (context: or contexts: - both singular and plural, string or array)
+    const rawContext = frontmatter.context || frontmatter.contexts
+    const contextArray = rawContext ? (Array.isArray(rawContext) ? rawContext : [rawContext]) : null
+    if (contextArray) {
+      for (const contextRef of contextArray) {
+        if (typeof contextRef !== 'string') continue
+        const filePath = path.isAbsolute(contextRef)
+          ? path.relative(workspaceRoot, contextRef)
+          : path.join(path.dirname(relativePath), contextRef).replace(/\\/g, '/')
+
+        if (await fs.pathExists(path.join(workspaceRoot, filePath))) {
+          referencedFiles.add(filePath)
+          console.log('[PackageWorkflow] Found context file:', filePath)
+        } else {
+          console.warn('[PackageWorkflow] Context file not found:', filePath)
+        }
+      }
+    }
+
+    // 2c. Check for override file references (override: { system: "../systems/file.md" })
+    if (frontmatter.override && typeof frontmatter.override === 'object') {
+      for (const overrideValue of Object.values(frontmatter.override)) {
+        if (typeof overrideValue !== 'string') continue
+        const filePath = path.isAbsolute(overrideValue)
+          ? path.relative(workspaceRoot, overrideValue)
+          : path.join(path.dirname(relativePath), overrideValue).replace(/\\/g, '/')
+
+        if (await fs.pathExists(path.join(workspaceRoot, filePath))) {
+          referencedFiles.add(filePath)
+          console.log('[PackageWorkflow] Found override file:', filePath)
+        } else {
+          console.warn('[PackageWorkflow] Override file not found:', filePath)
+        }
+      }
+    }
+
+    // 2d. Check for top-level section fields that can be file references
+    // (system:, user:, task:, assistant:, response:, output:)
+    const sectionFields = ['system', 'user', 'task', 'assistant', 'response', 'output']
+    for (const field of sectionFields) {
+      const sectionValue = frontmatter[field]
+      if (!sectionValue) continue
+
+      const sectionRefs = Array.isArray(sectionValue) ? sectionValue : [sectionValue]
+      for (const ref of sectionRefs) {
+        if (typeof ref !== 'string') continue
+        // Only resolve relative paths (starts with ./ or ../ or has a file extension)
+        if (!ref.startsWith('./') && !ref.startsWith('../') && !ref.match(/\.\w+$/)) continue
+
+        const filePath = path.isAbsolute(ref)
+          ? path.relative(workspaceRoot, ref)
+          : path.join(path.dirname(relativePath), ref).replace(/\\/g, '/')
+
+        if (await fs.pathExists(path.join(workspaceRoot, filePath))) {
+          referencedFiles.add(filePath)
+          console.log(`[PackageWorkflow] Found ${field} file:`, filePath)
+        } else {
+          console.warn(`[PackageWorkflow] Section file not found (${field}):`, filePath)
+        }
+      }
+    }
+
+    // 3. Check for Jinja/Nunjucks includes ({% include "file.prmd" %} or {% include="file.prmd" %})
+    const includePattern = /{%[-~]?\s*include\s*=?\s*["']([^"']+)["']\s*[-~]?%}/g
+    let includeMatch
+    while ((includeMatch = includePattern.exec(content)) !== null) {
+      const includePath = path.isAbsolute(includeMatch[1])
+        ? path.relative(workspaceRoot, includeMatch[1])
+        : path.join(path.dirname(relativePath), includeMatch[1]).replace(/\\/g, '/')
+
+      if (includePath.endsWith('.prmd')) {
+        await tracePromptFileDeps(workspaceRoot, includePath, sharedState)
+      } else {
+        // Non-.prmd include (e.g., .md, .txt files)
+        if (await fs.pathExists(path.join(workspaceRoot, includePath))) {
+          referencedFiles.add(includePath)
+        }
+      }
+    }
+
+  } catch (err) {
+    console.warn('[PackageWorkflow] Failed to trace file', relativePath, ':', err.message)
+  }
+
+  return {
+    referencedFiles: Array.from(referencedFiles),
+    scannedDependencies
+  }
+}
+
+/**
+ * Extract file references from a workflow node based on its type.
+ * Matches the logic in TemplateIpcRegistration.getNodeFileRefs so that
+ * deployment packaging traces the same files that template packaging bundles.
+ *
+ * @param {string} nodeType - The node's type
+ * @param {object} nodeData - The node's data payload
+ * @returns {string[]} Workspace-relative file paths
+ */
+function getNodeFileRefs(nodeType, nodeData) {
+  if (!nodeData) return []
+  const refs = []
+
+  switch (nodeType) {
+    case 'prompt': {
+      const source = nodeData.source || nodeData.promptRef
+      if (source && (nodeData.sourceType === 'file' || !nodeData.sourceType) && !source.startsWith('@')) {
+        refs.push(source)
+      }
+      break
+    }
+    case 'chatAgent':
+    case 'chat-agent': {
+      const source = nodeData.agentPromptSource
+      if (source && nodeData.agentPromptSourceType === 'file' && !source.startsWith('@')) {
+        refs.push(source)
+      }
+      break
+    }
+    case 'workflow': {
+      const source = nodeData.source
+      if (source && !source.startsWith('@')) {
+        refs.push(source)
+      }
+      break
+    }
+    case 'agent': {
+      const source = nodeData.source || nodeData.promptRef
+      if (source && (nodeData.sourceType === 'file' || !nodeData.sourceType) && !source.startsWith('@')) {
+        refs.push(source)
+      }
+      break
+    }
+  }
+
+  return refs
+}
+
+/**
  * Trace all file dependencies from a workflow
  * Walks the dependency tree to find all referenced files:
  * - Workflow file itself
- * - Prompt files from workflow nodes
+ * - Prompt/agent/workflow files from all node types
  * - Files referenced by inherits: field
- * - Files referenced by {% include="..." %} Nunjucks syntax
+ * - Files referenced by {% include "..." %} Nunjucks syntax
  * - Files attached via files: field in frontmatter
  *
  * @param {string} workspaceRoot - Workspace root directory
@@ -32,189 +248,46 @@ const yaml = require('yaml')
  * @returns {Promise<{referencedFiles: string[], scannedDependencies: object}>}
  */
 async function traceDependencyTree(workspaceRoot, workflowRelativePath, workflow) {
-  const referencedFiles = new Set()
-  const scannedDependencies = {}
-  const visited = new Set() // Prevent infinite loops
-
-  // Always include the workflow file
-  referencedFiles.add(workflowRelativePath)
-
-  /**
-   * Recursively trace a .prmd file and its dependencies
-   */
-  async function tracePromptFile(relativePath) {
-    if (visited.has(relativePath)) return
-    visited.add(relativePath)
-
-    const absolutePath = path.join(workspaceRoot, relativePath)
-
-    if (!await fs.pathExists(absolutePath)) {
-      console.warn('[PackageWorkflow] File not found:', relativePath)
-      return
-    }
-
-    // Add file to referenced set
-    referencedFiles.add(relativePath)
-
-    try {
-      // Normalize line endings (Windows CRLF -> LF) before parsing
-      const content = (await fs.readFile(absolutePath, 'utf-8')).replace(/\r\n/g, '\n')
-
-      // Parse YAML frontmatter
-      const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/)
-      if (!frontmatterMatch) return
-
-      const frontmatter = yaml.parse(frontmatterMatch[1])
-
-      // 1. Check for package inheritance (inherits: @namespace/package@version)
-      if (frontmatter.inherits) {
-        if (frontmatter.inherits.startsWith('@')) {
-          const atIndex = frontmatter.inherits.lastIndexOf('@')
-          if (atIndex > 0) {
-            const packageName = frontmatter.inherits.substring(0, atIndex)
-            // Version is between '@' and the next '/' (strip trailing path like /prompts/base.prmd)
-            const versionAndPath = frontmatter.inherits.substring(atIndex + 1)
-            const version = versionAndPath.split('/')[0]
-            scannedDependencies[packageName] = version
-            console.log('[PackageWorkflow] Found package dependency:', packageName, '@', version)
-          }
-        } else if (frontmatter.inherits.endsWith('.prmd')) {
-          // Local file inheritance
-          const inheritPath = path.isAbsolute(frontmatter.inherits)
-            ? path.relative(workspaceRoot, frontmatter.inherits)
-            : path.join(path.dirname(relativePath), frontmatter.inherits).replace(/\\/g, '/')
-          await tracePromptFile(inheritPath)
-        }
-      }
-
-      // 2. Check for attached files (files: [file1.txt, file2.json])
-      if (frontmatter.files && Array.isArray(frontmatter.files)) {
-        for (const fileRef of frontmatter.files) {
-          const filePath = path.isAbsolute(fileRef)
-            ? path.relative(workspaceRoot, fileRef)
-            : path.join(path.dirname(relativePath), fileRef).replace(/\\/g, '/')
-
-          if (await fs.pathExists(path.join(workspaceRoot, filePath))) {
-            referencedFiles.add(filePath)
-          }
-        }
-      }
-
-      // 2b. Check for context files (context: or contexts: - both singular and plural, string or array)
-      const rawContext = frontmatter.context || frontmatter.contexts
-      const contextArray = rawContext ? (Array.isArray(rawContext) ? rawContext : [rawContext]) : null
-      if (contextArray) {
-        for (const contextRef of contextArray) {
-          if (typeof contextRef !== 'string') continue
-          const filePath = path.isAbsolute(contextRef)
-            ? path.relative(workspaceRoot, contextRef)
-            : path.join(path.dirname(relativePath), contextRef).replace(/\\/g, '/')
-
-          if (await fs.pathExists(path.join(workspaceRoot, filePath))) {
-            referencedFiles.add(filePath)
-            console.log('[PackageWorkflow] Found context file:', filePath)
-          } else {
-            console.warn('[PackageWorkflow] Context file not found:', filePath)
-          }
-        }
-      }
-
-      // 2c. Check for override file references (override: { system: "../systems/file.md" })
-      if (frontmatter.override && typeof frontmatter.override === 'object') {
-        for (const overrideValue of Object.values(frontmatter.override)) {
-          if (typeof overrideValue !== 'string') continue
-          const filePath = path.isAbsolute(overrideValue)
-            ? path.relative(workspaceRoot, overrideValue)
-            : path.join(path.dirname(relativePath), overrideValue).replace(/\\/g, '/')
-
-          if (await fs.pathExists(path.join(workspaceRoot, filePath))) {
-            referencedFiles.add(filePath)
-            console.log('[PackageWorkflow] Found override file:', filePath)
-          } else {
-            console.warn('[PackageWorkflow] Override file not found:', filePath)
-          }
-        }
-      }
-
-      // 2d. Check for top-level section fields that can be file references
-      // (system:, user:, task:, assistant:, response:, output:)
-      const sectionFields = ['system', 'user', 'task', 'assistant', 'response', 'output']
-      for (const field of sectionFields) {
-        const sectionValue = frontmatter[field]
-        if (!sectionValue) continue
-
-        const sectionRefs = Array.isArray(sectionValue) ? sectionValue : [sectionValue]
-        for (const ref of sectionRefs) {
-          if (typeof ref !== 'string') continue
-          // Only resolve relative paths (starts with ./ or ../ or has a file extension)
-          if (!ref.startsWith('./') && !ref.startsWith('../') && !ref.match(/\.\w+$/)) continue
-
-          const filePath = path.isAbsolute(ref)
-            ? path.relative(workspaceRoot, ref)
-            : path.join(path.dirname(relativePath), ref).replace(/\\/g, '/')
-
-          if (await fs.pathExists(path.join(workspaceRoot, filePath))) {
-            referencedFiles.add(filePath)
-            console.log(`[PackageWorkflow] Found ${field} file:`, filePath)
-          } else {
-            console.warn(`[PackageWorkflow] Section file not found (${field}):`, filePath)
-          }
-        }
-      }
-
-      // 3. Check for Jinja/Nunjucks includes ({% include "file.prmd" %} or {% include="file.prmd" %})
-      const includePattern = /{%[-~]?\s*include\s*=?\s*["']([^"']+)["']\s*[-~]?%}/g
-      let includeMatch
-      while ((includeMatch = includePattern.exec(content)) !== null) {
-        const includePath = path.isAbsolute(includeMatch[1])
-          ? path.relative(workspaceRoot, includeMatch[1])
-          : path.join(path.dirname(relativePath), includeMatch[1]).replace(/\\/g, '/')
-
-        if (includePath.endsWith('.prmd')) {
-          await tracePromptFile(includePath)
-        } else {
-          // Non-.prmd include (e.g., .md, .txt files)
-          if (await fs.pathExists(path.join(workspaceRoot, includePath))) {
-            referencedFiles.add(includePath)
-          }
-        }
-      }
-
-    } catch (err) {
-      console.warn('[PackageWorkflow] Failed to trace file', relativePath, ':', err.message)
-    }
+  // Shared state across all traced files to prevent re-visiting
+  const state = {
+    referencedFiles: new Set(),
+    scannedDependencies: {},
+    visited: new Set(),
   }
 
-  /**
-   * Trace all prompt nodes in the workflow
-   */
-  const promptNodes = workflow.nodes?.filter(n => n.type === 'prompt') || []
+  // Always include the workflow file
+  state.referencedFiles.add(workflowRelativePath)
 
-  for (const node of promptNodes) {
-    const sourceRef = node.data?.source || node.data?.promptRef
+  // Collect file references from ALL node types that can reference files
+  const allNodes = workflow.nodes || []
+  const workflowDir = path.dirname(workflowRelativePath)
 
-    if (!sourceRef) continue
+  for (const node of allNodes) {
+    const sourceRefs = getNodeFileRefs(node.type, node.data)
 
-    if (sourceRef.startsWith('@')) {
-      // Direct package reference in workflow node
-      const atIndex = sourceRef.lastIndexOf('@')
-      if (atIndex > 0) {
-        const packageName = sourceRef.substring(0, atIndex)
-        const version = sourceRef.substring(atIndex + 1)
-        scannedDependencies[packageName] = version
+    for (const sourceRef of sourceRefs) {
+      if (!sourceRef) continue
+
+      if (sourceRef.startsWith('@')) {
+        // Direct package reference in workflow node
+        const atIndex = sourceRef.lastIndexOf('@')
+        if (atIndex > 0) {
+          const packageName = sourceRef.substring(0, atIndex)
+          const version = sourceRef.substring(atIndex + 1).split('/')[0]
+          state.scannedDependencies[packageName] = version
+        }
+      } else if (!sourceRef.startsWith('raw:')) {
+        // Local file reference - resolve relative to workflow file directory
+        const resolved = path.join(workflowDir, sourceRef)
+        const filePath = path.normalize(resolved).replace(/\\/g, '/')
+        await tracePromptFileDeps(workspaceRoot, filePath, state)
       }
-    } else if (sourceRef.startsWith('./') || sourceRef.startsWith('../') || !sourceRef.startsWith('raw:')) {
-      // Local prompt file reference - resolve relative to workflow file directory
-      const workflowDir = path.dirname(workflowRelativePath)
-      const resolved = path.join(workflowDir, sourceRef)
-      const promptPath = path.normalize(resolved).replace(/\\/g, '/')
-      await tracePromptFile(promptPath)
     }
   }
 
   return {
-    referencedFiles: Array.from(referencedFiles).sort(),
-    scannedDependencies
+    referencedFiles: Array.from(state.referencedFiles).sort(),
+    scannedDependencies: state.scannedDependencies
   }
 }
 
@@ -396,4 +469,4 @@ async function getAllFiles(dirPath, basePath) {
   return files
 }
 
-module.exports = { packageWorkflow }
+module.exports = { packageWorkflow, tracePromptFileDeps, getNodeFileRefs }

@@ -7,8 +7,7 @@ import {
   CoherePricingFetcher,
   TogetherPricingFetcher,
   PerplexityPricingFetcher,
-  DeepSeekPricingFetcher,
-  OllamaPricingFetcher
+  DeepSeekPricingFetcher
 } from './OtherProvidersFetcher.js'
 
 /**
@@ -26,8 +25,7 @@ class PricingFetcherFactory {
       ['cohere', CoherePricingFetcher],
       ['together', TogetherPricingFetcher],
       ['perplexity', PerplexityPricingFetcher],
-      ['deepseek', DeepSeekPricingFetcher],
-      ['ollama', OllamaPricingFetcher]
+      ['deepseek', DeepSeekPricingFetcher]
     ])
 
     // Cache fetcher instances

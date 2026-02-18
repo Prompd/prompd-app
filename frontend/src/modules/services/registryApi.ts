@@ -2,6 +2,7 @@
 import { prompdSettings } from './prompdSettings'
 import { registryDiscovery } from './registryDiscovery'
 import { configService } from './configService'
+import { electronFetch } from './electronFetch'
 
 export interface RegistryPackage {
   id?: string
@@ -330,7 +331,8 @@ class RegistryApiClient {
   }
 
   private async performRequest<T>(endpoint: string, params?: Record<string, string>, etag?: string): Promise<T> {
-    const url = new URL(endpoint, this.baseUrl)
+    const baseUrl = await this.ensureBaseUrl()
+    const url = new URL(endpoint, baseUrl)
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         url.searchParams.set(key, value)
@@ -361,7 +363,7 @@ class RegistryApiClient {
     const timeoutId = setTimeout(() => controller.abort(), this.REQUEST_TIMEOUT)
 
     try {
-      const response = await fetch(url.toString(), { 
+      const response = await electronFetch(url.toString(), {
         headers,
         signal: controller.signal
       })
@@ -598,7 +600,7 @@ class RegistryApiClient {
         }
       }
 
-      const response = await fetch(url, { headers })
+      const response = await electronFetch(url, { headers, responseType: 'arraybuffer' })
 
       if (!response.ok) {
         throw new Error(`Failed to download package: ${response.status} ${response.statusText}`)

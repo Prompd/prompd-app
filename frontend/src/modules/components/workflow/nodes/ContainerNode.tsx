@@ -40,6 +40,7 @@ import {
   ShieldCheck,
   MessagesSquare,
   Database,
+  TableProperties,
   Search,
 } from 'lucide-react'
 import type { NodeExecutionStatus, WorkflowNodeType } from '../../../services/workflowTypes'
@@ -91,6 +92,7 @@ const NODE_TYPE_ICONS: Record<WorkflowNodeType, React.ComponentType<{ style?: Re
   memory: Database,
   output: FileOutput,
   'web-search': Search,
+  'database-query': TableProperties,
 }
 
 // Node type color mapping for mini previews
@@ -270,6 +272,8 @@ export interface ContainerNodeProps {
   selected?: boolean
   /** Whether the node is disabled */
   disabled?: boolean
+  /** Whether the node is locked (position frozen) */
+  locked?: boolean
   /** Whether the node is collapsed */
   isCollapsed: boolean
   /** Callback to toggle collapsed state */
@@ -322,6 +326,7 @@ export const ContainerNode = memo(({
   id,
   selected = false,
   disabled = false,
+  locked = false,
   isCollapsed,
   onToggleCollapsed,
   colorVar,
@@ -524,7 +529,7 @@ export const ContainerNode = memo(({
     return (
       <div
         ref={containerRef}
-        className={disabled ? 'workflow-node-disabled' : ''}
+        className={[disabled && 'workflow-node-disabled', locked && 'workflow-node-locked'].filter(Boolean).join(' ')}
         style={{
           position: 'relative',
           width: COLLAPSED_WIDTH,
@@ -731,7 +736,7 @@ export const ContainerNode = memo(({
       />
 
       <div
-        className={disabled ? 'workflow-node-disabled' : ''}
+        className={[disabled && 'workflow-node-disabled', locked && 'workflow-node-locked'].filter(Boolean).join(' ')}
         style={{
           width: '100%',
           height: '100%',

@@ -124,7 +124,7 @@ export const TransformNode = memo(({ id, data, selected }: TransformNodeProps) =
 
   return (
     <div
-      className={nodeData.disabled ? 'workflow-node-disabled' : ''}
+      className={[nodeData.disabled && 'workflow-node-disabled', nodeData.locked && 'workflow-node-locked'].filter(Boolean).join(' ')}
       style={{
         minWidth: '180px',
         maxWidth: '280px',
@@ -146,12 +146,6 @@ export const TransformNode = memo(({ id, data, selected }: TransformNodeProps) =
           background: nodeColor,
           border: '2px solid var(--panel)',
         }}
-      />
-
-      {/* Execution debug footer */}
-      <NodeExecutionFooter
-        nodeState={nodeState}
-        allNodeStates={executionState?.nodeStates}
       />
 
       {/* Output Handle */}
@@ -313,6 +307,12 @@ export const TransformNode = memo(({ id, data, selected }: TransformNodeProps) =
           index={index}
         />
       ))}
+
+      {/* Execution debug footer */}
+      <NodeExecutionFooter
+        nodeState={nodeState}
+        allNodeStates={executionState?.nodeStates}
+      />
     </div>
   )
 })

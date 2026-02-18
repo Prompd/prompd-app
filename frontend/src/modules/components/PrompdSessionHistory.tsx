@@ -17,9 +17,8 @@ import {
   Braces,
   FileCode2,
 } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { JsonTreeViewer, extractJson } from './common/JsonTreeViewer'
+import WysiwygEditor from './WysiwygEditor'
 
 export interface PrompdExecutionRecord {
   id: string
@@ -81,15 +80,15 @@ function ResponseSection({ exec, colors, viewMode, onViewModeChange, onCopy }: R
   })
 
   return (
-    <div style={{ marginBottom: '16px' }}>
+    <div>
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: '8px'
+        marginBottom: '6px'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '11px', color: colors.textMuted, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Response</span>
+          <span style={{ fontSize: '11px', color: colors.textMuted, fontWeight: 500 }}>Response</span>
           {hasJson && (
             <div style={{ display: 'flex', gap: '2px' }}>
               <button
@@ -106,7 +105,7 @@ function ResponseSection({ exec, colors, viewMode, onViewModeChange, onCopy }: R
                 title="Interactive JSON explorer"
               >
                 <Braces size={11} />
-                JSON Explorer
+                JSON
               </button>
             </div>
           )}
@@ -114,19 +113,19 @@ function ResponseSection({ exec, colors, viewMode, onViewModeChange, onCopy }: R
         <button
           onClick={onCopy}
           style={{
-            padding: '4px 8px',
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: `1px solid ${colors.border}`,
+            padding: '2px 6px',
+            background: 'transparent',
+            border: 'none',
             borderRadius: '4px',
             cursor: 'pointer',
-            color: colors.textSecondary,
+            color: colors.textMuted,
             display: 'flex',
             alignItems: 'center',
             gap: '4px',
             fontSize: '11px'
           }}
         >
-          <Copy size={12} /> Copy
+          <Copy size={11} />
         </button>
       </div>
 
@@ -147,69 +146,12 @@ function ResponseSection({ exec, colors, viewMode, onViewModeChange, onCopy }: R
           />
         </div>
       ) : (
-        <div style={{
-          padding: '14px',
-          background: 'rgba(0, 0, 0, 0.2)',
-          border: `1px solid ${colors.border}`,
-          borderRadius: '6px',
-          fontSize: '13px',
-          overflow: 'auto',
-          maxHeight: '250px',
-          lineHeight: '1.6',
-          color: 'var(--foreground)'
-        }} className="history-markdown">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              p: ({ children }) => (
-                <p style={{ margin: '0 0 8px', lineHeight: '1.5' }}>{children}</p>
-              ),
-              code: ({ className, children, ...props }: any) => {
-                const isInline = !className && !String(children).includes('\n')
-                return isInline ? (
-                  <code
-                    style={{
-                      background: 'rgba(99, 102, 241, 0.15)',
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      fontFamily: 'monospace',
-                      color: 'var(--prompd-accent, #a5b4fc)'
-                    }}
-                    {...props}
-                  >
-                    {children}
-                  </code>
-                ) : (
-                  <code
-                    style={{
-                      fontSize: '12px',
-                      fontFamily: 'monospace',
-                      lineHeight: '1.4'
-                    }}
-                    className={className}
-                    {...props}
-                  >
-                    {children}
-                  </code>
-                )
-              },
-              pre: ({ children }) => (
-                <pre style={{
-                  margin: '8px 0',
-                  background: 'rgba(0, 0, 0, 0.3)',
-                  border: `1px solid ${colors.border}`,
-                  padding: '10px',
-                  borderRadius: '4px',
-                  overflowX: 'auto',
-                  lineHeight: '1.4'
-                }}>{children}</pre>
-              ),
-            }}
-          >
-            {exec.response}
-          </ReactMarkdown>
-        </div>
+        <WysiwygEditor
+          value={exec.response || ''}
+          readOnly
+          height="auto"
+          showToolbar={false}
+        />
       )}
     </div>
   )
@@ -297,185 +239,121 @@ export function PrompdSessionHistory({
               <div
                 key={exec.id}
                 style={{
-                  background: 'var(--prompd-panel, rgba(255, 255, 255, 0.03))',
-                  border: expandedId === exec.id
-                    ? `1px solid ${colors.accent}`
-                    : `1px solid ${colors.border}`,
+                  background: 'var(--panel)',
+                  border: `1px solid ${expandedId === exec.id ? colors.accent : colors.border}`,
                   borderRadius: '8px',
                   overflow: 'hidden',
-                  boxShadow: expandedId === exec.id
-                    ? '0 2px 8px rgba(0, 0, 0, 0.15)'
-                    : '0 1px 3px rgba(0, 0, 0, 0.08)',
-                  transition: 'all 0.15s ease'
+                  transition: 'border-color 0.15s'
                 }}
               >
                 {/* Execution Header */}
                 <div
                   style={{
-                    padding: '12px 14px',
+                    padding: '10px 14px',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '12px',
-                    cursor: 'pointer',
-                    background: expandedId === exec.id
-                      ? 'rgba(99, 102, 241, 0.08)'
-                      : 'transparent'
+                    gap: '10px',
+                    cursor: 'pointer'
                   }}
                   onClick={() => setExpandedId(expandedId === exec.id ? null : exec.id)}
                 >
-                  {expandedId === exec.id ? (
-                    <ChevronDown size={16} color={colors.textMuted} />
-                  ) : (
-                    <ChevronRight size={16} color={colors.textMuted} />
+                  {expandedId === exec.id
+                    ? <ChevronDown size={14} color={colors.textMuted} />
+                    : <ChevronRight size={14} color={colors.textMuted} />
+                  }
+                  {exec.success
+                    ? <CheckCircle2 size={14} color={colors.success} />
+                    : <XCircle size={14} color={colors.error} />
+                  }
+
+                  <span style={{ fontSize: '13px', fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {exec.model}
+                  </span>
+
+                  <span style={{ fontSize: '11px', color: colors.textMuted, display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    <span title={`${exec.totalTokens.toLocaleString()} tokens`}>{exec.totalTokens > 999 ? `${(exec.totalTokens / 1000).toFixed(1)}k` : exec.totalTokens} tok</span>
+                    <span>{formatDuration(exec.duration)}</span>
+                    <span>{formatDate(exec.timestamp)}</span>
+                  </span>
+
+                  {onViewExecution && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const index = executions.findIndex(e => e.id === exec.id)
+                        onViewExecution(exec, index)
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '4px',
+                        background: 'transparent',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        color: colors.textMuted
+                      }}
+                      title="View in modal"
+                    >
+                      <ExternalLink size={12} />
+                    </button>
                   )}
-
-                  {/* Status */}
-                  {exec.success ? (
-                    <CheckCircle2 size={16} color={colors.success} />
-                  ) : (
-                    <XCircle size={16} color={colors.error} />
-                  )}
-
-                  {/* Provider & Model */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 500, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {exec.provider} / {exec.model}
-                      </span>
-                      <span style={{ fontSize: '11px', color: colors.textMuted, fontWeight: 400 }}>
-                        {formatDate(exec.timestamp)}
-                      </span>
-                    </div>
-                    {exec.context && (
-                      <div style={{ fontSize: '11px', color: colors.textMuted, marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {exec.context}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Metrics */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: colors.textSecondary, flexShrink: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }} title={`${exec.totalTokens.toLocaleString()} tokens`}>
-                      <Cpu size={12} />
-                      <span>{exec.totalTokens > 999 ? `${(exec.totalTokens / 1000).toFixed(1)}k` : exec.totalTokens}</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }} title={`Duration: ${formatDuration(exec.duration)}`}>
-                      <Clock size={12} />
-                      <span>{formatDuration(exec.duration)}</span>
-                    </div>
-                    {onViewExecution && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          const index = executions.findIndex(e => e.id === exec.id)
-                          onViewExecution(exec, index)
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: '4px',
-                          background: 'transparent',
-                          border: `1px solid ${colors.border}`,
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          color: colors.textSecondary,
-                          transition: 'all 0.15s'
-                        }}
-                        title="View in modal"
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(99, 102, 241, 0.1)'
-                          e.currentTarget.style.color = colors.accent
-                          e.currentTarget.style.borderColor = colors.accent
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'transparent'
-                          e.currentTarget.style.color = colors.textSecondary
-                          e.currentTarget.style.borderColor = colors.border
-                        }}
-                      >
-                        <ExternalLink size={12} />
-                      </button>
-                    )}
-                  </div>
                 </div>
 
                 {/* Expanded Details */}
                 {expandedId === exec.id && (
                   <div style={{
-                    borderTop: `1px solid rgba(99, 102, 241, 0.2)`,
-                    padding: '16px',
-                    background: 'rgba(0, 0, 0, 0.15)'
+                    borderTop: `1px solid ${colors.border}`,
+                    padding: '14px'
                   }}>
                     {/* Token Breakdown */}
                     <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(3, 1fr)',
-                      gap: '12px',
-                      marginBottom: '16px',
-                      padding: '12px',
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      borderRadius: '6px',
-                      border: `1px solid ${colors.border}`
+                      display: 'flex',
+                      gap: '16px',
+                      marginBottom: '14px',
+                      fontSize: '12px',
+                      color: colors.textMuted
                     }}>
-                      <div>
-                        <div style={{ fontSize: '10px', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Prompt Tokens</div>
-                        <div style={{ fontWeight: 600, fontSize: '15px' }}>{exec.promptTokens.toLocaleString()}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '10px', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Completion</div>
-                        <div style={{ fontWeight: 600, fontSize: '15px' }}>{exec.completionTokens.toLocaleString()}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '10px', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Duration</div>
-                        <div style={{ fontWeight: 600, fontSize: '15px', color: colors.accent }}>{formatDuration(exec.duration)}</div>
-                      </div>
+                      <span>{exec.provider} / {exec.model}</span>
+                      <span>{exec.promptTokens.toLocaleString()} in / {exec.completionTokens.toLocaleString()} out</span>
+                      <span>{formatDuration(exec.duration)}</span>
                     </div>
 
                     {/* Compiled Prompt */}
                     {exec.compiledPrompt && (
-                      <div style={{ marginBottom: '16px' }}>
+                      <div style={{ marginBottom: '14px' }}>
                         <div style={{
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          marginBottom: '8px'
+                          marginBottom: '6px'
                         }}>
-                          <span style={{ fontSize: '11px', color: colors.textMuted, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Compiled Prompt</span>
+                          <span style={{ fontSize: '11px', color: colors.textMuted, fontWeight: 500 }}>Compiled Prompt</span>
                           <button
                             onClick={() => handleCopyPrompt(exec)}
                             style={{
-                              padding: '4px 8px',
-                              background: 'rgba(255, 255, 255, 0.05)',
-                              border: `1px solid ${colors.border}`,
+                              padding: '2px 6px',
+                              background: 'transparent',
+                              border: 'none',
                               borderRadius: '4px',
                               cursor: 'pointer',
-                              color: colors.textSecondary,
+                              color: colors.textMuted,
                               display: 'flex',
                               alignItems: 'center',
                               gap: '4px',
                               fontSize: '11px'
                             }}
                           >
-                            <Copy size={12} /> Copy
+                            <Copy size={11} />
                           </button>
                         </div>
-                        <pre style={{
-                          padding: '12px',
-                          background: 'rgba(0, 0, 0, 0.2)',
-                          border: `1px solid ${colors.border}`,
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          overflow: 'auto',
-                          maxHeight: '150px',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word',
-                          margin: 0,
-                          lineHeight: '1.5',
-                          color: 'var(--foreground)'
-                        }}>
-                          {exec.compiledPrompt}
-                        </pre>
+                        <WysiwygEditor
+                          value={exec.compiledPrompt}
+                          readOnly
+                          height="auto"
+                          showToolbar={false}
+                        />
                       </div>
                     )}
 

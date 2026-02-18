@@ -598,6 +598,24 @@ export function createWorkflowNode(
           scope: 'execution',
         },
       }
+    case 'database-query':
+      return {
+        id: nodeId,
+        type,
+        position,
+        data: {
+          ...baseData,
+          connectionId: '',
+          queryType: 'select',
+          query: '',
+          parameters: '',
+          collection: '',
+          maxRows: 1000,
+          timeoutMs: 30000,
+          description: '',
+        },
+      }
+    // --- Add new node type cases here ---
     default:
       // IMPORTANT: If you see this error, add a new case to createWorkflowNode() in workflowParser.ts
       // This fallback should NEVER be hit in production - all node types must have explicit cases
@@ -653,6 +671,8 @@ function getDefaultLabel(type: WorkflowNodeType): string {
     memory: 'Memory',
     output: 'Output',
     'web-search': 'Web Search',
+    'database-query': 'DB Query',
+    // --- Add new node type labels here ---
   }
   return labels[type] || 'Node'
 }

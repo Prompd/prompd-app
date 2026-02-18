@@ -36,6 +36,8 @@ export { McpToolNode } from './McpToolNode'
 export { TransformNode } from './TransformNode'
 export { MemoryNode } from './MemoryNode'
 export { WebSearchNode } from './WebSearchNode'
+export { DatabaseQueryNode } from './DatabaseQueryNode'
+// --- Add new node exports here ---
 export { ContainerNode, MetadataRow, CONTAINER_MIN_WIDTH, CONTAINER_MIN_HEIGHT, COLLAPSED_WIDTH } from './ContainerNode'
 
 import { TriggerNode } from './TriggerNode'
@@ -63,6 +65,8 @@ import { McpToolNode } from './McpToolNode'
 import { TransformNode } from './TransformNode'
 import { MemoryNode } from './MemoryNode'
 import { WebSearchNode } from './WebSearchNode'
+import { DatabaseQueryNode } from './DatabaseQueryNode'
+// --- Add new node imports here ---
 
 /**
  * Wraps a node component with error boundary for crash protection
@@ -119,6 +123,8 @@ export const nodeTypes = {
   transformer: withErrorBoundary(TransformNode, 'transformer'),
   memory: withErrorBoundary(MemoryNode, 'memory'),
   'web-search': withErrorBoundary(WebSearchNode, 'web-search'),
+  'database-query': withErrorBoundary(DatabaseQueryNode, 'database-query'),
+  // --- Add new node type registrations here ---
   // Placeholder mappings (reuse existing nodes until dedicated ones are created)
   api: withErrorBoundary(ToolNode, 'api'), // HTTP API node uses Tool with http type
 }

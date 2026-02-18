@@ -21,7 +21,7 @@ import {
   Repeat,
   Cpu,
 } from 'lucide-react'
-import { ContainerNode, MetadataRow } from './ContainerNode'
+import { ContainerNode } from './ContainerNode'
 import type { ChatAgentNodeData, BaseNodeData, ProviderNodeData, WorkflowNodeType } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { DockedNodePreview, useDockedNodes } from './DockedNodePreview'
@@ -399,6 +399,7 @@ export const ChatAgentNode = memo(({ id, data, selected }: ChatAgentNodeProps) =
         id={id}
         selected={selected}
         disabled={nodeData.disabled}
+        locked={nodeData.locked}
         isCollapsed={isCollapsed}
         onToggleCollapsed={toggleCollapsed}
         colorVar="indigo"

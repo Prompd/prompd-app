@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import pkg from './package.json'
 
 export default defineConfig({
   plugins: [react()],
@@ -33,7 +34,8 @@ export default defineConfig({
   },
   define: {
     global: 'globalThis',
-    'process.env': {}
+    'process.env': {},
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version)
   },
   optimizeDeps: {
     include: [

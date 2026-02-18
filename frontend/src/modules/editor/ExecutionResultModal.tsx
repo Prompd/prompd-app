@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import Editor from '@monaco-editor/react'
 import {
   CheckCircle,
   XCircle,
@@ -17,7 +16,7 @@ import {
   Play,
   Settings
 } from 'lucide-react'
-import { getMonacoTheme, registerPrompdThemes, readOnlyEditorOptions } from '../lib/monacoConfig'
+import WysiwygEditor from '../components/WysiwygEditor'
 
 export interface ExecutionResult {
   content: string
@@ -344,45 +343,27 @@ export function ExecutionResultModal({
         }}>
           {/* Response Tab */}
           {activeTab === 'response' && (
-            <Editor
-              height="100%"
-              language="markdown"
+            <WysiwygEditor
               value={result.content}
-              theme={getMonacoTheme(isDark)}
-              beforeMount={registerPrompdThemes}
-              options={{
-                ...readOnlyEditorOptions,
-                readOnly: true,
-                minimap: { enabled: false },
-                wordWrap: 'on',
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-                padding: { top: 16, bottom: 16 }
-              }}
+              readOnly
+              height="100%"
+              theme={isDark ? 'dark' : 'light'}
+              showToolbar={false}
             />
           )}
 
           {/* Compiled Prompd Tab */}
           {activeTab === 'prompd' && result.compiledPrompt && (
-            <Editor
-              height="100%"
-              language="markdown"
+            <WysiwygEditor
               value={
                 typeof result.compiledPrompt === 'string'
                   ? result.compiledPrompt
                   : result.compiledPrompt?.finalPrompt || ''
               }
-              theme={getMonacoTheme(isDark)}
-              beforeMount={registerPrompdThemes}
-              options={{
-                ...readOnlyEditorOptions,
-                readOnly: true,
-                minimap: { enabled: false },
-                wordWrap: 'on',
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-                padding: { top: 16, bottom: 16 }
-              }}
+              readOnly
+              height="100%"
+              theme={isDark ? 'dark' : 'light'}
+              showToolbar={false}
             />
           )}
 

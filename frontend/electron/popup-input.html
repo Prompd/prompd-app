@@ -9,216 +9,414 @@
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #1e293b;
+      background: #0f172a;
       color: #e2e8f0;
-      padding: 20px;
       height: 100vh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      user-select: none;
+    }
+
+    /* ── Title bar ──────────────────────────────────────── */
+
+    .titlebar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      flex-shrink: 0;
       -webkit-app-region: drag;
     }
 
-    .header {
-      margin-bottom: 16px;
-      -webkit-app-region: no-drag;
+    .titlebar-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: rgba(139, 92, 246, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
     }
 
-    .workflow-name {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #94a3b8;
-      margin-bottom: 4px;
+    .titlebar-icon svg {
+      width: 15px;
+      height: 15px;
+      color: #a78bfa;
     }
 
-    .node-label {
-      font-size: 18px;
+    .titlebar-text {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .titlebar-label {
+      font-size: 13px;
       font-weight: 600;
+      color: #f1f5f9;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .titlebar-sub {
+      font-size: 10px;
+      color: #64748b;
+      margin-top: 1px;
+    }
+
+    .titlebar-close {
+      -webkit-app-region: no-drag;
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: #64748b;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .titlebar-close:hover {
+      background: #334155;
       color: #f1f5f9;
     }
 
-    .prompt {
-      font-size: 14px;
-      color: #cbd5e1;
-      margin-bottom: 16px;
-      line-height: 1.5;
-      -webkit-app-region: no-drag;
+    .titlebar-close svg {
+      width: 14px;
+      height: 14px;
     }
 
-    .context-box {
-      background: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      padding: 10px;
-      margin-bottom: 16px;
-      max-height: 120px;
+    /* ── Chat area ──────────────────────────────────────── */
+
+    .chat-area {
+      flex: 1;
       overflow-y: auto;
-      font-size: 12px;
-      font-family: 'Cascadia Code', 'Fira Code', monospace;
-      color: #94a3b8;
-      white-space: pre-wrap;
-      word-break: break-word;
-      -webkit-app-region: no-drag;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 0;
     }
 
-    .context-label {
-      font-size: 11px;
+    .chat-area::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    .chat-area::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .chat-area::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+
+    /* Chat bubbles */
+    .bubble {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.55;
+      word-break: break-word;
+      white-space: pre-wrap;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .bubble.context {
+      align-self: flex-start;
+      background: rgba(139, 92, 246, 0.08);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-bottom-left-radius: 4px;
+    }
+
+    .bubble.context .bubble-label {
+      font-size: 10px;
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #64748b;
+      letter-spacing: 0.4px;
+      color: #a78bfa;
       margin-bottom: 6px;
     }
 
-    .form-area {
-      flex: 1;
+    .bubble.context .bubble-content {
+      max-height: 200px;
+      overflow-y: auto;
+      color: #94a3b8;
+      font-size: 12px;
+      font-family: 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+    }
+
+    .bubble.context .bubble-content.text-content {
+      font-family: inherit;
+      font-size: 13px;
+      color: #cbd5e1;
+    }
+
+    .bubble.prompt {
+      align-self: flex-start;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-bottom-left-radius: 4px;
+      color: #f1f5f9;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .bubble.user {
+      align-self: flex-end;
+      background: #8b5cf6;
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+
+    .bubble.system {
+      align-self: center;
+      background: transparent;
+      color: #64748b;
+      font-size: 11px;
+      padding: 4px 10px;
+      text-align: center;
+    }
+
+    .bubble.system.success {
+      color: #6ee7b7;
+    }
+
+    .bubble.system.error {
+      color: #fca5a5;
+    }
+
+    .bubble.workflow-meta {
+      align-self: flex-start;
+      background: transparent;
+      padding: 0 2px;
+      font-size: 11px;
+      color: #64748b;
+      letter-spacing: 0.3px;
+    }
+
+    /* Thinking indicator */
+    .thinking {
+      align-self: flex-start;
       display: flex;
-      flex-direction: column;
-      min-height: 0;
+      gap: 4px;
+      padding: 12px 16px;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .thinking-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #475569;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+
+    .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+    .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes pulse {
+      0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+      40% { opacity: 1; transform: scale(1); }
+    }
+
+    /* ── Input area ─────────────────────────────────────── */
+
+    .input-area {
+      padding: 14px 16px;
+      border-top: 1px solid #334155;
+      background: #1e293b;
+      flex-shrink: 0;
       -webkit-app-region: no-drag;
+    }
+
+    .input-area.disabled {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    .input-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
     }
 
     input[type="text"],
     input[type="number"],
     textarea {
-      width: 100%;
+      flex: 1;
       background: #0f172a;
       border: 1px solid #334155;
-      border-radius: 6px;
-      padding: 10px 12px;
+      border-radius: 12px;
+      padding: 10px 14px;
       color: #e2e8f0;
       font-size: 14px;
       font-family: inherit;
       outline: none;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
 
     input[type="text"]:focus,
     input[type="number"]:focus,
     textarea:focus {
-      border-color: #6366f1;
+      border-color: #8b5cf6;
+      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: #475569;
     }
 
     textarea {
       resize: vertical;
-      min-height: 80px;
-      flex: 1;
+      min-height: 72px;
+      max-height: 200px;
     }
 
+    .send-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      border: none;
+      background: #8b5cf6;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: opacity 0.15s;
+    }
+
+    .send-btn:hover {
+      opacity: 0.85;
+    }
+
+    .send-btn:disabled {
+      background: #334155;
+      color: #64748b;
+      cursor: not-allowed;
+    }
+
+    .send-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* Choice buttons */
     .choices {
       display: flex;
       flex-direction: column;
       gap: 8px;
+      width: 100%;
     }
 
     .choice-btn {
       background: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 6px;
+      border: 2px solid #334155;
+      border-radius: 10px;
       padding: 10px 14px;
       color: #e2e8f0;
-      font-size: 14px;
+      font-size: 13px;
       cursor: pointer;
       text-align: left;
       transition: all 0.15s;
     }
 
     .choice-btn:hover {
-      border-color: #6366f1;
-      background: #1e1b4b;
+      border-color: #8b5cf6;
+      background: rgba(139, 92, 246, 0.06);
     }
 
     .choice-btn.selected {
-      border-color: #6366f1;
-      background: #312e81;
+      border-color: #8b5cf6;
+      background: rgba(139, 92, 246, 0.12);
     }
 
+    /* Confirm buttons */
     .confirm-btns {
       display: flex;
       gap: 12px;
+      width: 100%;
     }
 
     .confirm-btn {
       flex: 1;
       padding: 14px;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      font-size: 16px;
+      border-radius: 10px;
+      border: 2px solid #334155;
+      font-size: 15px;
       font-weight: 600;
       cursor: pointer;
+      background: #0f172a;
+      color: #e2e8f0;
       transition: all 0.15s;
     }
 
-    .confirm-yes {
-      background: #065f46;
-      color: #a7f3d0;
-      border-color: #047857;
+    .confirm-yes:hover,
+    .confirm-yes.selected {
+      border-color: #10b981;
+      background: rgba(16, 185, 129, 0.12);
+      color: #6ee7b7;
     }
 
-    .confirm-yes:hover {
-      background: #047857;
+    .confirm-no:hover,
+    .confirm-no.selected {
+      border-color: #ef4444;
+      background: rgba(239, 68, 68, 0.12);
+      color: #fca5a5;
     }
 
-    .confirm-no {
-      background: #7f1d1d;
-      color: #fecaca;
-      border-color: #991b1b;
-    }
-
-    .confirm-no:hover {
-      background: #991b1b;
-    }
-
-    .actions {
+    /* Footer */
+    .footer {
       display: flex;
-      gap: 10px;
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 1px solid #334155;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      border-top: 1px solid #1e293b;
+      flex-shrink: 0;
       -webkit-app-region: no-drag;
     }
 
-    .btn {
-      flex: 1;
-      padding: 10px 16px;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      border: none;
-      transition: all 0.15s;
+    .footer-hint {
+      font-size: 10px;
+      color: #475569;
     }
 
-    .btn-submit {
-      background: #4f46e5;
-      color: white;
-    }
-
-    .btn-submit:hover {
-      background: #4338ca;
-    }
-
-    .btn-submit:disabled {
-      background: #334155;
-      color: #64748b;
-      cursor: not-allowed;
-    }
-
-    .btn-cancel {
+    .footer-cancel {
+      padding: 5px 12px;
       background: transparent;
+      border: 1px solid #334155;
+      border-radius: 6px;
       color: #94a3b8;
-      border: 1px solid #475569;
+      font-size: 11px;
+      cursor: pointer;
+      transition: background 0.15s;
     }
 
-    .btn-cancel:hover {
-      background: #334155;
+    .footer-cancel:hover {
+      background: #1e293b;
     }
 
     .validation-error {
       color: #f87171;
       font-size: 12px;
       margin-top: 6px;
+      padding: 0 2px;
     }
 
     .loading {
@@ -237,6 +435,14 @@
   <script>
     let selectedChoice = null
     let requestData = null
+    let chatArea = null
+    let inputArea = null
+    let footerHint = null
+    let isWaiting = false
+
+    const SVG_CHAT = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
+    const SVG_SEND = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>'
+    const SVG_X = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
 
     window.addEventListener('DOMContentLoaded', async () => {
       try {
@@ -246,97 +452,168 @@
           return
         }
         requestData = data
-        renderUI(data)
+        buildShell(data.metadata)
+        showRequest(data.request)
       } catch (err) {
         document.getElementById('root').textContent = 'Error: ' + err.message
       }
+
+      // Listen for follow-up requests pushed by main process
+      window.popupAPI.onNewRequest((data) => {
+        requestData = data
+        showRequest(data.request)
+      })
+
+      // Listen for workflow completion
+      window.popupAPI.onDone((data) => {
+        isWaiting = false
+        removeThinking()
+        const cls = data.status === 'complete' ? 'success' : 'error'
+        const msg = data.status === 'complete'
+          ? 'Workflow completed'
+          : (data.message || 'Workflow ended')
+        addBubble('system ' + cls, msg)
+        if (inputArea) inputArea.classList.add('disabled')
+        if (footerHint) footerHint.textContent = 'Window will close shortly'
+        scrollToBottom()
+      })
     })
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        handleCancel()
-      }
+      if (e.key === 'Escape') handleCancel()
     })
 
-    function renderUI({ request, metadata }) {
+    /**
+     * Build the persistent shell: titlebar, chat area, input area, footer.
+     * Called once on first load.
+     */
+    function buildShell(metadata) {
       const root = document.getElementById('root')
       root.className = ''
       root.innerHTML = ''
+      root.style.display = 'flex'
+      root.style.flexDirection = 'column'
+      root.style.height = '100vh'
 
-      // Header
-      const header = document.createElement('div')
-      header.className = 'header'
+      // ── Titlebar
+      const titlebar = el('div', 'titlebar')
+      const iconBadge = el('div', 'titlebar-icon')
+      iconBadge.innerHTML = SVG_CHAT
+      titlebar.appendChild(iconBadge)
 
-      if (metadata?.workflowName) {
-        const wfName = document.createElement('div')
-        wfName.className = 'workflow-name'
-        wfName.textContent = metadata.workflowName
-        header.appendChild(wfName)
-      }
+      const titleText = el('div', 'titlebar-text')
+      const titleLabel = el('div', 'titlebar-label')
+      titleLabel.textContent = metadata?.workflowName || 'Workflow'
+      titleText.appendChild(titleLabel)
 
-      const nodeLabel = document.createElement('div')
-      nodeLabel.className = 'node-label'
-      nodeLabel.textContent = request.nodeLabel || 'User Input'
-      header.appendChild(nodeLabel)
-      root.appendChild(header)
+      const titleSub = el('div', 'titlebar-sub')
+      titleSub.textContent = 'Running — waiting for input'
+      titleText.appendChild(titleSub)
 
-      // Prompt
-      if (request.prompt) {
-        const prompt = document.createElement('div')
-        prompt.className = 'prompt'
-        prompt.textContent = request.prompt
-        root.appendChild(prompt)
-      }
+      titlebar.appendChild(titleText)
 
-      // Context
+      const closeBtn = el('button', 'titlebar-close')
+      closeBtn.title = 'Close'
+      closeBtn.innerHTML = SVG_X
+      closeBtn.onclick = handleCancel
+      titlebar.appendChild(closeBtn)
+
+      root.appendChild(titlebar)
+
+      // ── Chat area
+      chatArea = el('div', 'chat-area')
+      root.appendChild(chatArea)
+
+      // ── Input area (starts empty — filled by showRequest)
+      inputArea = el('div', 'input-area')
+      root.appendChild(inputArea)
+
+      // ── Footer
+      const footer = el('div', 'footer')
+      footerHint = el('div', 'footer-hint')
+      footerHint.textContent = 'Enter to submit · Esc to cancel'
+      footer.appendChild(footerHint)
+
+      const cancelBtn = el('button', 'footer-cancel')
+      cancelBtn.textContent = 'Cancel'
+      cancelBtn.onclick = handleCancel
+      footer.appendChild(cancelBtn)
+
+      root.appendChild(footer)
+    }
+
+    /**
+     * Show a new input request: add prompt bubble(s) to chat, render input controls.
+     */
+    function showRequest(request) {
+      isWaiting = false
+      selectedChoice = null
+      removeThinking()
+
+      // Context bubble
       if (request.showContext && request.context?.previousOutput != null) {
-        const contextLabel = document.createElement('div')
-        contextLabel.className = 'context-label'
-        contextLabel.textContent = 'Previous Output'
-        root.appendChild(contextLabel)
-
-        const contextBox = document.createElement('div')
-        contextBox.className = 'context-box'
         const output = request.context.previousOutput
-        contextBox.textContent = typeof output === 'string'
-          ? output
-          : JSON.stringify(output, null, 2)
-        root.appendChild(contextBox)
+        const isText = typeof output === 'string'
+        const ctxBubble = el('div', 'bubble context')
+
+        const ctxLabel = el('div', 'bubble-label')
+        ctxLabel.textContent = 'Previous Output'
+        ctxBubble.appendChild(ctxLabel)
+
+        const ctxContent = el('div', 'bubble-content' + (isText ? ' text-content' : ''))
+        ctxContent.textContent = isText ? output : JSON.stringify(output, null, 2)
+        ctxBubble.appendChild(ctxContent)
+
+        chatArea.appendChild(ctxBubble)
       }
 
-      // Form area
-      const formArea = document.createElement('div')
-      formArea.className = 'form-area'
-      root.appendChild(formArea)
-
-      renderInput(formArea, request)
-
-      // Actions (skip for confirm type - it has its own buttons)
-      if (request.inputType !== 'confirm') {
-        const actions = document.createElement('div')
-        actions.className = 'actions'
-
-        const cancelBtn = document.createElement('button')
-        cancelBtn.className = 'btn btn-cancel'
-        cancelBtn.textContent = 'Cancel'
-        cancelBtn.onclick = handleCancel
-        actions.appendChild(cancelBtn)
-
-        const submitBtn = document.createElement('button')
-        submitBtn.id = 'submit-btn'
-        submitBtn.className = 'btn btn-submit'
-        submitBtn.textContent = 'Submit'
-        submitBtn.onclick = handleSubmit
-        actions.appendChild(submitBtn)
-
-        root.appendChild(actions)
+      // Prompt bubble
+      if (request.prompt) {
+        addBubble('prompt', request.prompt)
       }
+
+      // Render input controls
+      inputArea.innerHTML = ''
+      inputArea.classList.remove('disabled')
+      renderInput(inputArea, request)
+
+      // Update hint text
+      if (footerHint) {
+        footerHint.textContent = request.inputType === 'textarea'
+          ? 'Ctrl+Enter to submit · Esc to cancel'
+          : 'Enter to submit · Esc to cancel'
+      }
+
+      scrollToBottom()
 
       // Focus first input
-      const firstInput = root.querySelector('input, textarea')
+      const firstInput = inputArea.querySelector('input, textarea')
       if (firstInput) {
         setTimeout(() => firstInput.focus(), 50)
       }
+    }
+
+    /**
+     * After user submits, show their message and a thinking indicator.
+     */
+    function afterSubmit(displayValue) {
+      isWaiting = true
+
+      // Show user's response as a chat bubble
+      addBubble('user', String(displayValue))
+
+      // Clear the input field
+      const input = document.getElementById('user-input')
+      if (input) input.value = ''
+      selectedChoice = null
+
+      // Disable input area and show thinking dots
+      inputArea.classList.add('disabled')
+      showThinking()
+
+      if (footerHint) footerHint.textContent = 'Waiting for workflow...'
+
+      scrollToBottom()
     }
 
     function renderInput(container, request) {
@@ -344,101 +621,149 @@
 
       switch (type) {
         case 'text': {
+          const row = el('div', 'input-row')
           const input = document.createElement('input')
           input.type = 'text'
           input.id = 'user-input'
-          input.placeholder = request.placeholder || 'Enter value...'
+          input.placeholder = request.placeholder || 'Type here...'
           if (request.defaultValue) input.value = request.defaultValue
           input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') handleSubmit()
           })
-          container.appendChild(input)
+          row.appendChild(input)
+          row.appendChild(makeSendBtn())
+          container.appendChild(row)
           break
         }
 
         case 'number': {
+          const row = el('div', 'input-row')
           const input = document.createElement('input')
           input.type = 'number'
           input.id = 'user-input'
-          input.placeholder = request.placeholder || 'Enter number...'
+          input.placeholder = request.placeholder || 'Enter a number...'
           if (request.defaultValue) input.value = request.defaultValue
           input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') handleSubmit()
           })
-          container.appendChild(input)
+          row.appendChild(input)
+          row.appendChild(makeSendBtn())
+          container.appendChild(row)
           break
         }
 
         case 'textarea': {
+          const row = el('div', 'input-row')
           const ta = document.createElement('textarea')
           ta.id = 'user-input'
-          ta.placeholder = request.placeholder || 'Enter text...'
+          ta.placeholder = request.placeholder || 'Type your message...'
           if (request.defaultValue) ta.value = request.defaultValue
-          container.appendChild(ta)
+          ta.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.ctrlKey) {
+              e.preventDefault()
+              handleSubmit()
+            }
+          })
+          row.appendChild(ta)
+          row.appendChild(makeSendBtn())
+          container.appendChild(row)
           break
         }
 
         case 'choice': {
-          const choices = document.createElement('div')
-          choices.className = 'choices'
-
-          ;(request.choices || []).forEach((choice, i) => {
-            const btn = document.createElement('button')
-            btn.className = 'choice-btn'
+          const choices = el('div', 'choices')
+          ;(request.choices || []).forEach((choice) => {
+            const btn = el('button', 'choice-btn')
             btn.textContent = choice
             btn.onclick = () => {
-              // Deselect all
               choices.querySelectorAll('.choice-btn').forEach(b => b.classList.remove('selected'))
               btn.classList.add('selected')
               selectedChoice = choice
             }
-
-            // Select default
             if (request.defaultValue === choice) {
               btn.classList.add('selected')
               selectedChoice = choice
             }
-
             choices.appendChild(btn)
           })
-
           container.appendChild(choices)
+
+          const row = el('div', 'input-row')
+          row.style.marginTop = '10px'
+          row.style.justifyContent = 'flex-end'
+          row.appendChild(makeSendBtn())
+          container.appendChild(row)
           break
         }
 
         case 'confirm': {
-          const btns = document.createElement('div')
-          btns.className = 'confirm-btns'
-          btns.style.marginTop = '8px'
+          const btns = el('div', 'confirm-btns')
 
-          const yesBtn = document.createElement('button')
-          yesBtn.className = 'confirm-btn confirm-yes'
+          const yesBtn = el('button', 'confirm-btn confirm-yes')
           yesBtn.textContent = 'Yes'
-          yesBtn.onclick = () => submitValue(true)
+          yesBtn.onclick = () => {
+            afterSubmit('Yes')
+            window.popupAPI.submitInput({ value: true, cancelled: false })
+          }
 
-          const noBtn = document.createElement('button')
-          noBtn.className = 'confirm-btn confirm-no'
+          const noBtn = el('button', 'confirm-btn confirm-no')
           noBtn.textContent = 'No'
-          noBtn.onclick = () => submitValue(false)
+          noBtn.onclick = () => {
+            afterSubmit('No')
+            window.popupAPI.submitInput({ value: false, cancelled: false })
+          }
 
           btns.appendChild(yesBtn)
           btns.appendChild(noBtn)
           container.appendChild(btns)
-
-          // Cancel action below
-          const actions = document.createElement('div')
-          actions.className = 'actions'
-          const cancelBtn = document.createElement('button')
-          cancelBtn.className = 'btn btn-cancel'
-          cancelBtn.textContent = 'Cancel'
-          cancelBtn.style.flex = 'none'
-          cancelBtn.style.width = '100%'
-          cancelBtn.onclick = handleCancel
-          actions.appendChild(cancelBtn)
-          document.getElementById('root').appendChild(actions)
           break
         }
       }
+    }
+
+    function makeSendBtn() {
+      const btn = el('button', 'send-btn')
+      btn.id = 'submit-btn'
+      btn.title = 'Submit'
+      btn.innerHTML = SVG_SEND
+      btn.onclick = handleSubmit
+      return btn
+    }
+
+    function addBubble(className, text) {
+      const b = el('div', 'bubble ' + className)
+      b.textContent = text
+      chatArea.appendChild(b)
+    }
+
+    function showThinking() {
+      removeThinking()
+      const t = el('div', 'thinking')
+      t.id = 'thinking-indicator'
+      for (let i = 0; i < 3; i++) {
+        t.appendChild(el('div', 'thinking-dot'))
+      }
+      chatArea.appendChild(t)
+      scrollToBottom()
+    }
+
+    function removeThinking() {
+      const t = document.getElementById('thinking-indicator')
+      if (t) t.remove()
+    }
+
+    function scrollToBottom() {
+      if (chatArea) {
+        setTimeout(() => {
+          chatArea.scrollTop = chatArea.scrollHeight
+        }, 50)
+      }
+    }
+
+    function el(tag, className) {
+      const node = document.createElement(tag)
+      if (className) node.className = className
+      return node
     }
 
     function getValue() {
@@ -455,22 +780,27 @@
       return input.value || undefined
     }
 
+    function getDisplayValue() {
+      if (!requestData) return ''
+      const type = requestData.request.inputType || 'text'
+      if (type === 'choice') return selectedChoice || ''
+      const input = document.getElementById('user-input')
+      return input ? input.value : ''
+    }
+
     function handleSubmit() {
-      if (!requestData) return
+      if (!requestData || isWaiting) return
 
       const value = getValue()
       const { request } = requestData
 
-      // Validate required
       if (request.required && (value === undefined || value === null || value === '')) {
         showValidation('This field is required')
         return
       }
 
-      submitValue(value)
-    }
-
-    function submitValue(value) {
+      const display = getDisplayValue() || String(value)
+      afterSubmit(display)
       window.popupAPI.submitInput({ value, cancelled: false })
     }
 
@@ -479,15 +809,12 @@
     }
 
     function showValidation(msg) {
-      // Remove existing
       const existing = document.querySelector('.validation-error')
       if (existing) existing.remove()
 
-      const err = document.createElement('div')
-      err.className = 'validation-error'
+      const err = el('div', 'validation-error')
       err.textContent = msg
-      const formArea = document.querySelector('.form-area')
-      if (formArea) formArea.appendChild(err)
+      if (inputArea) inputArea.appendChild(err)
     }
   </script>
 </body>

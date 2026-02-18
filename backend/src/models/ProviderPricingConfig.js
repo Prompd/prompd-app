@@ -303,16 +303,6 @@ ProviderPricingConfigSchema.statics.seedDefaults = async function() {
         consoleUrl: 'https://platform.deepseek.com/api_keys'
       },
       sortOrder: 9
-    },
-    {
-      provider: 'ollama',
-      displayName: 'Ollama (Local)',
-      baseUrl: 'http://localhost:11434/v1',
-      metadata: {
-        isLocal: true,
-        defaultPort: 11434
-      },
-      sortOrder: 10
     }
   ]
 

@@ -100,6 +100,7 @@ class PricingService {
    * Reseed pricing - syncs DB with provider APIs
    * - Expires any DB models NOT in provider API valid list
    * - Adds any new models from provider API not in DB
+   * - Syncs capabilities on existing models when fetcher data differs (self-healing)
    * This is the "sync" operation that deprecates old models and adds new ones
    */
   async reseedPricing() {
@@ -107,6 +108,7 @@ class PricingService {
     const results = {
       totalExpired: 0,
       totalAdded: 0,
+      totalUpdated: 0,
       totalUnchanged: 0,
       providers: {},
       errors: []
@@ -130,6 +132,7 @@ class PricingService {
 
         let expired = 0
         let added = 0
+        let updated = 0
         let unchanged = 0
 
         // 1. Expire any DB model that is NOT in the valid models list
@@ -168,9 +171,39 @@ class PricingService {
           }
         }
 
-        results.providers[provider] = { expired, added, unchanged, source }
+        // 3. Sync capabilities on existing models (self-healing)
+        // Updates DB records when fetcher-inferred capabilities differ
+        for (const dbModel of activeDbModels) {
+          const fetcherData = validModelsMap.get(dbModel.model)
+          if (!fetcherData?.capabilities) continue
+
+          const dbCaps = dbModel.capabilities || {}
+          const fetcherCaps = fetcherData.capabilities
+          let needsUpdate = false
+          const capUpdates = {}
+
+          for (const key of Object.keys(fetcherCaps)) {
+            if (dbCaps[key] !== fetcherCaps[key]) {
+              capUpdates[`capabilities.${key}`] = fetcherCaps[key]
+              needsUpdate = true
+            }
+          }
+
+          if (needsUpdate) {
+            try {
+              await ModelPricing.updateOne({ _id: dbModel._id }, { $set: capUpdates })
+              updated++
+              console.log(`[Pricing Reseed] Updated capabilities: ${provider}/${dbModel.model}`)
+            } catch (updateError) {
+              console.error(`[Pricing Reseed] Failed to update ${provider}/${dbModel.model}:`, updateError.message)
+            }
+          }
+        }
+
+        results.providers[provider] = { expired, added, updated, unchanged, source }
         results.totalExpired += expired
         results.totalAdded += added
+        results.totalUpdated += updated
         results.totalUnchanged += unchanged
       } catch (error) {
         console.error(`[Pricing Sync] Error processing ${provider}:`, error.message)
@@ -181,7 +214,7 @@ class PricingService {
     // Invalidate all cache after reseeding
     pricingCacheService.invalidateAll()
 
-    console.log(`[Pricing Sync] Complete: ${results.totalAdded} added, ${results.totalExpired} deprecated, ${results.totalUnchanged} unchanged`)
+    console.log(`[Pricing Sync] Complete: ${results.totalAdded} added, ${results.totalUpdated} updated, ${results.totalExpired} deprecated, ${results.totalUnchanged} unchanged`)
     return results
   }
 

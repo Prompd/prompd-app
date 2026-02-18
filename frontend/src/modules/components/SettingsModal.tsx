@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
-import { X, Keyboard, User, Key, BarChart3, Trash2, Plus, Eye, EyeOff, Check, AlertCircle, ExternalLink, ChevronDown, Star, Database, Globe, Code, Layout, Shield, Package, Loader, RefreshCw, Clock } from 'lucide-react'
+import { X, Keyboard, User, Key, BarChart3, Trash2, Plus, Eye, EyeOff, Check, AlertCircle, ExternalLink, ChevronDown, Star, Database, Globe, Code, Layout, Shield, Package, Loader, RefreshCw, Clock, Pencil, Server } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { OrganizationSwitcher } from '@clerk/clerk-react'
 import { useAuthenticatedUser } from '../auth/ClerkWrapper'
 import HotkeySettings from './HotkeySettings'
 import { isElectron } from '../auth/ClerkWrapper'
 import { DeploymentSettings } from './settings/DeploymentSettings'
+import { McpServerSettings } from './settings/McpServerSettings'
 import {
   getLLMProviders,
   setLlmApiKey as setLlmApiKeyRemote,
@@ -16,9 +17,11 @@ import {
   CustomProviderConfig
 } from '../services/aiApi'
 import { configService } from '../services/configService'
+import { prompdSettings } from '../services/prompdSettings'
 import { usePrompdUsage, formatCost, formatTokens } from '@prompd/react'
 import type { NamespaceInfo } from '../services/namespacesApi'
 import { useConfirmDialog } from './ConfirmDialog'
+import { CustomProviderModal } from './CustomProviderModal'
 
 // Local-first API key management
 // In Electron: Save to ~/.prompd/config.yaml (local-first)
@@ -110,7 +113,7 @@ interface SettingsModalProps {
   initialTab?: TabType
 }
 
-type TabType = 'profile' | 'api-keys' | 'registries' | 'usage' | 'shortcuts' | 'deployments'
+type TabType = 'profile' | 'api-keys' | 'registries' | 'usage' | 'shortcuts' | 'deployments' | 'mcp-server'
 
 // Default View Mode Button Component
 function DefaultViewModeButton({
@@ -240,6 +243,10 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
   // Usage tracking
   const { events, stats, clearUsage, getSessionStats, getTodayStats } = usePrompdUsage()
 
+  // Analytics opt-in
+  const analyticsEnabled = useUIStore(state => state.analyticsEnabled)
+  const setAnalyticsEnabled = useUIStore(state => state.setAnalyticsEnabled)
+
   // Add key state
   const [showAddKeyFor, setShowAddKeyFor] = useState<string | null>(null)
   const [newApiKey, setNewApiKey] = useState('')
@@ -259,6 +266,10 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
   const [customDisplayName, setCustomDisplayName] = useState('')
   const [customBaseUrl, setCustomBaseUrl] = useState('')
   const [customModels, setCustomModels] = useState('')
+
+  // Custom provider modal state
+  const [customProviderModalOpen, setCustomProviderModalOpen] = useState(false)
+  const [editingProviderId, setEditingProviderId] = useState<string | null>(null)
 
   // Registries state
   interface RegistryEntry {
@@ -501,7 +512,7 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
         let totalConfigured = 0
 
         // Add known providers with their local key status
-        const knownProviderIds = ['openai', 'anthropic', 'google', 'groq', 'mistral', 'cohere', 'together', 'perplexity', 'deepseek', 'ollama']
+        const knownProviderIds = ['openai', 'anthropic', 'google', 'groq', 'mistral', 'cohere', 'together', 'perplexity', 'deepseek']
         const knownDisplayNames: Record<string, string> = {
           openai: 'OpenAI',
           anthropic: 'Anthropic',
@@ -511,8 +522,7 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
           cohere: 'Cohere',
           together: 'Together AI',
           perplexity: 'Perplexity',
-          deepseek: 'DeepSeek',
-          ollama: 'Ollama (Local)'
+          deepseek: 'DeepSeek'
         }
         const keyPrefixes: Record<string, string> = {
           openai: 'sk-',
@@ -533,7 +543,7 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
         }
 
         for (const providerId of knownProviderIds) {
-          const hasKey = !!apiKeys[providerId] || providerId === 'ollama'
+          const hasKey = !!apiKeys[providerId]
           if (hasKey) totalConfigured++
 
           providers[providerId] = {
@@ -541,7 +551,6 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
             displayName: knownDisplayNames[providerId] || providerId,
             hasKey,
             isCustom: false,
-            isLocal: providerId === 'ollama',
             keyPrefix: keyPrefixes[providerId],
             consoleUrl: consoleUrls[providerId]
           }
@@ -646,10 +655,14 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
   }
 
   const handleRemoveKey = async (providerId: string) => {
-    const displayName = providersData?.providers[providerId]?.displayName || providerId
+    const provider = providersData?.providers[providerId]
+    const displayName = provider?.displayName || providerId
+    const isCustom = provider?.isCustom
     const confirmed = await showConfirm({
-      title: 'Remove API Key',
-      message: `Remove ${displayName} API key? You will revert to plan-based quotas.`,
+      title: isCustom ? 'Remove Custom Provider' : 'Remove API Key',
+      message: isCustom
+        ? `Remove custom provider "${displayName}" and its API key? This will remove it from your config.`
+        : `Remove ${displayName} API key? You will revert to plan-based quotas.`,
       confirmLabel: 'Remove',
       cancelLabel: 'Cancel',
       confirmVariant: 'danger'
@@ -661,7 +674,32 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
 
     try {
       await removeLlmApiKey(providerId)
-      setSuccess(`${displayName} API key removed`)
+
+      // For custom providers, also remove from local config
+      if (isCustom && window.electronAPI?.config) {
+        try {
+          const configResult = await window.electronAPI.config.load()
+          if (configResult.success && configResult.config) {
+            const config = configResult.config as Record<string, unknown>
+            const customProviders = config.custom_providers as Record<string, unknown> | undefined
+            if (customProviders && customProviders[providerId]) {
+              delete customProviders[providerId]
+              config.custom_providers = customProviders
+              await window.electronAPI.config.save(config, 'global')
+            }
+            const apiKeys = config.api_keys as Record<string, unknown> | undefined
+            if (apiKeys && apiKeys[providerId]) {
+              delete apiKeys[providerId]
+              config.api_keys = apiKeys
+              await window.electronAPI.config.save(config, 'global')
+            }
+          }
+        } catch (err) {
+          console.warn('[SettingsModal] Failed to remove custom provider from local config:', err)
+        }
+      }
+
+      setSuccess(`${displayName} ${isCustom ? 'provider removed' : 'API key removed'}`)
       await loadProviders()
       onProvidersChanged?.()
     } catch (err) {
@@ -749,7 +787,7 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
       })
     : []
 
-  const providersList = allProvidersList.filter(p => p.hasKey)
+  const providersList = allProvidersList.filter(p => p.hasKey || p.isCustom)
 
   // Render provider card
   const renderProviderCard = (provider: ProviderInfo) => {
@@ -793,6 +831,8 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
                   <span style={{ color: isDisabled ? colors.textMuted : colors.success }}>
                     API key configured{isDisabled ? ' (disabled)' : ''}
                   </span>
+                ) : provider.isCustom ? (
+                  <span style={{ color: colors.textSecondary }}>Custom endpoint configured</span>
                 ) : (
                   'No API key configured'
                 )}
@@ -800,6 +840,34 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
             </div>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {/* Edit button for custom providers */}
+            {provider.isCustom && (
+              <button
+                onClick={() => {
+                  setEditingProviderId(provider.providerId)
+                  setCustomProviderModalOpen(true)
+                }}
+                title="Edit custom provider"
+                style={{
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '13px',
+                  color: colors.textSecondary,
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseOver={(e) => (e.currentTarget.style.borderColor = colors.primary)}
+                onMouseOut={(e) => (e.currentTarget.style.borderColor = colors.border)}
+              >
+                <Pencil size={14} />
+                Edit
+              </button>
+            )}
             {/* Enable/Disable Toggle - Only show in Electron mode with API key */}
             {isElectron && provider.hasKey && (
               <button
@@ -857,7 +925,7 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
                 Default
               </button>
             )}
-            {provider.hasKey ? (
+            {(provider.hasKey || provider.isCustom) && (
               <button
                 onClick={() => handleRemoveKey(provider.providerId)}
                 style={{
@@ -879,7 +947,8 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
                 <Trash2 size={14} />
                 Remove
               </button>
-            ) : (
+            )}
+            {!provider.hasKey && !provider.isCustom && (
               <button
                 onClick={() => {
                   setShowAddKeyFor(provider.providerId)
@@ -1035,7 +1104,8 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
     { id: 'registries', label: 'Registries', icon: <Database size={16} /> },
     { id: 'usage', label: 'Usage', icon: <BarChart3 size={16} /> },
     { id: 'shortcuts', label: 'Shortcuts', icon: <Keyboard size={16} /> },
-    { id: 'deployments', label: 'Deployments', icon: <Package size={16} /> }
+    { id: 'deployments', label: 'Deployments', icon: <Package size={16} /> },
+    { id: 'mcp-server', label: 'MCP Server', icon: <Server size={16} /> }
   ]
 
   return (
@@ -1383,6 +1453,64 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
                 </div>
               )}
 
+              {/* Anonymous Analytics */}
+              <div style={{ marginBottom: '32px' }}>
+                <h3 style={{ marginTop: 0, marginBottom: '12px', fontSize: '16px', fontWeight: 600, color: colors.text }}>
+                  Anonymous Analytics
+                </h3>
+                <p style={{ marginBottom: '16px', color: colors.textSecondary, fontSize: '14px' }}>
+                  Help improve Prompd by sharing anonymous usage data.
+                </p>
+                <div style={{
+                  padding: '16px',
+                  background: colors.bgSecondary,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '8px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <div>
+                      <div style={{ fontWeight: 500, color: colors.text, marginBottom: '4px' }}>
+                        Share Usage Data
+                      </div>
+                      <div style={{ fontSize: '13px', color: colors.textSecondary }}>
+                        No prompts, files, or personal information is ever sent
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const next = !analyticsEnabled
+                        setAnalyticsEnabled(next)
+                      }}
+                      style={{
+                        width: '48px',
+                        height: '26px',
+                        borderRadius: '13px',
+                        border: 'none',
+                        background: analyticsEnabled ? colors.success : colors.bgTertiary,
+                        cursor: 'pointer',
+                        position: 'relative',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <div style={{
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '11px',
+                        background: 'white',
+                        position: 'absolute',
+                        top: '2px',
+                        left: analyticsEnabled ? '24px' : '2px',
+                        transition: 'all 0.2s ease',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                      }} />
+                    </button>
+                  </div>
+                  <div style={{ fontSize: '12px', color: colors.textMuted }}>
+                    Only event names and high-level counts are tracked (e.g., "workflow executed", "package installed"). Your client ID is a random identifier not linked to your account.
+                  </div>
+                </div>
+              </div>
+
               {/* Auto-Save Toggle */}
               <div style={{ marginBottom: '32px' }}>
                 <h3 style={{ marginTop: 0, marginBottom: '12px', fontSize: '16px', fontWeight: 600, color: colors.text }}>
@@ -1603,12 +1731,9 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
                           <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '12px', marginTop: '4px' }}>
                             <button
                               onClick={() => {
-                                setAddProviderMode('custom')
-                                setCustomProviderId('')
-                                setCustomDisplayName('')
-                                setCustomBaseUrl('')
-                                setCustomModels('')
-                                setNewApiKey('')
+                                setShowAddProviderForm(false)
+                                setEditingProviderId(null)
+                                setCustomProviderModalOpen(true)
                               }}
                               style={{
                                 width: '100%',
@@ -2110,6 +2235,11 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
                                     config.registry = config.registry || { default: 'prompdhub', registries: {} }
                                     config.registry.default = registry.name
                                     await configService.saveConfig(config)
+                                    // Propagate URL change to registryApi, namespacesApi, etc.
+                                    const newUrl = config.registry.registries?.[registry.name]?.url
+                                    if (newUrl) {
+                                      prompdSettings.setRegistryUrl(newUrl)
+                                    }
                                     setRegistries(prev => prev.map(r => ({
                                       ...r,
                                       isDefault: r.name === registry.name
@@ -2153,6 +2283,9 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
                                     }
                                     if (config.registry?.default === registry.name) {
                                       config.registry.default = 'prompdhub'
+                                      // Revert to prompdhub URL
+                                      const prompdUrl = config.registry.registries?.prompdhub?.url || 'https://registry.prompdhub.ai'
+                                      prompdSettings.setRegistryUrl(prompdUrl)
                                     }
                                     await configService.saveConfig(config)
                                     setRegistries(prev => prev.filter(r => r.name !== registry.name))
@@ -2920,12 +3053,30 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
             />
           )}
 
+          {/* MCP Server Tab */}
+          {activeTab === 'mcp-server' && (
+            <McpServerSettings colors={colors} />
+          )}
+
         </div>
       </div>
     </div>
 
       {/* Confirm Dialog */}
       <ConfirmDialogComponent />
+      <CustomProviderModal
+        isOpen={customProviderModalOpen}
+        onClose={() => {
+          setCustomProviderModalOpen(false)
+          setEditingProviderId(null)
+        }}
+        onSaved={async () => {
+          await loadProviders()
+          onProvidersChanged?.()
+        }}
+        theme={theme}
+        editProviderId={editingProviderId}
+      />
     </div>
   )
 }

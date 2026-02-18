@@ -175,7 +175,7 @@ export const ToolCallRouterNode = memo(({ id, data, selected }: ToolCallRouterNo
   // Collapsed view
   if (isCollapsed) {
     return (
-      <div className={nodeData.disabled ? 'workflow-node-disabled' : ''} style={{ position: 'relative', width: COLLAPSED_WIDTH }}>
+      <div className={[nodeData.disabled && 'workflow-node-disabled', nodeData.locked && 'workflow-node-locked'].filter(Boolean).join(' ')} style={{ position: 'relative', width: COLLAPSED_WIDTH }}>
         {/* Stacked layers - visual effect only */}
         <div style={{
           position: 'absolute', top: 6, left: 6,
@@ -384,7 +384,7 @@ export const ToolCallRouterNode = memo(({ id, data, selected }: ToolCallRouterNo
       />
 
       <div
-        className={nodeData.disabled ? 'workflow-node-disabled' : ''}
+        className={[nodeData.disabled && 'workflow-node-disabled', nodeData.locked && 'workflow-node-locked'].filter(Boolean).join(' ')}
         style={{
         width: '100%', height: '100%',
         minWidth: CONTAINER_MIN_WIDTH, minHeight: CONTAINER_MIN_HEIGHT,

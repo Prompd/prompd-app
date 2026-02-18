@@ -79,6 +79,13 @@ export default function MarkdownPreview({ content, height = '300px', theme = 'da
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw, rehypeHighlight]}
+        urlTransform={(url) => {
+          // Allow prompd-gen:// protocol for persisted generated images
+          if (url.startsWith('prompd-gen://')) return url
+          // Default: allow http, https, mailto, tel, anchors, relative paths
+          if (/^https?:\/\/|^mailto:|^tel:|^#|^\/|^\./.test(url)) return url
+          return url
+        }}
         components={{
           // Headings with anchor IDs
           h1: ({ children }) => {

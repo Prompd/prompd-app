@@ -36,6 +36,13 @@ export interface Tab {
 }
 
 /**
+ * Lightweight tab shape persisted to localStorage.
+ * Excludes text/savedText/handle to avoid storage bloat from base64 images.
+ * Content is re-read from disk on app startup via rehydrateTabContent().
+ */
+export type PersistedTab = Omit<Tab, 'text' | 'savedText' | 'handle'>
+
+/**
  * Metadata interface
  */
 export interface Metadata {
@@ -57,7 +64,7 @@ export interface FileSystemEntry {
 /**
  * UI State for sidebar
  */
-export type SidebarPanel = 'explorer' | 'packages' | 'ai' | 'git' | 'history'
+export type SidebarPanel = 'explorer' | 'packages' | 'ai' | 'git' | 'history' | 'resources'
 
 /**
  * Modal types

@@ -20,6 +20,7 @@ import {
 import '@xyflow/react/dist/style.css'
 
 import { nodeTypes } from '../components/workflow/nodes'
+import { edgeTypes } from '../components/workflow/edges'
 import { NodePalette } from '../components/workflow/NodePalette'
 import { WorkflowPropertiesPanel } from '../components/workflow/PropertiesPanel'
 import { UnifiedWorkflowToolbar, getGlobalExecutionMode } from '../components/workflow/UnifiedWorkflowToolbar'
@@ -30,10 +31,15 @@ import { UserInputDialog, type UserInputRequest, type UserInputResponse } from '
 import { ConnectionsPanel } from '../components/workflow/panels/ConnectionsPanel'
 import { NodeQuickActions } from '../components/workflow/NodeQuickActions'
 import { ContextMenu } from '../components/workflow/ContextMenu'
+import { SaveTemplateDialog } from '../components/workflow/SaveTemplateDialog'
+import { extractTemplateData } from '../services/nodeTemplateService'
+import { NODE_TYPE_REGISTRY } from '../services/nodeTypeRegistry'
+import type { TemplateScope } from '../services/nodeTemplateTypes'
 import { useWorkflowStore } from '../../stores/workflowStore'
 import { useUIStore, selectWorkflowPanelPinned } from '../../stores/uiStore'
 import { useEditorStore } from '../../stores/editorStore'
-import type { WorkflowNodeType, WorkflowResult } from '@prompd/cli'
+import type { WorkflowResult } from '@prompd/cli'
+import type { WorkflowNodeType } from '../services/workflowTypes'
 import { parseWorkflow } from '../services/workflowParser'
 import { createWorkflowExecutor, type ExecutionMode, type CheckpointEvent, type ExecutionTrace, type DebugState } from '../services/workflowExecutor'
 import { executionRouter } from '../services/executionRouter'
@@ -82,6 +88,12 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
   // Workflow settings dialog state
   const [showWorkflowSettings, setShowWorkflowSettings] = useState(false)
 
+  // Save template dialog state — holds the node ID being saved as template
+  const [saveTemplateNodeId, setSaveTemplateNodeId] = useState<string | null>(null)
+
+  // Cached template list for context menu / action edge
+  const [templateList, setTemplateList] = useState<import('../services/nodeTemplateTypes').TemplateListItem[]>([])
+
   const currentNodeIdRef = useRef<string | null>(null)
 
   // Workflow store state
@@ -108,6 +120,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
   const selectNode = useWorkflowStore(state => state.selectNode)
   const selectEdge = useWorkflowStore(state => state.selectEdge)
   const addNode = useWorkflowStore(state => state.addNode)
+  const addNodeFromTemplate = useWorkflowStore(state => state.addNodeFromTemplate)
   const deleteNode = useWorkflowStore(state => state.deleteNode)
   const deleteEdge = useWorkflowStore(state => state.deleteEdge)
   const undockNode = useWorkflowStore(state => state.undockNode)
@@ -282,6 +295,10 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
   //         node not in the internal collection, keep it visible with an edge from the
   //         collapsed container to that external node.
   const { visibleNodes, edges } = useMemo(() => {
+    // Inject readOnly flag into edge data so ActionEdge can hide buttons
+    const withReadOnly = (edgeList: typeof storeEdges) =>
+      edgeList.map(e => ({ ...e, data: { ...(e.data || {}), readOnly } }))
+
     // Find all collapsed container nodes
     const collapsedContainerIds = new Set(
       nodes
@@ -293,7 +310,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
     )
 
     if (collapsedContainerIds.size === 0) {
-      return { visibleNodes: nodes, edges: storeEdges }
+      return { visibleNodes: nodes, edges: withReadOnly(storeEdges) }
     }
 
     // Find all child node IDs inside collapsed containers
@@ -304,7 +321,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
     )
 
     if (childrenOfCollapsedContainers.size === 0) {
-      return { visibleNodes: nodes, edges: storeEdges }
+      return { visibleNodes: nodes, edges: withReadOnly(storeEdges) }
     }
 
     // Build a map of node ID -> parent container ID (for all nodes with parents)
@@ -533,12 +550,34 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
       return edge
     })
 
-    return { visibleNodes: filteredNodes, edges: filteredEdges }
-  }, [nodes, storeEdges])
+    return { visibleNodes: filteredNodes, edges: withReadOnly(filteredEdges) }
+  }, [nodes, storeEdges, readOnly])
 
   // Get active tab for workflow file path (needed to resolve relative .prmd paths)
   const activeTab = useEditorStore(state => state.tabs.find(t => t.id === state.activeTabId))
   const workflowFilePath = activeTab?.filePath
+
+  // Load template list for context menu and action edge menus
+  const loadTemplateList = useCallback(async () => {
+    if (!window.electronAPI?.templates) return
+    try {
+      const workspacePath = await window.electronAPI.getWorkspacePath()
+      const result = await window.electronAPI.templates.list(workspacePath || '')
+      if (result.success) setTemplateList(result.templates as import('../services/nodeTemplateTypes').TemplateListItem[])
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => {
+    loadTemplateList()
+    const win = window as unknown as Record<string, unknown>
+    const prev = win.__refreshCanvasTemplates as (() => void) | undefined
+    win.__refreshCanvasTemplates = loadTemplateList
+    return () => {
+      if (win.__refreshCanvasTemplates === loadTemplateList) {
+        win.__refreshCanvasTemplates = prev
+      }
+    }
+  }, [loadTemplateList])
 
   // Track content to prevent re-loading from our own serialization
   const lastContentRef = useRef<string>('')
@@ -595,12 +634,14 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
 
       // Convert WorkflowValidationErrors to BuildErrors with line numbers
       const buildErrors = errors.map(error => {
-        const node = nodes.find(n => n.id === error.nodeId)
-        const nodeLabel = node?.data?.label || error.nodeId || 'Unknown'
-
-        // Find line number in JSON where this node is defined
         let lineNumber: number | undefined
+        let message: string
+
         if (error.nodeId) {
+          const node = nodes.find(n => n.id === error.nodeId)
+          const nodeLabel = node?.data?.label || error.nodeId
+          message = `Node '${nodeLabel}': ${error.message}`
+
           // Search for the node ID in the JSON to find its line number
           const lines = json.split('\n')
           const nodeIdPattern = new RegExp(`"id":\\s*"${error.nodeId}"`)
@@ -610,11 +651,14 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
               break
             }
           }
+        } else {
+          // Workflow-level errors (e.g., EMPTY_WORKFLOW) have no nodeId
+          message = error.message
         }
 
         return {
           file: fileName,
-          message: `Node '${nodeLabel}': ${error.message}`,
+          message,
           line: lineNumber,
           column: undefined,
         }
@@ -842,11 +886,107 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
     hideContextMenu()
   }, [contextMenu, addNode, hideContextMenu, reactFlowInstance])
 
+  const handleContextMenuInsertTemplate = useCallback(async (fileName: string, scope: TemplateScope) => {
+    hideContextMenu()
+    if (!window.electronAPI?.templates) return
+
+    const workspacePath = await window.electronAPI.getWorkspacePath()
+    if (!workspacePath) return
+
+    try {
+      const result = await window.electronAPI.templates.insert(workspacePath, fileName, scope, workflowFilePath)
+      if (!result.success || !result.template) {
+        useUIStore.getState().addToast(result.error || 'Failed to insert template', 'error')
+        return
+      }
+
+      const position = contextMenu?.type === 'canvas'
+        ? reactFlowInstance.screenToFlowPosition({ x: contextMenu.position.x, y: contextMenu.position.y })
+        : { x: 200, y: 200 }
+
+      addNodeFromTemplate(result.template, position)
+
+      if (result.skippedFiles && result.skippedFiles.length > 0) {
+        useUIStore.getState().addToast(
+          `Template inserted. ${result.skippedFiles.length} file(s) already exist.`,
+          'info'
+        )
+      }
+    } catch (err) {
+      console.error('[WorkflowCanvas] Failed to insert template from context menu:', err)
+      useUIStore.getState().addToast('Failed to insert template', 'error')
+    }
+  }, [contextMenu, hideContextMenu, workflowFilePath, addNodeFromTemplate, reactFlowInstance])
+
   const handleContextMenuHighlightPath = useCallback(() => {
     // TODO: Implement path highlighting
     console.log('Highlight path for edge:', contextMenu?.edgeId)
     hideContextMenu()
   }, [contextMenu, hideContextMenu])
+
+  const handleContextMenuSaveAsTemplate = useCallback(() => {
+    if (contextMenu?.nodeId) {
+      setSaveTemplateNodeId(contextMenu.nodeId)
+    }
+    hideContextMenu()
+  }, [contextMenu, hideContextMenu])
+
+  const handleSaveTemplate = useCallback(async (name: string, description: string, scope: TemplateScope) => {
+    if (!saveTemplateNodeId) return
+    if (!window.electronAPI?.templates) {
+      useUIStore.getState().addToast('Template saving requires the desktop app', 'error')
+      setSaveTemplateNodeId(null)
+      return
+    }
+
+    const node = nodes.find(n => n.id === saveTemplateNodeId)
+    if (!node) {
+      setSaveTemplateNodeId(null)
+      return
+    }
+
+    try {
+      const workflowEdges = useWorkflowStore.getState().workflowFile?.edges || []
+      const allWorkflowNodes = useWorkflowStore.getState().workflowFile?.nodes || []
+      const template = extractTemplateData(
+        node as unknown as import('../services/workflowTypes').WorkflowNode,
+        allWorkflowNodes,
+        workflowEdges
+      )
+      template.name = name
+      if (description) template.description = description
+
+      const workspacePath = await window.electronAPI.getWorkspacePath()
+      if (!workspacePath) {
+        useUIStore.getState().addToast('No workspace open', 'error')
+        return
+      }
+
+      const result = await window.electronAPI.templates.save(
+        workspacePath,
+        template as unknown as Record<string, unknown>,
+        scope,
+        workflowFilePath
+      )
+
+      if (result.success) {
+        useUIStore.getState().addToast(`Template "${name}" saved`, 'success')
+        // Refresh NodePalette + canvas template lists
+        const win = window as unknown as Record<string, unknown>
+        const refreshPalette = win.__refreshNodePaletteTemplates as (() => void) | undefined
+        if (refreshPalette) refreshPalette()
+        const refreshCanvas = win.__refreshCanvasTemplates as (() => void) | undefined
+        if (refreshCanvas) refreshCanvas()
+      } else {
+        useUIStore.getState().addToast(result.error || 'Failed to save template', 'error')
+      }
+    } catch (err) {
+      console.error('[WorkflowCanvas] Failed to save template:', err)
+      useUIStore.getState().addToast('Failed to save template', 'error')
+    } finally {
+      setSaveTemplateNodeId(null)
+    }
+  }, [saveTemplateNodeId, nodes, workflowFilePath])
 
   // Workflow settings handlers
   const handleOpenWorkflowSettings = useCallback(() => {
@@ -921,31 +1061,77 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
     }
   }, [readOnly, onNodeDragStop, reactFlowInstance])
 
-  // Handle drop from palette
-  const handleDrop = useCallback((event: React.DragEvent) => {
+  // Handle drop from palette (regular nodes and templates)
+  const handleDrop = useCallback(async (event: React.DragEvent) => {
     event.preventDefault()
     event.stopPropagation()
 
     if (readOnly) return
-
-    const type = event.dataTransfer.getData('application/workflow-node') as WorkflowNodeType
-    if (!type) return
     if (!reactFlowInstance) return
 
-    // screenToFlowPosition takes raw screen coordinates (clientX/Y) and converts
-    // them to flow coordinates, accounting for zoom and pan
     const position = reactFlowInstance.screenToFlowPosition({
       x: event.clientX,
       y: event.clientY,
     })
 
-    addNode(type, position)
-  }, [readOnly, reactFlowInstance, addNode])
+    // Check for regular node drop
+    const type = event.dataTransfer.getData('application/workflow-node') as WorkflowNodeType
+    if (type) {
+      addNode(type, position)
+      return
+    }
+
+    // Check for template drop
+    const templateDataStr = event.dataTransfer.getData('application/workflow-template')
+    if (templateDataStr) {
+      try {
+        const parsed = JSON.parse(templateDataStr)
+        if (!parsed || typeof parsed.fileName !== 'string' || !['workspace', 'user'].includes(parsed.scope)) {
+          useUIStore.getState().addToast('Invalid template data', 'error')
+          return
+        }
+        const { fileName, scope } = parsed as { fileName: string; scope: 'workspace' | 'user' }
+
+        if (!window.electronAPI?.templates) return
+
+        const workspacePath = await window.electronAPI.getWorkspacePath()
+        if (!workspacePath) {
+          useUIStore.getState().addToast('No workspace open', 'error')
+          return
+        }
+
+        const result = await window.electronAPI.templates.insert(workspacePath, fileName, scope, workflowFilePath)
+        if (!result.success || !result.template) {
+          useUIStore.getState().addToast(result.error || 'Failed to insert template', 'error')
+          return
+        }
+
+        // Validate template has node data (supports both nested and legacy flat format)
+        const tpl = result.template as Record<string, unknown>
+        const nodeInfo = (tpl.node || tpl) as Record<string, unknown>
+        if (!nodeInfo.nodeType || !nodeInfo.nodeData) {
+          useUIStore.getState().addToast('Invalid template format', 'error')
+          return
+        }
+
+        addNodeFromTemplate(result.template, position)
+
+        if (result.skippedFiles && result.skippedFiles.length > 0) {
+          useUIStore.getState().addToast(
+            `Template inserted. ${result.skippedFiles.length} file(s) already exist in workspace.`,
+            'info'
+          )
+        }
+      } catch (err) {
+        console.error('[WorkflowCanvas] Failed to insert template:', err)
+        useUIStore.getState().addToast('Failed to insert template', 'error')
+      }
+    }
+  }, [readOnly, reactFlowInstance, addNode, addNodeFromTemplate, workflowFilePath])
 
   const handleDragOver = useCallback((event: React.DragEvent) => {
-    // Check if we're dragging a workflow node from the palette
     const types = event.dataTransfer.types
-    if (types.includes('application/workflow-node')) {
+    if (types.includes('application/workflow-node') || types.includes('application/workflow-template')) {
       event.preventDefault()
       event.stopPropagation()
       event.dataTransfer.dropEffect = 'move'
@@ -954,7 +1140,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
 
   const handleDragEnter = useCallback((event: React.DragEvent) => {
     const types = event.dataTransfer.types
-    if (types.includes('application/workflow-node')) {
+    if (types.includes('application/workflow-node') || types.includes('application/workflow-template')) {
       event.preventDefault()
       event.stopPropagation()
     }
@@ -1192,13 +1378,21 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
           timestamp: Date.now(),
         }])
 
+        // Check if model supports image generation
+        const effectiveProvider = provider || 'openai'
+        const effectiveModel = model || 'gpt-4o'
+        const pricingData = useUIStore.getState().llmProvider.providersWithPricing
+        const providerPricing = pricingData?.find(p => p.providerId === effectiveProvider)
+        const modelPricing = providerPricing?.models.find(m => m.model === effectiveModel)
+
         // Execute using the execution router
         const result = await executionRouter.execute({
-          provider: provider || 'openai',
-          model: model || 'gpt-4o',
+          provider: effectiveProvider,
+          model: effectiveModel,
           prompt: compiledPrompt,
           maxTokens: 4096,
           temperature: 0.7,
+          enableImageGeneration: modelPricing?.supportsImageGeneration === true,
         })
 
         if (!result.success) {
@@ -1239,12 +1433,20 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
         }])
 
         try {
+          // Check if model supports image generation
+          const agentProvider = request.provider || 'openai'
+          const agentModel = request.model || 'gpt-4o'
+          const agentPricingData = useUIStore.getState().llmProvider.providersWithPricing
+          const agentProviderPricing = agentPricingData?.find(p => p.providerId === agentProvider)
+          const agentModelPricing = agentProviderPricing?.models.find(m => m.model === agentModel)
+
           const result = await executionRouter.execute({
-            provider: request.provider || 'openai',
-            model: request.model || 'gpt-4o',
+            provider: agentProvider,
+            model: agentModel,
             prompt: fullPrompt,
             maxTokens: 4096,
             temperature: request.temperature ?? 0.7,
+            enableImageGeneration: agentModelPricing?.supportsImageGeneration === true,
           })
 
           if (!result.success) {
@@ -1318,7 +1520,30 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
       userInputResolveRef.current = null
     }
     executorRef.current?.stop()
-    // Keep executionState so node debug footers persist after stop
+
+    // Update execution state: mark as failed (cancelled) so isExecuting becomes false,
+    // but preserve node states so debug footers show what ran and what didn't.
+    const currentExecState = useWorkflowStore.getState().executionState
+    if (currentExecState) {
+      const updatedNodeStates = { ...currentExecState.nodeStates }
+      for (const [nid, ns] of Object.entries(updatedNodeStates)) {
+        if (ns.status === 'running' || ns.status === 'paused') {
+          updatedNodeStates[nid] = {
+            ...ns,
+            status: 'failed',
+            error: 'Cancelled by user',
+            endTime: Date.now(),
+          }
+        }
+      }
+      setExecutionState({
+        ...currentExecState,
+        status: 'failed',
+        nodeStates: updatedNodeStates,
+        endTime: Date.now(),
+      })
+    }
+
     setIsPaused(false)
     setPendingCheckpoint(null)
     setPendingUserInput(null)
@@ -1341,6 +1566,19 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
     setIsPaused(false)
     setPendingCheckpoint(null)
   }, [])
+
+  // Listen for resume/stop events from EditorHeader buttons
+  useEffect(() => {
+    const onResume = () => handleResume()
+    const onStop = () => handleStop()
+
+    window.addEventListener('resume-workflow', onResume)
+    window.addEventListener('stop-workflow', onStop)
+    return () => {
+      window.removeEventListener('resume-workflow', onResume)
+      window.removeEventListener('stop-workflow', onStop)
+    }
+  }, [handleResume, handleStop])
 
   const handleCloseExecutionPanel = useCallback(() => {
     // Clean up any pending checkpoint promise
@@ -1399,6 +1637,8 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
   const showFloatingPanel = showExecutionPanel && !isWorkflowPanelPinned
 
   const onReactFlowError = useCallback((id: string, message: string): void => {
+    // ID 002: nodeTypes/edgeTypes recreation warning — false positive from Vite HMR
+    if (id === '002') return
     console.error(`[WorkflowCanvas] ReactFlow error (ID: ${id}): ${message}`)
   }, [])
 
@@ -1442,6 +1682,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
             onEdgeContextMenu={readOnly ? undefined : handleEdgeContextMenu}
             onPaneContextMenu={readOnly ? undefined : handlePaneContextMenu}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             defaultEdgeOptions={defaultEdgeOptions}
             fitView
             fitViewOptions={{ padding: 0.2 }}
@@ -1501,6 +1742,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
                   isPaused={isPaused}
                   onDeploy={onDeploy}
                   onExport={onExport}
+                  hasErrors={errors.length > 0}
                 />
               </div>
             ) : (
@@ -1518,55 +1760,12 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
                     isPaused={isPaused}
                     onDeploy={onDeploy}
                     onExport={onExport}
+                    hasErrors={errors.length > 0}
                   />
                 </div>
               </Panel>
             )}
 
-            {/* Error indicator */}
-            {errors.length > 0 && (
-              <Panel position="top-right" style={{ pointerEvents: 'none' }}>
-                <div
-                  style={{
-                    pointerEvents: 'auto',
-                    background: 'color-mix(in srgb, var(--error) 15%, var(--panel))',
-                    border: '1px solid color-mix(in srgb, var(--error) 40%, transparent)',
-                    borderRadius: '8px',
-                    padding: '12px',
-                    maxWidth: '280px',
-                  }}
-                >
-                  <div
-                    style={{
-                      fontWeight: 500,
-                      color: 'var(--error)',
-                      fontSize: '13px',
-                      marginBottom: '4px',
-                    }}
-                  >
-                    {errors.length} Error{errors.length > 1 ? 's' : ''}
-                  </div>
-                  <ul
-                    style={{
-                      fontSize: '11px',
-                      color: 'var(--error)',
-                      margin: 0,
-                      paddingLeft: '16px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px',
-                    }}
-                  >
-                    {errors.slice(0, 3).map((error, i) => (
-                      <li key={i}>{error.message}</li>
-                    ))}
-                    {errors.length > 3 && (
-                      <li>...and {errors.length - 3} more</li>
-                    )}
-                  </ul>
-                </div>
-              </Panel>
-            )}
 
           </ReactFlow>
 
@@ -1615,9 +1814,12 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
               onToggleDisabled={handleContextMenuToggleDisabled}
               onDelete={handleContextMenuDelete}
               onUndock={handleContextMenuUndock}
+              onSaveAsTemplate={handleContextMenuSaveAsTemplate}
               onAddNode={handleContextMenuAddNode}
+              onInsertTemplate={handleContextMenuInsertTemplate}
               onHighlightPath={handleContextMenuHighlightPath}
               onWorkflowSettings={handleOpenWorkflowSettings}
+              templates={templateList}
             />
           )}
         </div>
@@ -1676,6 +1878,22 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
           onClose={() => setShowWorkflowSettings(false)}
         />
       )}
+
+      {/* Save Template Dialog */}
+      {saveTemplateNodeId && (() => {
+        const templateNode = nodes.find(n => n.id === saveTemplateNodeId)
+        if (!templateNode) return null
+        const nodeType = templateNode.type as WorkflowNodeType
+        const registry = NODE_TYPE_REGISTRY[nodeType]
+        return (
+          <SaveTemplateDialog
+            nodeTypeLabel={registry?.label || nodeType}
+            defaultName={(templateNode.data as { label?: string })?.label || registry?.label || nodeType}
+            onSave={handleSaveTemplate}
+            onClose={() => setSaveTemplateNodeId(null)}
+          />
+        )
+      })()}
 
       {/* User Input Dialog - shown when a user-input node is reached */}
       {pendingUserInput && (

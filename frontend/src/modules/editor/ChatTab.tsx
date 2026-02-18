@@ -16,6 +16,11 @@ import { PrompdEditorIntegration } from '../integrations/PrompdEditorIntegration
 import { conversationStorage, type Conversation, type ConversationMessage, type AgentPermissionLevel } from '../services/conversationStorage'
 import { fetchChatModes, chatModesToArray, type ChatModeConfig } from '../services/chatModesApi'
 import { LLMClientRouter } from '../services/llmClientRouter'
+import { CompactingLLMClient, SlidingWindowCompactor } from '@prompd/react'
+import { resolveContextWindowSize, formatContextWindow } from '../services/contextWindowResolver'
+
+/** Module-level singleton — SlidingWindowCompactor is stateless */
+const slidingWindowCompactor = new SlidingWindowCompactor()
 import { createToolExecutor, type IToolExecutor, type ToolCall } from '../services/toolExecutor'
 import type { Tab } from '../../stores/types'
 import { useEditorStore } from '../../stores/editorStore'
@@ -556,9 +561,28 @@ export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dar
       }
     }
 
+    // Wrap base client with context compaction (decorator pattern)
+    const contextWindowSize = resolveContextWindowSize(
+      llmProvider.provider,
+      llmProvider.model,
+      llmProvider.providersWithPricing
+    )
+    const compactingClient = new CompactingLLMClient(
+      baseClient,
+      slidingWindowCompactor,
+      contextWindowSize
+    )
+
     // Use the shared agent LLM client wrapper
-    return agentActions.createAgentLLMClient(baseClient, chatRef, contextMessages)
+    return agentActions.createAgentLLMClient(compactingClient, chatRef, contextMessages)
   }, [llmProvider.provider, llmProvider.model, getToken, selectedFileTab, agentActions])
+
+  // Context utilization for status bar display
+  const contextUtilization = useMemo(() => {
+    if (agentState.lastPromptTokens <= 0) return null
+    const ctxWindow = resolveContextWindowSize(llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing)
+    return { pct: Math.round((agentState.lastPromptTokens / ctxWindow) * 100), formatted: formatContextWindow(ctxWindow) }
+  }, [agentState.lastPromptTokens, llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing])
 
   const editorIntegration = useMemo(() => new PrompdEditorIntegration(
     getSelectedFileText,
@@ -1203,6 +1227,11 @@ Write your prompt content here.
           <span style={{ opacity: 0.5 }}>
             ({agentState.tokenUsage.promptTokens.toLocaleString()} in / {agentState.tokenUsage.completionTokens.toLocaleString()} out)
           </span>
+          {contextUtilization && (
+            <span style={{ opacity: 0.5, marginLeft: 'auto' }}>
+              Context: {contextUtilization.pct}% of {contextUtilization.formatted}
+            </span>
+          )}
         </div>
       )}
 

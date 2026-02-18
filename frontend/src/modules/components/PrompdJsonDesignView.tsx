@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Plus, Trash2, AlertCircle, AlertTriangle, Info, Search, Package, BookOpen, ChevronDown, FileText, Files, Check, Square, Sparkles, EyeOff, Globe, Tag } from 'lucide-react'
+import { Plus, Trash2, AlertCircle, AlertTriangle, Info, Search, Package, BookOpen, ChevronDown, FileText, Files, Check, Square, Sparkles, EyeOff, Globe, Tag, Server, Plug } from 'lucide-react'
 import VersionInput from './VersionInput'
 import { TagInput } from './TagInput'
 import DependencyVersionSelect from './DependencyVersionSelect'
@@ -19,12 +19,14 @@ interface PrompdJsonConfig {
   description?: string
   author?: string
   version?: string
-  tags?: string[]  // Searchable tags for categorization
+  type?: 'package' | 'workflow' | 'skill'  // Package type (skill requires MCP servers)
+  keywords?: string[]  // Searchable keywords for categorization
   main?: string  // Main .prmd file entry point
   files?: string[]  // Files to include in package
   readme?: string
   ignore?: string[]
   dependencies?: Record<string, string>
+  mcps?: string[]  // MCP server names required by this package
   registry?: string
   [key: string]: unknown
 }
@@ -57,6 +59,10 @@ export default function PrompdJsonDesignView({ value, onChange, theme = 'dark', 
   const [config, setConfig] = useState<PrompdJsonConfig>({ ignore: [] })
   const [newIgnorePattern, setNewIgnorePattern] = useState('')
   const [parseError, setParseError] = useState<string | null>(null)
+
+  // MCP server status tracking
+  const [mcpServerStatuses, setMcpServerStatuses] = useState<Record<string, 'configured' | 'missing'>>({})
+  const [availableMcpServers, setAvailableMcpServers] = useState<string[]>([])
 
   // Dependencies search state
   const [depSearchQuery, setDepSearchQuery] = useState('')
@@ -428,6 +434,62 @@ export default function PrompdJsonDesignView({ value, onChange, theme = 'dark', 
     }
   }, [showDepDropdown])
 
+  // Fetch configured MCP servers and check status when mcps array changes
+  useEffect(() => {
+    const mcps = config.mcps || []
+
+    if (!window.electronAPI?.isElectron) {
+      // Can't check in browser mode — mark all as missing, no available servers
+      const statuses: Record<string, 'configured' | 'missing'> = {}
+      for (const name of mcps) {
+        statuses[name] = 'missing'
+      }
+      setMcpServerStatuses(statuses)
+      setAvailableMcpServers([])
+      return
+    }
+
+    window.electronAPI.mcp?.listServers().then(result => {
+      if (!result.success || !result.servers) return
+      const allServerNames = result.servers.map((s: { name: string }) => s.name)
+      const configuredNames = new Set(allServerNames)
+      const statuses: Record<string, 'configured' | 'missing'> = {}
+      for (const name of mcps) {
+        statuses[name] = configuredNames.has(name) ? 'configured' : 'missing'
+      }
+      setMcpServerStatuses(statuses)
+      // Available = configured servers not already added to this package
+      const selectedSet = new Set(mcps)
+      setAvailableMcpServers(allServerNames.filter((n: string) => !selectedSet.has(n)))
+    }).catch(() => {
+      // If MCP service isn't available, mark all as missing
+      const statuses: Record<string, 'configured' | 'missing'> = {}
+      for (const name of mcps) {
+        statuses[name] = 'missing'
+      }
+      setMcpServerStatuses(statuses)
+      setAvailableMcpServers([])
+    })
+  }, [config.mcps])
+
+  // MCP server management callbacks
+  const addMcpServer = useCallback((name: string) => {
+    if (readOnly || !name.trim()) return
+    const trimmed = name.trim()
+    updateConfig(prev => {
+      const current = prev.mcps || []
+      if (current.includes(trimmed)) return {}
+      return { mcps: [...current, trimmed] }
+    })
+  }, [updateConfig, readOnly])
+
+  const removeMcpServer = useCallback((name: string) => {
+    if (readOnly) return
+    updateConfig(prev => ({
+      mcps: (prev.mcps || []).filter(s => s !== name)
+    }))
+  }, [updateConfig, readOnly])
+
   // Show parse error if JSON is invalid
   if (parseError) {
     return (
@@ -588,15 +650,15 @@ export default function PrompdJsonDesignView({ value, onChange, theme = 'dark', 
                 marginBottom: '8px'
               }}>
                 <Tag size={14} style={{ color: colors.primary }} />
-                Tags
+                Keywords
                 <span style={{ fontSize: '12px', fontWeight: 400, color: colors.textSecondary }}>
                   (for search and categorization)
                 </span>
               </label>
               <TagInput
-                tags={config.tags || []}
-                onChange={(tags) => updateConfig({ tags })}
-                placeholder="Add tags (press Enter or comma to add)"
+                tags={config.keywords || []}
+                onChange={(keywords) => updateConfig({ keywords })}
+                placeholder="Add keywords (press Enter or comma to add)"
                 disabled={readOnly}
                 theme={theme}
               />
@@ -657,6 +719,238 @@ export default function PrompdJsonDesignView({ value, onChange, theme = 'dark', 
                 />
               </div>
             </div>
+
+            {/* Package Type */}
+            <div>
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '14px',
+                fontWeight: 500,
+                color: colors.text,
+                marginBottom: '8px'
+              }}>
+                <Plug size={14} style={{ color: colors.primary }} />
+                Package Type
+                <span style={{ fontSize: '12px', fontWeight: 400, color: colors.textSecondary }}>
+                  (determines package capabilities)
+                </span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <select
+                  value={config.type || 'package'}
+                  onChange={(e) => updateConfig({ type: e.target.value as PrompdJsonConfig['type'] })}
+                  disabled={readOnly}
+                  style={{
+                    width: '100%',
+                    padding: '10px 36px 10px 12px',
+                    background: colors.input,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    color: colors.text,
+                    appearance: 'none',
+                    cursor: readOnly ? 'not-allowed' : 'pointer',
+                    opacity: readOnly ? 0.7 : 1
+                  }}
+                >
+                  <option value="package">Package - Standard prompt package</option>
+                  <option value="workflow">Workflow - Deployable workflow package</option>
+                  <option value="skill">Skill - Requires MCP server connections</option>
+                </select>
+                <ChevronDown
+                  size={16}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: colors.textMuted,
+                    pointerEvents: 'none'
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* MCP Servers Section */}
+        <div style={{
+          marginBottom: '24px',
+          background: 'var(--bg)',
+          border: '1px solid var(--border)',
+          borderRadius: '8px',
+          padding: '20px'
+        }}>
+          <h2 style={{
+            margin: '0 0 12px 0',
+            fontSize: '16px',
+            fontWeight: 600,
+            color: colors.text,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px'
+          }}>
+            <Server size={16} style={{ color: colors.primary }} />
+            MCP Servers
+            {config.type === 'skill' && (
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 500,
+                color: colors.primary,
+                background: colors.infoBg,
+                border: `1px solid ${colors.infoBorder}`,
+                padding: '2px 8px',
+                borderRadius: '10px'
+              }}>
+                Required for Skills
+              </span>
+            )}
+          </h2>
+          <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: colors.textSecondary }}>
+            MCP (Model Context Protocol) servers this package requires for tool access
+          </p>
+
+          {/* Add MCP server dropdown */}
+          {!readOnly && (
+            <div style={{ position: 'relative', marginBottom: '16px' }}>
+              <select
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) {
+                    addMcpServer(e.target.value)
+                  }
+                }}
+                disabled={availableMcpServers.length === 0}
+                style={{
+                  width: '100%',
+                  padding: '10px 36px 10px 12px',
+                  background: colors.input,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  color: availableMcpServers.length === 0 ? colors.textMuted : colors.text,
+                  appearance: 'none',
+                  cursor: availableMcpServers.length === 0 ? 'not-allowed' : 'pointer',
+                  opacity: availableMcpServers.length === 0 ? 0.7 : 1
+                }}
+              >
+                <option value="">
+                  {availableMcpServers.length === 0
+                    ? 'No additional MCP servers configured'
+                    : 'Select an MCP server to add...'}
+                </option>
+                {availableMcpServers.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+              <ChevronDown
+                size={16}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: colors.textMuted,
+                  pointerEvents: 'none'
+                }}
+              />
+            </div>
+          )}
+
+          {/* MCP server list */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {(config.mcps || []).map((serverName) => {
+              const status = mcpServerStatuses[serverName] || 'missing'
+              const isConfigured = status === 'configured'
+              return (
+                <div
+                  key={serverName}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 12px',
+                    background: colors.bgSecondary,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: '6px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                    <Server size={14} style={{ color: colors.textMuted, flexShrink: 0 }} />
+                    <code style={{
+                      fontFamily: 'Consolas, Monaco, monospace',
+                      fontSize: '13px',
+                      color: colors.text,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {serverName}
+                    </code>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      color: isConfigured ? colors.success : '#f59e0b',
+                      background: isConfigured
+                        ? colors.successBg
+                        : (theme === 'dark' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(245, 158, 11, 0.1)'),
+                      border: `1px solid ${isConfigured
+                        ? colors.successBorder
+                        : (theme === 'dark' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(245, 158, 11, 0.3)')}`,
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                      flexShrink: 0
+                    }}>
+                      {isConfigured ? 'Configured' : 'Not configured'}
+                    </span>
+                  </div>
+                  {!readOnly && (
+                    <button
+                      onClick={() => removeMcpServer(serverName)}
+                      title="Remove MCP server"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: colors.textMuted,
+                        cursor: 'pointer',
+                        padding: '4px',
+                        borderRadius: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        transition: 'all 0.2s',
+                        flexShrink: 0
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = colors.hover
+                        e.currentTarget.style.color = colors.error
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.color = colors.textMuted
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+
+            {(!config.mcps || config.mcps.length === 0) && (
+              <div style={{
+                padding: '32px',
+                textAlign: 'center',
+                color: colors.textMuted,
+                fontSize: '14px',
+                background: colors.bgSecondary,
+                border: `1px dashed ${colors.border}`,
+                borderRadius: '6px'
+              }}>
+                No MCP servers declared
+              </div>
+            )}
           </div>
         </div>
 

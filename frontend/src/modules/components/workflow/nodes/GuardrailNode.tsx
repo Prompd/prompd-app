@@ -103,7 +103,7 @@ export const GuardrailNode = memo(({ id, data, selected }: GuardrailNodeProps) =
 
   return (
     <div
-      className={nodeData.disabled ? 'workflow-node-disabled' : ''}
+      className={[nodeData.disabled && 'workflow-node-disabled', nodeData.locked && 'workflow-node-locked'].filter(Boolean).join(' ')}
       style={{
         padding: '12px 16px',
         borderRadius: '8px',

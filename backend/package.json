@@ -13,7 +13,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.65.0",
     "@google/generative-ai": "^0.24.1",
-    "@prompd/cli": "^0.4.9",
+    "@prompd/cli": "file:../../../Logikbug/prompd-cli/cli/npm",
     "adm-zip": "^0.5.10",
     "archiver": "^6.0.1",
     "axios": "^1.6.2",
@@ -28,6 +28,7 @@
     "form-data": "^4.0.0",
     "helmet": "^7.1.0",
     "joi": "^17.11.0",
+    "js-yaml": "^4.1.1",
     "jsonwebtoken": "^9.0.2",
     "jwks-rsa": "^3.1.0",
     "mammoth": "^1.6.0",

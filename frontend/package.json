@@ -46,7 +46,8 @@
       "!**/node_modules/**/.github/**"
     ],
     "asarUnpack": [
-      "**/node_modules/@prompd/**"
+      "**/node_modules/@prompd/**",
+      "**/node_modules/@modelcontextprotocol/**"
     ],
     "extraResources": [
       {
@@ -153,10 +154,21 @@
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.58.1",
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "@monaco-editor/react": "^4.6.0",
-    "@prompd/cli": "^0.4.9",
+    "@prompd/cli": "file:../../../Logikbug/prompd-cli/cli/npm",
     "@prompd/react": "file:../packages/react",
     "@prompd/scheduler": "file:../packages/scheduler",
+    "@tiptap/extension-code-block-lowlight": "^3.19.0",
+    "@tiptap/extension-image": "^3.19.0",
+    "@tiptap/extension-link": "^3.19.0",
+    "@tiptap/extension-placeholder": "^3.19.0",
+    "@tiptap/extension-table": "^3.19.0",
+    "@tiptap/extension-table-cell": "^3.19.0",
+    "@tiptap/extension-table-header": "^3.19.0",
+    "@tiptap/extension-table-row": "^3.19.0",
+    "@tiptap/react": "^3.19.0",
+    "@tiptap/starter-kit": "^3.19.0",
     "@xyflow/react": "^12.10.0",
     "adm-zip": "^0.5.10",
     "better-sqlite3": "^12.6.2",
@@ -169,11 +181,16 @@
     "highlight.js": "^11.11.1",
     "idb": "^8.0.3",
     "immer": "^10.2.0",
+    "ioredis": "^5.9.3",
     "jszip": "^3.10.1",
     "lodash-es": "^4.17.21",
+    "lowlight": "^3.3.0",
     "lucide-react": "^0.543.0",
     "monaco-editor": "^0.55.1",
+    "mongodb": "^7.1.0",
+    "mysql2": "^3.17.0",
     "node-cron": "^3.0.3",
+    "pg": "^8.18.0",
     "react": "^18.2.0",
     "react-cron-generator": "^2.1.4",
     "react-dom": "^18.2.0",
@@ -182,6 +199,7 @@
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "socket.io-client": "^4.8.1",
+    "tiptap-markdown": "^0.9.0",
     "yaml": "^2.5.0",
     "zustand": "^5.0.8"
   },

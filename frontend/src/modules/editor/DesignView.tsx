@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { Edit3, Eye, EyeOff, Check, X, FileText, Sparkles, Save, Package, Link, Settings, FolderOpen, Search, ChevronDown, Type, Hash, ToggleLeft, Brackets, Braces, AlertCircle, CheckCircle, AlertTriangle, Trash2, Tag, Code, Map as MapIcon } from 'lucide-react'
+import { Edit3, Eye, EyeOff, Check, X, FileText, Sparkles, Save, Package, Link, Settings, FolderOpen, Search, Type, Hash, ToggleLeft, Brackets, Braces, AlertCircle, CheckCircle, AlertTriangle, Trash2, Tag, Code, Map as MapIcon } from 'lucide-react'
 import { parsePrompd } from '../lib/prompdParser'
 import XmlDesignView, { type XmlDesignViewHandle } from '../components/XmlDesignView'
 import { ContentMinimap, type MinimapSection } from '../components/ContentMinimap'
@@ -8,13 +8,11 @@ import VersionInput from '../components/VersionInput'
 import { TagInput } from '../components/TagInput'
 import { ParamValue } from '../types'
 import { WizardState, PackageReference } from '../types/wizard'
-import SectionAdder from '../components/SectionAdder'
 import InheritsManager from '../components/InheritsManager'
 import { PrompdContextArea } from '@prompd/react'
 import { registryApi, type RegistryPackage } from '../services/registryApi'
 import JSZip from 'jszip'
-import Editor, { BeforeMount } from '@monaco-editor/react'
-import MarkdownPreview from '../components/MarkdownPreview'
+import ContentSections from '../components/ContentSections'
 
 // Type definitions for PrompdContextArea (from @prompd/react)
 interface PrompdFileSection {
@@ -108,7 +106,8 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
   const [isAddingParameter, setIsAddingParameter] = useState(false)
   const [newParamName, setNewParamName] = useState('')
   const [expandedParams, setExpandedParams] = useState<Set<string>>(new Set())
-  const [metadataCollapsed, setMetadataCollapsed] = useState(false)
+  const [metadataCollapsed, setMetadataCollapsed] = useState(true)
+  const [contentFullscreen, setContentFullscreen] = useState(false)
 
   // Specialty sections visibility state
   const [visibleSpecialtySections, setVisibleSpecialtySections] = useState<Set<string>>(() => {
@@ -328,31 +327,6 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
 
   // Track if we're currently updating parameters to avoid resetting editable state
 
-  // Monaco beforeMount to register custom themes
-  const beforeMount: BeforeMount = (monaco) => {
-    // Register prompd-dark theme
-    monaco.editor.defineTheme('prompd-dark', {
-      base: 'vs-dark',
-      inherit: true,
-      rules: [],
-      colors: {
-        'editor.background': '#0f172a',
-        'editor.foreground': '#f1f5f9',
-      }
-    })
-
-    // Register prompd-light theme
-    monaco.editor.defineTheme('prompd-light', {
-      base: 'vs',
-      inherit: true,
-      rules: [],
-      colors: {
-        'editor.background': '#ffffff',
-        'editor.foreground': '#000000',
-      }
-    })
-  }
-
   // Sync editable params from parsed schema when value changes
   // BUT only if user hasn't explicitly modified them
   useEffect(() => {
@@ -476,6 +450,17 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
     setEditContent('')
   }
 
+  // Direct body replacement for document mode - replaces everything after the frontmatter
+  const handleBodyChange = useCallback((newBody: string) => {
+    const lines = value.split('\n')
+    const firstDashIndex = lines.findIndex(l => l.trim() === '---')
+    const secondDashIndex = lines.findIndex((l, i) => i > firstDashIndex && l.trim() === '---')
+    if (secondDashIndex > 0) {
+      const frontmatter = lines.slice(0, secondDashIndex + 1).join('\n')
+      onChange(`${frontmatter}\n${newBody}`)
+    }
+  }, [value, onChange])
+
   const toggleSectionVisibility = (sectionId: string) => {
     setSectionOverrides(prev => {
       const newOverrides = { ...prev }
@@ -581,6 +566,71 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
     })
   }
 
+  const reorderSections = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return
+
+    const lines = value.split('\n')
+    const firstDashIndex = lines.findIndex(l => l.trim() === '---')
+    const secondDashIndex = lines.findIndex((l, i) => i > firstDashIndex && l.trim() === '---')
+
+    if (secondDashIndex <= 0) return
+
+    const frontmatter = lines.slice(0, secondDashIndex + 1).join('\n')
+    const bodyLines = lines.slice(secondDashIndex + 1)
+
+    // Find section boundaries in the body (each section = heading line through to next heading or EOF)
+    const sectionBounds: Array<{ start: number; end: number }> = []
+    for (let i = 0; i < bodyLines.length; i++) {
+      if (/^#{1,2}\s+/.test(bodyLines[i])) {
+        if (sectionBounds.length > 0) {
+          sectionBounds[sectionBounds.length - 1].end = i
+        }
+        sectionBounds.push({ start: i, end: bodyLines.length })
+      }
+    }
+
+    if (fromIndex >= sectionBounds.length || toIndex >= sectionBounds.length) return
+
+    // Extract each section's lines (including any leading blank lines before content)
+    const sectionChunks = sectionBounds.map(b => bodyLines.slice(b.start, b.end))
+
+    // Also capture any lines before the first section (e.g. leading blank lines)
+    const preamble = sectionBounds.length > 0 ? bodyLines.slice(0, sectionBounds[0].start) : bodyLines
+
+    // Reorder
+    const moved = sectionChunks.splice(fromIndex, 1)[0]
+    sectionChunks.splice(toIndex, 0, moved)
+
+    const newBody = [...preamble, ...sectionChunks.flat()].join('\n')
+    onChange(`${frontmatter}\n${newBody}`)
+  }
+
+  const renameSection = (sectionId: string, oldTitle: string, newTitle: string) => {
+    if (!newTitle.trim() || newTitle === oldTitle) return
+
+    // Find and rename the heading in the markdown body
+    const lines = value.split('\n')
+    const firstDashIndex = lines.findIndex(l => l.trim() === '---')
+    const secondDashIndex = lines.findIndex((l, i) => i > firstDashIndex && l.trim() === '---')
+
+    if (secondDashIndex > 0) {
+      const frontmatter = lines.slice(0, secondDashIndex + 1).join('\n')
+      const bodyLines = lines.slice(secondDashIndex + 1)
+
+      const headerPattern = new RegExp(`^(#{1,2})\\s+${oldTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`)
+
+      const newBodyLines = bodyLines.map(line => {
+        const match = line.match(headerPattern)
+        if (match) {
+          return `${match[1]} ${newTitle.trim()}`
+        }
+        return line
+      })
+
+      onChange(`${frontmatter}\n${newBodyLines.join('\n')}`)
+    }
+  }
+
   const addSection = (title: string, type: string, position?: number) => {
     const sectionId = title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
 
@@ -600,19 +650,45 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
       setEditingSection(sectionId)
       setEditContent('')
     } else {
-      // This is a new custom section - add to body
-      const newSectionMarkdown = `# ${title}\n\nAdd content here...\n`
+      // This is a new custom section - add to body at the correct position
+      const newSectionMarkdown = `\n# ${title}\n\nAdd content here...\n`
 
-      // Append to body (after the frontmatter)
       const lines = value.split('\n')
       const firstDashIndex = lines.findIndex(l => l.trim() === '---')
       const secondDashIndex = lines.findIndex((l, i) => i > firstDashIndex && l.trim() === '---')
 
       if (secondDashIndex > 0) {
         const frontmatter = lines.slice(0, secondDashIndex + 1).join('\n')
-        const body = lines.slice(secondDashIndex + 1).join('\n')
-        const newValue = `${frontmatter}\n${body}\n\n${newSectionMarkdown}`
-        onChange(newValue)
+        const bodyLines = lines.slice(secondDashIndex + 1)
+
+        // Find the line index of each section heading in the body
+        const sectionLineIndices: number[] = []
+        for (let i = 0; i < bodyLines.length; i++) {
+          if (/^#{1,2}\s+/.test(bodyLines[i])) {
+            sectionLineIndices.push(i)
+          }
+        }
+
+        let insertAtLine: number
+        if (position === undefined || position === null || sectionLineIndices.length === 0) {
+          // No position or no sections - append at end
+          insertAtLine = bodyLines.length
+        } else if (position === 0) {
+          // Insert before the first section (or at start of body if no sections)
+          insertAtLine = sectionLineIndices.length > 0 ? sectionLineIndices[0] : 0
+        } else if (position >= sectionLineIndices.length) {
+          // Insert after the last section - append at end
+          insertAtLine = bodyLines.length
+        } else {
+          // Insert before the section at `position` index
+          insertAtLine = sectionLineIndices[position]
+        }
+
+        const before = bodyLines.slice(0, insertAtLine)
+        const after = bodyLines.slice(insertAtLine)
+        const newBody = [...before, newSectionMarkdown, ...after].join('\n')
+
+        onChange(`${frontmatter}\n${newBody}`)
       }
     }
   }
@@ -1656,20 +1732,19 @@ ${parsed.body.replace(/^\n+/, '')}`
     }
   }
 
+  // Only re-fetch inherited sections when the inherits field actually changes, not on every body edit
+  const inheritsFieldValue = parsed.frontmatter.inherits ?? ''
+
   // Fetch inherited template sections when inherits field changes
   useEffect(() => {
     const fetchInheritedSections = async () => {
-      // Parse value inside the effect to avoid render-time dependencies
-      const currentParsed = parsePrompd(value)
-      const inheritsValue = currentParsed.frontmatter.inherits
-
-      if (!inheritsValue) {
+      if (!inheritsFieldValue) {
         setInheritedSections([])
         setInheritedParams({})
         return
       }
 
-      const parsedInheritsValue = parseInheritsValue(inheritsValue)
+      const parsedInheritsValue = parseInheritsValue(inheritsFieldValue)
       if (!parsedInheritsValue) {
         setInheritedSections([])
         setInheritedParams({})
@@ -1800,7 +1875,7 @@ ${parsed.body.replace(/^\n+/, '')}`
     }
 
     fetchInheritedSections()
-  }, [value, workspaceHandle, currentFilePath])
+  }, [inheritsFieldValue, workspaceHandle, currentFilePath])
 
   // Debounced search for inherits
   useEffect(() => {
@@ -1853,6 +1928,25 @@ ${parsed.body.replace(/^\n+/, '')}`
           id: `param-${i}`,
           type: 'params',
           label: paramName,
+          depth: 1
+        })
+      })
+    }
+
+    // Context/specialty sections if any have files
+    const activeSections = specialtySections.filter(s => visibleSpecialtySections.has(s.name) && s.files.length > 0)
+    if (activeSections.length > 0) {
+      sections.push({
+        id: 'context-section',
+        type: 'context',
+        label: 'Context Sections',
+        depth: 0
+      })
+      activeSections.forEach((s) => {
+        sections.push({
+          id: `context-${s.name}`,
+          type: 'context',
+          label: `${s.label} (${s.files.length})`,
           depth: 1
         })
       })
@@ -1973,7 +2067,7 @@ ${parsed.body.replace(/^\n+/, '')}`
     }
 
     return sections
-  }, [editableParams, isXmlContent, parsed.body])
+  }, [editableParams, specialtySections, visibleSpecialtySections, isXmlContent, parsed.body])
 
   // Scroll to a section when clicked in minimap
   const scrollToSection = useCallback((sectionId: string) => {
@@ -2010,6 +2104,16 @@ ${parsed.body.replace(/^\n+/, '')}`
       return
     }
 
+    // Context sections — scroll to the context area (inside metadata)
+    if (sectionId === 'context-section' || sectionId.startsWith('context-')) {
+      const needsExpand = metadataCollapsed
+      if (needsExpand) {
+        setMetadataCollapsed(false)
+      }
+      scrollTo('[data-section="context"]', needsExpand ? 100 : 0)
+      return
+    }
+
     // For content-section, scroll to content
     if (sectionId === 'content-section') {
       scrollTo('[data-section="content"]', 0)
@@ -2035,9 +2139,20 @@ ${parsed.body.replace(/^\n+/, '')}`
       return
     }
 
-    // For headings, scroll to the content section
+    // For headings, find the actual heading element in the rendered content
     if (sectionId.startsWith('heading-')) {
-      scrollTo('[data-section="content"]', 0)
+      const index = parseInt(sectionId.replace('heading-', ''), 10)
+      if (!isNaN(index)) {
+        // In DesignView markdown mode, sections are rendered as ContentSections
+        // Look for section headers by data attribute or heading elements
+        const headings = container.querySelectorAll('[data-section="content"] h1, [data-section="content"] h2, [data-section="content"] h3, [data-section="content"] h4, [data-section="content"] h5, [data-section="content"] h6')
+        if (index < headings.length) {
+          headings[index].scrollIntoView({ behavior: 'smooth', block: 'start' })
+        } else {
+          scrollTo('[data-section="content"]', 0)
+        }
+      }
+      return
     }
   }, [metadataCollapsed])
 
@@ -2056,11 +2171,14 @@ ${parsed.body.replace(/^\n+/, '')}`
         height: '100%',
         overflow: 'auto',
         background: 'var(--panel)',
-        padding: '24px',
-        paddingRight: showMinimap && minimapSections.length > 0 ? '154px' : '24px'
+        paddingTop: 0,
+        paddingRight: showMinimap && minimapSections.length > 0 ? '154px' : (contentFullscreen ? '24px' : '24px'),
+        paddingBottom: contentFullscreen ? '16px' : '24px',
+        paddingLeft: contentFullscreen ? '24px' : '24px'
       }}
     >
-      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ maxWidth: contentFullscreen ? 'none' : '1200px', margin: '0 auto', paddingTop: contentFullscreen ? '16px' : '24px' }}>
+        {!contentFullscreen && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '16px' }}>
             <h2 style={{ margin: 0, fontSize: '20px', color: 'var(--text)' }}>
@@ -2090,9 +2208,10 @@ ${parsed.body.replace(/^\n+/, '')}`
             <MapIcon size={16} />
           </button>
         </div>
+        )}
 
         {/* Combined Metadata Section */}
-        <div
+        {!contentFullscreen && (<div
           data-section="metadata"
           style={{
             background: 'var(--bg)',
@@ -2102,9 +2221,8 @@ ${parsed.body.replace(/^\n+/, '')}`
             overflow: 'hidden'
           }}
         >
-          {/* Collapsible Header */}
+          {/* Header */}
           <div
-            onClick={() => setMetadataCollapsed(!metadataCollapsed)}
             style={{
               padding: '16px 20px',
               fontSize: '14px',
@@ -2112,49 +2230,107 @@ ${parsed.body.replace(/^\n+/, '')}`
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              cursor: 'pointer',
-              userSelect: 'none',
               borderBottom: metadataCollapsed ? 'none' : '1px solid var(--border)'
             }}
           >
-            <ChevronDown
-              size={16}
-              style={{
-                color: 'var(--text-secondary)',
-                transform: metadataCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                transition: 'transform 0.2s'
-              }}
-            />
             <Sparkles size={16} style={{ color: 'var(--accent)' }} />
             <span>Metadata</span>
-            {!metadataCollapsed && (
+            {metadataCollapsed && (
               <span style={{
                 fontSize: '12px',
                 color: 'var(--text-secondary)',
                 fontWeight: 400,
                 fontStyle: 'italic'
               }}>
-                Core identification and configuration for this prompt template
+                {metadata.name || metadata.id || 'Untitled'}
+                {metadata.version ? ` v${metadata.version}` : ''}
               </span>
             )}
-            {readOnly && (
-              <span style={{
-                marginLeft: 'auto',
-                padding: '4px 12px',
-                fontSize: '11px',
-                fontWeight: 600,
-                color: 'var(--accent)',
-                background: 'rgba(59, 130, 246, 0.1)',
-                border: '1px solid var(--accent)',
-                borderRadius: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}>
-                <Eye size={12} />
-                READ-ONLY REFERENCE
-              </span>
-            )}
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {readOnly && (
+                <span style={{
+                  padding: '4px 12px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: 'var(--accent)',
+                  background: 'rgba(59, 130, 246, 0.1)',
+                  border: '1px solid var(--accent)',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <Eye size={12} />
+                  READ-ONLY REFERENCE
+                </span>
+              )}
+              {metadataCollapsed ? (
+                <button
+                  onClick={() => !readOnly && setMetadataCollapsed(false)}
+                  disabled={readOnly}
+                  style={{
+                    padding: '4px 12px',
+                    fontSize: '11px',
+                    fontWeight: 500,
+                    background: 'transparent',
+                    color: 'var(--accent)',
+                    border: '1px solid var(--accent)',
+                    borderRadius: '4px',
+                    cursor: readOnly ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    opacity: readOnly ? 0.5 : 1,
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <Edit3 size={10} />
+                  Edit
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setMetadataCollapsed(true)}
+                    style={{
+                      padding: '4px 12px',
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      background: 'transparent',
+                      color: 'var(--text)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      regeneratePrompd()
+                      setMetadataCollapsed(true)
+                    }}
+                    style={{
+                      padding: '4px 12px',
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      background: 'var(--success)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <Check size={10} />
+                    Save
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Collapsed Summary View */}
@@ -2749,20 +2925,22 @@ ${parsed.body.replace(/^\n+/, '')}`
                 </div>
               )}
             </div>
-            <PrompdContextArea
-              sections={specialtySections.filter(s => visibleSpecialtySections.has(s.name))}
-              value={specialtyFileSections}
-              onChange={handleSpecialtyChange}
-              onSelectFromBrowser={onSelectFileFromBrowser}
-              onFileClick={onOpenFile ? openContextFile : undefined}
-              hasFolderOpen={!!workspaceHandle}
-              currentFilePath={currentFilePath}
-              workspacePath={((workspaceHandle as unknown) as { _electronPath?: string })?._electronPath}
-              variant="card"
-            />
+            <div data-section="context">
+              <PrompdContextArea
+                sections={specialtySections.filter(s => visibleSpecialtySections.has(s.name))}
+                value={specialtyFileSections}
+                onChange={handleSpecialtyChange}
+                onSelectFromBrowser={onSelectFileFromBrowser}
+                onFileClick={onOpenFile ? openContextFile : undefined}
+                hasFolderOpen={!!workspaceHandle}
+                currentFilePath={currentFilePath}
+                workspacePath={((workspaceHandle as unknown) as { _electronPath?: string })?._electronPath}
+                variant="card"
+              />
+            </div>
           </div>
           </div>)}
-        </div>
+        </div>)}
 
         {/* Content Body - XML Design View or Markdown Sections */}
         {isXmlContent ? (
@@ -2777,305 +2955,31 @@ ${parsed.body.replace(/^\n+/, '')}`
           </div>
         ) : (
           /* Sections List (Markdown content) */
-          <div
-            data-section="content"
-            style={{
-              padding: '20px',
-              background: 'var(--bg)',
-              border: '1px solid var(--border)',
-              borderRadius: '8px',
-              marginBottom: '24px'
-            }}
-          >
-            <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <FileText size={16} style={{ color: 'var(--accent)' }} />
-              Content Sections
-              <span style={{ fontSize: '11px', fontWeight: 400, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-                Main prompt sections with inherited content and overrides
-              </span>
-              <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-secondary)', marginLeft: 'auto' }}>
-                {allDisplaySections.length} section{allDisplaySections.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {/* SectionAdder at the top */}
-              <SectionAdder
-                onAdd={(title, type) => addSection(title, type, 0)}
-              suggestions={availableSections}
-            />
-
-            {/* Render sections with SectionAdder between each */}
-            {allDisplaySections.map((section, index) => {
-              const isHidden = sectionOverrides[section.id] === null
-              const isOverridden = sectionOverrides[section.id] !== undefined && sectionOverrides[section.id] !== null
-              const isEditing = editingSection === section.id
-              const displayContent = sectionOverrides[section.id] ?? section.content
-
-              return (
-                <React.Fragment key={section.id}>
-                  <div
-                    style={{
-                      padding: '16px',
-                      background: 'var(--panel)',
-                      border: `2px solid ${isOverridden ? 'var(--warning)' : isHidden ? 'var(--muted)' : 'var(--border)'}`,
-                      borderRadius: '8px',
-                      opacity: isHidden ? 0.6 : 1
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: isEditing ? '12px' : '8px' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)' }}>
-                          {section.title}
-                        </div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                          {isHidden ? 'Hidden' : isOverridden ? 'Modified' : 'Original'}
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        {!isEditing && (
-                          <>
-                            <button
-                              onClick={() => startEditing(section)}
-                              disabled={isHidden}
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '10px',
-                                background: 'transparent',
-                                color: 'var(--accent)',
-                                border: '1px solid var(--accent)',
-                                borderRadius: '4px',
-                                cursor: isHidden ? 'not-allowed' : 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                opacity: isHidden ? 0.5 : 1,
-                                transition: 'all 0.2s'
-                              }}
-                              onMouseEnter={(e) => {
-                                if (!isHidden) {
-                                  e.currentTarget.style.background = 'var(--accent)'
-                                  e.currentTarget.style.color = 'white'
-                                }
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!isHidden) {
-                                  e.currentTarget.style.background = 'transparent'
-                                  e.currentTarget.style.color = 'var(--accent)'
-                                }
-                              }}
-                            >
-                              <Edit3 size={10} />
-                              Edit
-                            </button>
-                            {/* Show Delete button for local sections without inheritance, Hide button otherwise */}
-                            {section.isLocal && !hasInheritance ? (
-                              <button
-                                onClick={() => deleteSection(section.id, section.title)}
-                                style={{
-                                  padding: '4px 8px',
-                                  fontSize: '10px',
-                                  background: 'transparent',
-                                  color: 'var(--error)',
-                                  border: '1px solid var(--error)',
-                                  borderRadius: '4px',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  transition: 'all 0.2s'
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = 'var(--error)'
-                                  e.currentTarget.style.color = 'white'
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = 'transparent'
-                                  e.currentTarget.style.color = 'var(--error)'
-                                }}
-                                title="Delete section"
-                              >
-                                <Trash2 size={10} />
-                                Delete
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => toggleSectionVisibility(section.id)}
-                                style={{
-                                  padding: '4px 8px',
-                                  fontSize: '10px',
-                                  background: isHidden ? 'var(--success)' : 'transparent',
-                                  color: isHidden ? 'white' : 'var(--text-secondary)',
-                                  border: `1px solid ${isHidden ? 'var(--success)' : 'var(--text-secondary)'}`,
-                                  borderRadius: '4px',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  transition: 'all 0.2s'
-                                }}
-                                onMouseEnter={(e) => {
-                                  if (!isHidden) {
-                                    e.currentTarget.style.background = 'var(--text-secondary)'
-                                    e.currentTarget.style.color = 'white'
-                                  }
-                                }}
-                                onMouseLeave={(e) => {
-                                  if (!isHidden) {
-                                    e.currentTarget.style.background = 'transparent'
-                                    e.currentTarget.style.color = 'var(--text-secondary)'
-                                  }
-                                }}
-                                title={isHidden ? 'Show section' : 'Hide section'}
-                              >
-                                {isHidden ? <Eye size={10} /> : <EyeOff size={10} />}
-                              </button>
-                            )}
-                            {isOverridden && (
-                              <button
-                                onClick={() => resetSection(section.id)}
-                                style={{
-                                  padding: '4px 8px',
-                                  fontSize: '10px',
-                                  background: 'transparent',
-                                  color: 'var(--error)',
-                                  border: '1px solid var(--error)',
-                                  borderRadius: '4px',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  transition: 'all 0.2s'
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = 'var(--error)'
-                                  e.currentTarget.style.color = 'white'
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = 'transparent'
-                                  e.currentTarget.style.color = 'var(--error)'
-                                }}
-                                title="Reset to original"
-                              >
-                                <X size={10} />
-                                Reset
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {isEditing ? (
-                      <div>
-                        <div style={{
-                          border: '1px solid var(--border)',
-                          borderRadius: '6px',
-                          overflow: 'hidden',
-                          marginBottom: '8px'
-                        }}>
-                          <Editor
-                            height="200px"
-                            language="markdown"
-                            value={editContent}
-                            onChange={(value) => setEditContent(value || '')}
-                            beforeMount={beforeMount}
-                            theme={theme === 'dark' ? 'prompd-dark' : 'prompd-light'}
-                            options={{
-                              minimap: { enabled: false },
-                              lineNumbers: 'on',
-                              wordWrap: 'on',
-                              scrollBeyondLastLine: false,
-                              fontSize: 13,
-                              fontFamily: 'monospace',
-                              automaticLayout: true,
-                              padding: { top: 8, bottom: 8 }
-                            }}
-                          />
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                          <button
-                            onClick={cancelEditing}
-                            style={{
-                              padding: '6px 12px',
-                              fontSize: '12px',
-                              background: 'transparent',
-                              color: 'var(--text)',
-                              border: '1px solid var(--border)',
-                              borderRadius: '6px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={() => saveSection(section.id)}
-                            style={{
-                              padding: '6px 12px',
-                              fontSize: '12px',
-                              background: 'var(--success)',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}
-                          >
-                            <Check size={12} />
-                            Save Changes
-                          </button>
-                        </div>
-                      </div>
-                    ) : !isHidden && (
-                      <div
-                        onDoubleClick={() => !readOnly && startEditing(section)}
-                        style={{
-                          marginTop: '8px',
-                          background: 'var(--panel-2)',
-                          borderRadius: '6px',
-                          border: '1px solid var(--border)',
-                          cursor: readOnly ? 'default' : 'pointer',
-                          position: 'relative',
-                          overflow: 'hidden'
-                        }}
-                        title={readOnly ? undefined : 'Double-click to edit'}
-                      >
-                        {displayContent.trim() ? (
-                          <div style={{ padding: '8px 12px' }}>
-                            <MarkdownPreview
-                              content={displayContent}
-                              theme={theme}
-                              height="auto"
-                            />
-                          </div>
-                        ) : (
-                          <div style={{
-                            padding: '24px 12px',
-                            fontSize: '12px',
-                            color: 'var(--text-muted)',
-                            fontStyle: 'italic',
-                            textAlign: 'center'
-                          }}>
-                            Empty section - {readOnly ? '' : 'double-click to add content'}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* SectionAdder after each section */}
-                  <SectionAdder
-                    onAdd={(title, type) => addSection(title, type, index + 1)}
-                    suggestions={availableSections}
-                  />
-                </React.Fragment>
-              )
-            })}
-            </div>
-          </div>
+          <ContentSections
+            sections={allDisplaySections}
+            sectionOverrides={sectionOverrides}
+            body={parsed.body}
+            editingSection={editingSection}
+            editContent={editContent}
+            hasInheritance={hasInheritance}
+            availableSections={availableSections}
+            readOnly={readOnly || false}
+            theme={theme || 'dark'}
+            fullscreen={contentFullscreen}
+            onToggleFullscreen={() => setContentFullscreen(f => !f)}
+            onStartEditing={startEditing}
+            onCancelEditing={cancelEditing}
+            onSaveSection={saveSection}
+            onEditContentChange={setEditContent}
+            onAddSection={addSection}
+            onDeleteSection={deleteSection}
+            onRenameSection={renameSection}
+            onReorderSections={reorderSections}
+            onToggleVisibility={toggleSectionVisibility}
+            onResetSection={resetSection}
+            onBodyChange={handleBodyChange}
+            variables={editableParams}
+          />
         )}
 
         {/* Parameters Modal */}

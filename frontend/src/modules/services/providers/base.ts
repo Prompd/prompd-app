@@ -98,6 +98,11 @@ export class OpenAICompatibleProvider extends BaseProvider {
     const startTime = Date.now()
 
     try {
+      // Use the Responses API for image generation (OpenAI only, not other compatible providers)
+      if (request.enableImageGeneration && this.name === 'openai') {
+        return await this.executeWithResponses(request, startTime)
+      }
+
       const messages: Array<{ role: string; content: string }> = []
 
       // For JSON mode, ensure "json" appears in the system prompt (OpenAI requirement)
@@ -146,7 +151,22 @@ export class OpenAICompatibleProvider extends BaseProvider {
       const data = await response.json()
       const duration = Date.now() - startTime
 
-      const content = data.choices?.[0]?.message?.content || ''
+      // Handle both string responses and multimodal content arrays
+      // Models like GPT-4o can return image content blocks alongside text
+      let content = ''
+      const messageContent = data.choices?.[0]?.message?.content
+      if (typeof messageContent === 'string') {
+        content = messageContent
+      } else if (Array.isArray(messageContent)) {
+        for (const block of messageContent) {
+          if (block.type === 'text') {
+            content += block.text || ''
+          } else if (block.type === 'image_url' && block.image_url?.url) {
+            content += `\n\n![generated image](${block.image_url.url})\n\n`
+          }
+        }
+      }
+
       const usage: TokenUsage = {
         promptTokens: data.usage?.prompt_tokens || 0,
         completionTokens: data.usage?.completion_tokens || 0,
@@ -258,6 +278,77 @@ export class OpenAICompatibleProvider extends BaseProvider {
 
     yield { content: '', done: true, usage: totalUsage }
   }
+
+  /**
+   * Execute using OpenAI's Responses API for image generation
+   * Uses POST /v1/responses with tools: [{"type": "image_generation"}]
+   */
+  private async executeWithResponses(request: ExecutionRequest, startTime: number): Promise<ExecutionResult> {
+    const input: Array<Record<string, unknown>> = []
+
+    if (request.systemPrompt) {
+      input.push({ role: 'developer', content: request.systemPrompt })
+    }
+    input.push({ role: 'user', content: request.prompt })
+
+    const body: Record<string, unknown> = {
+      model: request.model,
+      input,
+      tools: [{ type: 'image_generation' }]
+    }
+
+    if (request.maxTokens) {
+      body.max_output_tokens = request.maxTokens
+    }
+    if (request.temperature !== undefined) {
+      body.temperature = request.temperature
+    }
+
+    const response = await electronFetch(`${this.baseUrl}/responses`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${request.apiKey}`
+      },
+      body: JSON.stringify(body)
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      const errorMessage = errorData.error?.message || `HTTP ${response.status}: ${response.statusText}`
+      return this.createErrorResult(errorMessage, Date.now() - startTime)
+    }
+
+    const data = await response.json()
+    const duration = Date.now() - startTime
+
+    // Parse the Responses API output format
+    // Output is an array of items: message (text), image_generation_call (images)
+    let content = ''
+    const outputItems = data.output || []
+    for (const item of outputItems) {
+      if (item.type === 'message') {
+        // Text content from the model
+        const parts = item.content || []
+        for (const part of parts) {
+          if (part.type === 'output_text') {
+            content += part.text || ''
+          }
+        }
+      } else if (item.type === 'image_generation_call' && item.result) {
+        // Base64 image data from image generation
+        content += `\n\n![generated image](data:image/png;base64,${item.result})\n\n`
+      }
+    }
+
+    const usage: TokenUsage = {
+      promptTokens: data.usage?.input_tokens || 0,
+      completionTokens: data.usage?.output_tokens || 0,
+      totalTokens: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0)
+    }
+
+    return this.createSuccessResult(content, usage, duration)
+  }
 }
 
 /**
@@ -321,6 +412,7 @@ export class AnthropicProvider extends BaseProvider {
 
       // Anthropic returns content as an array of blocks
       // With thinking mode, there may be thinking blocks followed by text blocks
+      // Image blocks (from multimodal responses) are converted to markdown syntax
       let content = ''
       if (data.content && Array.isArray(data.content)) {
         for (const block of data.content) {
@@ -329,6 +421,9 @@ export class AnthropicProvider extends BaseProvider {
           } else if (block.type === 'thinking') {
             // Include thinking content (summarized in Claude 4)
             content += block.thinking || ''
+          } else if (block.type === 'image' && block.source?.data) {
+            const mimeType = block.source.media_type || 'image/png'
+            content += `\n\n![generated image](data:${mimeType};base64,${block.source.data})\n\n`
           }
         }
       }
@@ -490,6 +585,10 @@ export class GoogleGeminiProvider extends BaseProvider {
       if (request.temperature !== undefined) {
         generationConfig.temperature = request.temperature
       }
+      // Enable image output modality for models that support it
+      if (request.enableImageGeneration) {
+        generationConfig.responseModalities = ['TEXT', 'IMAGE']
+      }
       if (Object.keys(generationConfig).length > 0) {
         body.generationConfig = generationConfig
       }
@@ -513,8 +612,18 @@ export class GoogleGeminiProvider extends BaseProvider {
       const data = await response.json()
       const duration = Date.now() - startTime
 
-      // Extract text from candidates
-      const content = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+      // Extract text and images from candidates
+      // Gemini returns content as parts array which can contain text and inline_data
+      let content = ''
+      const parts = data.candidates?.[0]?.content?.parts || []
+      for (const part of parts) {
+        if (part.text) {
+          content += part.text
+        } else if (part.inline_data?.data) {
+          const mimeType = part.inline_data.mime_type || 'image/png'
+          content += `\n\n![generated image](data:${mimeType};base64,${part.inline_data.data})\n\n`
+        }
+      }
       const usageMetadata = data.usageMetadata || {}
       const usage: TokenUsage = {
         promptTokens: usageMetadata.promptTokenCount || 0,
@@ -551,6 +660,10 @@ export class GoogleGeminiProvider extends BaseProvider {
     }
     if (request.temperature !== undefined) {
       generationConfig.temperature = request.temperature
+    }
+    // Enable image output modality for models that support it
+    if (request.enableImageGeneration) {
+      generationConfig.responseModalities = ['TEXT', 'IMAGE']
     }
     if (Object.keys(generationConfig).length > 0) {
       body.generationConfig = generationConfig
@@ -596,7 +709,17 @@ export class GoogleGeminiProvider extends BaseProvider {
 
           try {
             const json = JSON.parse(trimmed.slice(6))
-            const text = json.candidates?.[0]?.content?.parts?.[0]?.text || ''
+            // Handle both text and image parts in streamed chunks
+            const parts = json.candidates?.[0]?.content?.parts || []
+            let chunkContent = ''
+            for (const part of parts) {
+              if (part.text) {
+                chunkContent += part.text
+              } else if (part.inline_data?.data) {
+                const mimeType = part.inline_data.mime_type || 'image/png'
+                chunkContent += `\n\n![generated image](data:${mimeType};base64,${part.inline_data.data})\n\n`
+              }
+            }
 
             if (json.usageMetadata) {
               totalUsage = {
@@ -606,8 +729,8 @@ export class GoogleGeminiProvider extends BaseProvider {
               }
             }
 
-            if (text) {
-              yield { content: text, done: false }
+            if (chunkContent) {
+              yield { content: chunkContent, done: false }
             }
           } catch {
             // Skip invalid JSON

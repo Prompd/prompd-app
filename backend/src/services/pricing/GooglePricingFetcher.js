@@ -61,6 +61,17 @@ export class GooglePricingFetcher extends BasePricingFetcher {
     }
   }
 
+  /**
+   * Google: Gemini 2.0+ models support native image generation,
+   * except "lite" variants which are text-only output.
+   * Gemini 1.x models do not support image generation.
+   */
+  inferImageGenerationSupport(modelId) {
+    if (modelId.includes('lite')) return false
+    if (modelId.startsWith('gemini-2') || modelId.startsWith('gemini-3')) return true
+    return false
+  }
+
   getDefaultPricing() {
     // Pricing as of February 2026 - https://ai.google.dev/gemini-api/docs/pricing
     return [

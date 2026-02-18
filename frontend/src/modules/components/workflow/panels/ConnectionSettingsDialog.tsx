@@ -9,6 +9,7 @@ import type {
   WorkflowConnection,
   WorkflowConnectionType,
   WorkflowConnectionConfig,
+  ConnectionScope,
   SSHConnectionConfig,
   DatabaseConnectionConfig,
   HttpApiConnectionConfig,
@@ -207,13 +208,17 @@ async function testConnection(connection: WorkflowConnection): Promise<{ success
         // Use Electron IPC to test database
         if (window.electronAPI?.testDatabaseConnection) {
           const dbConfig = config as DatabaseConnectionConfig
-          if (!dbConfig.host) {
-            return { success: false, message: 'Host is required' }
+          if (dbConfig.dbType !== 'sqlite' && !dbConfig.host && !dbConfig.connectionString) {
+            return { success: false, message: 'Host or connection string is required' }
+          }
+          if (dbConfig.dbType === 'sqlite' && !dbConfig.database) {
+            return { success: false, message: 'Database file path is required' }
           }
           const result = await window.electronAPI.testDatabaseConnection({
-            host: dbConfig.host,
+            host: dbConfig.host || '',
             port: dbConfig.port,
-            type: dbConfig.type,
+            type: dbConfig.dbType,
+            connectionString: dbConfig.connectionString,
           })
           return result
         }
@@ -221,16 +226,27 @@ async function testConnection(connection: WorkflowConnection): Promise<{ success
       }
 
       case 'mcp-server': {
-        // Use Electron IPC to test MCP server
-        if (window.electronAPI?.testMCPConnection) {
+        // Use MCP service testConnection (tests without persisting config)
+        if (window.electronAPI?.mcp?.testConnection) {
           const mcpConfig = config as McpServerConnectionConfig
-          if (!mcpConfig.serverUrl) {
-            return { success: false, message: 'Server URL is required' }
+          const serverName = mcpConfig.serverName || connection.name
+          if (!mcpConfig.command && !mcpConfig.serverUrl) {
+            return { success: false, message: 'Server command or URL is required' }
           }
-          const result = await window.electronAPI.testMCPConnection({
+          // Map connection transport to MCP config transport (exclude 'websocket' — not supported by MCP SDK)
+          const mcpTransport = mcpConfig.transport === 'websocket' ? 'streamable-http' : mcpConfig.transport
+          const result = await window.electronAPI.mcp.testConnection(serverName, {
+            command: mcpConfig.command,
+            args: mcpConfig.args,
             serverUrl: mcpConfig.serverUrl,
+            transport: mcpTransport,
+            env: mcpConfig.env,
           })
-          return result
+          if (result.success) {
+            const toolCount = result.tools?.length || 0
+            return { success: true, message: `Connected - ${toolCount} tool${toolCount !== 1 ? 's' : ''} discovered` }
+          }
+          return { success: false, message: result.error || 'Connection failed' }
         }
         return { success: false, message: 'MCP testing requires the desktop app' }
       }
@@ -331,14 +347,50 @@ function SSHConfigForm({ config, onChange }: ConfigFormProps<SSHConnectionConfig
   )
 }
 
+/** Default ports per database type */
+const DB_DEFAULT_PORTS: Record<string, number> = {
+  postgresql: 5432,
+  mysql: 3306,
+  mongodb: 27017,
+  redis: 6379,
+}
+
+const DB_USERNAME_PLACEHOLDER: Record<string, string> = {
+  postgresql: 'postgres',
+  mysql: 'root',
+  mongodb: 'admin',
+  redis: '(optional)',
+}
+
 function DatabaseConfigForm({ config, onChange }: ConfigFormProps<DatabaseConnectionConfig>) {
+  const dbType = config.dbType || 'postgresql'
+  const isNetworkDb = dbType !== 'sqlite'
+  const showConnectionString = dbType === 'mongodb'
+  const showDatabase = dbType !== 'redis'
+
+  const handleDbTypeChange = (newType: DatabaseConnectionConfig['dbType']) => {
+    const base: Partial<DatabaseConnectionConfig> = {
+      type: 'database',
+      dbType: newType,
+      database: newType === 'sqlite' ? '' : config.database || '',
+    }
+    if (newType !== 'sqlite') {
+      base.host = config.host || ''
+      base.port = undefined
+    }
+    if (newType === 'mongodb') {
+      base.connectionString = config.connectionString || ''
+    }
+    onChange(base)
+  }
+
   return (
     <>
       <div style={{ marginBottom: '12px' }}>
         <label style={labelStyle}>Database Type</label>
         <select
-          value={config.dbType || 'postgresql'}
-          onChange={(e) => onChange({ ...config, dbType: e.target.value as DatabaseConnectionConfig['dbType'] })}
+          value={dbType}
+          onChange={(e) => handleDbTypeChange(e.target.value as DatabaseConnectionConfig['dbType'])}
           style={selectStyle}
         >
           <option value="postgresql">PostgreSQL</option>
@@ -348,46 +400,137 @@ function DatabaseConfigForm({ config, onChange }: ConfigFormProps<DatabaseConnec
           <option value="sqlite">SQLite</option>
         </select>
       </div>
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
-        <div style={{ flex: 2 }}>
-          <label style={labelStyle}>Host</label>
+
+      {/* MongoDB: connection string */}
+      {showConnectionString && (
+        <div style={{ marginBottom: '12px' }}>
+          <label style={labelStyle}>Connection String (optional)</label>
           <input
             type="text"
-            value={config.host || ''}
-            onChange={(e) => onChange({ ...config, host: e.target.value })}
-            style={inputStyle}
+            value={config.connectionString || ''}
+            onChange={(e) => onChange({ ...config, connectionString: e.target.value })}
+            placeholder="mongodb+srv://user:pass@cluster.example.net/mydb"
+            style={{ ...inputStyle, fontFamily: 'monospace', fontSize: '12px' }}
           />
+          <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+            If provided, host/port/database fields below are ignored.
+          </div>
         </div>
-        <div style={{ flex: 1 }}>
-          <label style={labelStyle}>Port</label>
-          <input
-            type="number"
-            value={config.port || ''}
-            onChange={(e) => onChange({ ...config, port: parseInt(e.target.value) || undefined })}
-            style={inputStyle}
-          />
+      )}
+
+      {/* Network databases: host + port */}
+      {isNetworkDb && (
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+          <div style={{ flex: 2 }}>
+            <label style={labelStyle}>Host</label>
+            <input
+              type="text"
+              value={config.host || ''}
+              onChange={(e) => onChange({ ...config, host: e.target.value })}
+              placeholder="localhost"
+              style={inputStyle}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Port</label>
+            <input
+              type="number"
+              value={config.port || ''}
+              onChange={(e) => onChange({ ...config, port: parseInt(e.target.value) || undefined })}
+              placeholder={String(DB_DEFAULT_PORTS[dbType] || 5432)}
+              style={inputStyle}
+            />
+          </div>
         </div>
-      </div>
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
-        <div style={{ flex: 1 }}>
-          <label style={labelStyle}>Database</label>
+      )}
+
+      {/* Database name + username (not for Redis or SQLite) */}
+      {isNetworkDb && showDatabase && (
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Database</label>
+            <input
+              type="text"
+              value={config.database || ''}
+              onChange={(e) => onChange({ ...config, database: e.target.value })}
+              placeholder={dbType === 'mongodb' ? 'mydb' : dbType === 'mysql' ? 'mydb' : 'postgres'}
+              style={inputStyle}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Username</label>
+            <input
+              type="text"
+              value={config.username || ''}
+              onChange={(e) => onChange({ ...config, username: e.target.value })}
+              placeholder={DB_USERNAME_PLACEHOLDER[dbType] || 'user'}
+              style={inputStyle}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Redis: database number + optional username */}
+      {dbType === 'redis' && (
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Database Number</label>
+            <input
+              type="number"
+              min={0}
+              max={15}
+              value={config.database || '0'}
+              onChange={(e) => onChange({ ...config, database: e.target.value })}
+              placeholder="0"
+              style={inputStyle}
+            />
+            <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+              Redis databases are numbered 0-15
+            </div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Username (ACL)</label>
+            <input
+              type="text"
+              value={config.username || ''}
+              onChange={(e) => onChange({ ...config, username: e.target.value })}
+              placeholder="default"
+              style={inputStyle}
+            />
+            <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+              Only needed if Redis ACL is enabled
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SQLite: file path only */}
+      {dbType === 'sqlite' && (
+        <div style={{ marginBottom: '12px' }}>
+          <label style={labelStyle}>Database File Path</label>
           <input
             type="text"
             value={config.database || ''}
             onChange={(e) => onChange({ ...config, database: e.target.value })}
+            placeholder="./data/mydb.sqlite"
             style={inputStyle}
           />
         </div>
-        <div style={{ flex: 1 }}>
-          <label style={labelStyle}>Username</label>
-          <input
-            type="text"
-            value={config.username || ''}
-            onChange={(e) => onChange({ ...config, username: e.target.value })}
-            style={inputStyle}
-          />
+      )}
+
+      {/* SSL (network databases, not Redis) */}
+      {isNetworkDb && dbType !== 'redis' && (
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input
+              type="checkbox"
+              checked={config.ssl || false}
+              onChange={(e) => onChange({ ...config, ssl: e.target.checked })}
+            />
+            Use SSL
+          </label>
         </div>
-      </div>
+      )}
     </>
   )
 }
@@ -461,6 +604,7 @@ function WebSearchConfigForm({ config, onChange }: ConfigFormProps<WebSearchConn
 
 export function ConnectionSettingsDialog({ connection, onClose }: ConnectionSettingsDialogProps) {
   const [name, setName] = useState(connection.name)
+  const [scope, setScope] = useState<ConnectionScope>(connection.scope || 'workspace')
   const [config, setConfig] = useState<WorkflowConnectionConfig>(connection.config)
   const [testStatus, setTestStatus] = useState<TestStatus>('idle')
   const [testMessage, setTestMessage] = useState('')
@@ -476,10 +620,11 @@ export function ConnectionSettingsDialog({ connection, onClose }: ConnectionSett
   const handleSave = useCallback(() => {
     updateConnection(connection.id, {
       name: name.trim(),
+      scope,
       config,
     })
     onClose()
-  }, [connection.id, name, config, updateConnection, onClose])
+  }, [connection.id, name, scope, config, updateConnection, onClose])
 
   const handleTest = useCallback(async () => {
     setTestStatus('testing')
@@ -576,6 +721,57 @@ export function ConnectionSettingsDialog({ connection, onClose }: ConnectionSett
               onChange={(e) => setName(e.target.value)}
               style={inputStyle}
             />
+          </div>
+
+          {/* Scope toggle */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>Save Location</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setScope('workspace')}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: `1px solid ${scope === 'workspace' ? 'var(--accent)' : 'var(--border)'}`,
+                  background: scope === 'workspace' ? 'color-mix(in srgb, var(--accent) 10%, var(--bg))' : 'var(--bg)',
+                  color: scope === 'workspace' ? 'var(--accent)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: scope === 'workspace' ? 600 : 400,
+                  textAlign: 'left',
+                  transition: 'all 0.15s',
+                }}
+              >
+                <div>Workspace</div>
+                <div style={{ fontSize: '10px', fontWeight: 400, marginTop: '2px', opacity: 0.7 }}>
+                  .prompd/connections.json
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setScope('global')}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: `1px solid ${scope === 'global' ? 'var(--accent)' : 'var(--border)'}`,
+                  background: scope === 'global' ? 'color-mix(in srgb, var(--accent) 10%, var(--bg))' : 'var(--bg)',
+                  color: scope === 'global' ? 'var(--accent)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: scope === 'global' ? 600 : 400,
+                  textAlign: 'left',
+                  transition: 'all 0.15s',
+                }}
+              >
+                <div>Global</div>
+                <div style={{ fontSize: '10px', fontWeight: 400, marginTop: '2px', opacity: 0.7 }}>
+                  ~/.prompd/connections.json
+                </div>
+              </button>
+            </div>
           </div>
 
           {/* Config Form */}

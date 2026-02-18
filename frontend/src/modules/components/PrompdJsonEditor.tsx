@@ -7,8 +7,10 @@ interface PrompdJsonConfig {
   description?: string
   author?: string
   version?: string
+  type?: 'package' | 'workflow' | 'skill'
   ignore?: string[]
   dependencies?: Record<string, string>
+  mcps?: string[]
   registry?: string
   [key: string]: unknown
 }
