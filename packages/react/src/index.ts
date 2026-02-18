@@ -88,6 +88,9 @@ export {
   type ModelPricingEntry
 } from './constants/pricing'
 
+// Compaction
+export * from './compaction'
+
 // Utils
 export { highlightPrompd, SYNTAX_COLORS } from './utils/syntax-highlighter'
 export { PackageCache, packageCache, type PackageCacheOptions, type Prompt, type PackageFile } from './utils/PackageCache'

@@ -20,7 +20,7 @@ interface PrompdJsonConfig {
   author?: string
   version?: string
   type?: 'package' | 'workflow' | 'skill'  // Package type (skill requires MCP servers)
-  tags?: string[]  // Searchable tags for categorization
+  keywords?: string[]  // Searchable keywords for categorization
   main?: string  // Main .prmd file entry point
   files?: string[]  // Files to include in package
   readme?: string
@@ -650,15 +650,15 @@ export default function PrompdJsonDesignView({ value, onChange, theme = 'dark', 
                 marginBottom: '8px'
               }}>
                 <Tag size={14} style={{ color: colors.primary }} />
-                Tags
+                Keywords
                 <span style={{ fontSize: '12px', fontWeight: 400, color: colors.textSecondary }}>
                   (for search and categorization)
                 </span>
               </label>
               <TagInput
-                tags={config.tags || []}
-                onChange={(tags) => updateConfig({ tags })}
-                placeholder="Add tags (press Enter or comma to add)"
+                tags={config.keywords || []}
+                onChange={(keywords) => updateConfig({ keywords })}
+                placeholder="Add keywords (press Enter or comma to add)"
                 disabled={readOnly}
                 theme={theme}
               />

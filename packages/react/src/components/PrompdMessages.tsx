@@ -6,108 +6,179 @@ import { PrompdPackageSuggestionMessage } from './PrompdPackageSuggestionMessage
 import { PrompdExecutionResult as PrompdExecutionResultComponent } from './PrompdExecutionResult'
 import { MarkdownChatMessage } from './MarkdownChatMessage'
 
-// Compact stacked diff view for edit_file operations in chat history
-function EditDiffPreview({ edits }: { edits: Array<{ search: string; replace: string }> }) {
-  const maxEditsToShow = 3
+// Side-by-side diff view for edit_file operations in chat history
+function SideBySideDiff({ edits, path }: { edits: Array<{ search: string; replace: string }>; path?: string }) {
+  const maxEditsToShow = 5
   const visibleEdits = edits.slice(0, maxEditsToShow)
   const remainingCount = edits.length - maxEditsToShow
 
+  // Split content into lines for display, truncate long content
+  const prepareLines = (text: string, maxLines: number = 20) => {
+    const lines = text.split('\n')
+    const truncated = lines.length > maxLines
+    return { lines: lines.slice(0, maxLines), truncated, totalLines: lines.length }
+  }
+
   return (
     <div style={{
-      background: 'var(--prompd-panel)',
       borderRadius: '6px',
-      padding: '10px',
-      fontFamily: 'ui-monospace, monospace',
-      fontSize: '11px',
       overflow: 'auto',
-      maxHeight: '300px'
+      maxHeight: '400px',
+      fontFamily: 'ui-monospace, monospace',
+      fontSize: '11px'
     }}>
-      {visibleEdits.map((edit, idx) => (
-        <div key={idx} style={{ marginBottom: idx < visibleEdits.length - 1 ? '12px' : 0 }}>
-          {edits.length > 1 && (
-            <div style={{
-              fontSize: '10px',
-              color: 'var(--prompd-muted)',
-              marginBottom: '6px',
-              fontWeight: 500
-            }}>
-              Change {idx + 1} of {edits.length}
-            </div>
-          )}
-
-          {/* Remove section */}
-          <div style={{
-            background: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            borderRadius: '4px',
-            padding: '6px 8px',
-            marginBottom: '4px'
-          }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              marginBottom: '4px',
-              color: '#ef4444',
-              fontSize: '10px',
-              fontWeight: 500
-            }}>
-              <Minus size={10} />
-              Remove
-            </div>
-            <pre style={{
-              margin: 0,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              color: '#fca5a5',
-              fontSize: '11px',
-              maxHeight: '80px',
-              overflow: 'hidden'
-            }}>
-              {edit.search.length > 200 ? edit.search.slice(0, 200) + '...' : edit.search}
-            </pre>
-          </div>
-
-          {/* Add section */}
-          <div style={{
-            background: 'rgba(34, 197, 94, 0.1)',
-            border: '1px solid rgba(34, 197, 94, 0.3)',
-            borderRadius: '4px',
-            padding: '6px 8px'
-          }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              marginBottom: '4px',
-              color: '#22c55e',
-              fontSize: '10px',
-              fontWeight: 500
-            }}>
-              <Plus size={10} />
-              Add
-            </div>
-            <pre style={{
-              margin: 0,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              color: '#86efac',
-              fontSize: '11px',
-              maxHeight: '80px',
-              overflow: 'hidden'
-            }}>
-              {edit.replace.length > 200 ? edit.replace.slice(0, 200) + '...' : edit.replace}
-            </pre>
-          </div>
+      {path && (
+        <div style={{
+          padding: '6px 10px',
+          fontSize: '11px',
+          color: 'var(--prompd-muted)',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          background: 'var(--prompd-panel)'
+        }}>
+          {path}
         </div>
-      ))}
+      )}
+      {visibleEdits.map((edit, idx) => {
+        const oldLines = prepareLines(edit.search)
+        const newLines = prepareLines(edit.replace)
+
+        return (
+          <div key={idx} style={{ marginBottom: idx < visibleEdits.length - 1 ? '2px' : 0 }}>
+            {edits.length > 1 && (
+              <div style={{
+                fontSize: '10px',
+                color: 'var(--prompd-muted)',
+                padding: '4px 10px',
+                background: 'var(--prompd-panel)',
+                fontWeight: 500
+              }}>
+                Change {idx + 1} of {edits.length}
+              </div>
+            )}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '1px',
+              background: 'rgba(255,255,255,0.06)'
+            }}>
+              {/* Left: old content (removed) */}
+              <div style={{
+                background: 'rgba(239, 68, 68, 0.08)',
+                padding: '8px',
+                minWidth: 0
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  marginBottom: '6px',
+                  color: '#ef4444',
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}>
+                  <Minus size={10} />
+                  Removed
+                </div>
+                <div style={{ overflow: 'hidden' }}>
+                  {oldLines.lines.map((line, i) => (
+                    <div key={i} style={{
+                      display: 'flex',
+                      gap: '8px',
+                      lineHeight: '18px'
+                    }}>
+                      <span style={{
+                        color: 'rgba(239, 68, 68, 0.4)',
+                        userSelect: 'none',
+                        minWidth: '20px',
+                        textAlign: 'right',
+                        flexShrink: 0,
+                        fontSize: '10px',
+                        lineHeight: '18px'
+                      }}>{i + 1}</span>
+                      <pre style={{
+                        margin: 0,
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                        color: '#fca5a5',
+                        flex: 1,
+                        minWidth: 0
+                      }}>{line}</pre>
+                    </div>
+                  ))}
+                  {oldLines.truncated && (
+                    <div style={{ color: 'rgba(239, 68, 68, 0.5)', fontSize: '10px', marginTop: '4px', fontStyle: 'italic' }}>
+                      ...{oldLines.totalLines - oldLines.lines.length} more lines
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right: new content (added) */}
+              <div style={{
+                background: 'rgba(34, 197, 94, 0.08)',
+                padding: '8px',
+                minWidth: 0
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  marginBottom: '6px',
+                  color: '#22c55e',
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}>
+                  <Plus size={10} />
+                  Added
+                </div>
+                <div style={{ overflow: 'hidden' }}>
+                  {newLines.lines.map((line, i) => (
+                    <div key={i} style={{
+                      display: 'flex',
+                      gap: '8px',
+                      lineHeight: '18px'
+                    }}>
+                      <span style={{
+                        color: 'rgba(34, 197, 94, 0.4)',
+                        userSelect: 'none',
+                        minWidth: '20px',
+                        textAlign: 'right',
+                        flexShrink: 0,
+                        fontSize: '10px',
+                        lineHeight: '18px'
+                      }}>{i + 1}</span>
+                      <pre style={{
+                        margin: 0,
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                        color: '#86efac',
+                        flex: 1,
+                        minWidth: 0
+                      }}>{line}</pre>
+                    </div>
+                  ))}
+                  {newLines.truncated && (
+                    <div style={{ color: 'rgba(34, 197, 94, 0.5)', fontSize: '10px', marginTop: '4px', fontStyle: 'italic' }}>
+                      ...{newLines.totalLines - newLines.lines.length} more lines
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })}
       {remainingCount > 0 && (
         <div style={{
           fontSize: '10px',
           color: 'var(--prompd-muted)',
           fontStyle: 'italic',
-          marginTop: '8px',
-          padding: '4px 0'
+          padding: '6px 10px',
+          background: 'var(--prompd-panel)'
         }}>
           ...and {remainingCount} more change{remainingCount !== 1 ? 's' : ''}
         </div>
@@ -171,8 +242,17 @@ function ToolExecutionMessage({
   error?: string
   duration?: number
 }) {
-  // Auto-expand for run_command with successful results (shows terminal output)
-  const shouldAutoExpand = toolName === 'run_command' && status === 'success' && !!result
+  // Check if this is an edit_file with edits array
+  const isEditFile = toolName === 'edit_file'
+  const edits = isEditFile && Array.isArray(toolParams.edits) ? toolParams.edits as Array<{ search: string; replace: string }> : null
+  const isReadFile = toolName === 'read_file'
+  const isWriteFile = toolName === 'write_file'
+
+  // Auto-expand for run_command with results, and edit_file/write_file with successful changes
+  const shouldAutoExpand =
+    (toolName === 'run_command' && status === 'success' && !!result) ||
+    (isEditFile && status === 'success' && !!edits) ||
+    (isWriteFile && status === 'success')
   const [expanded, setExpanded] = useState<boolean>(shouldAutoExpand)
 
   // Get icon and color based on tool type
@@ -196,20 +276,19 @@ function ToolExecutionMessage({
     }
   }
 
-  // Check if this is an edit_file with edits array
-  const isEditFile = toolName === 'edit_file'
-  const edits = isEditFile && Array.isArray(toolParams.edits) ? toolParams.edits as Array<{ search: string; replace: string }> : null
-
   // Get human-readable tool description
   const getToolDescription = () => {
     switch (toolName) {
       case 'read_file':
-        return `Reading ${toolParams.path || 'file'}`
-      case 'write_file':
-        return `Writing to ${toolParams.path || 'file'}`
+        return `Read ${toolParams.path || 'file'}`
+      case 'write_file': {
+        const content = toolParams.content as string | undefined
+        const size = content ? formatBytes(content.length) : ''
+        return `Wrote ${toolParams.path || 'file'}${size ? ` (${size})` : ''}`
+      }
       case 'edit_file': {
         const editCount = edits?.length || 0
-        return `Editing ${toolParams.path || 'file'} (${editCount} change${editCount !== 1 ? 's' : ''})`
+        return `Edited ${toolParams.path || 'file'} (${editCount} change${editCount !== 1 ? 's' : ''})`
       }
       case 'run_command':
         return `Running: ${String(toolParams.command || '').substring(0, 50)}${String(toolParams.command || '').length > 50 ? '...' : ''}`
@@ -235,6 +314,40 @@ function ToolExecutionMessage({
 
   const colors = statusColors[status]
 
+  // read_file: compact one-liner, no expand
+  if (isReadFile && status !== 'error') {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '6px 12px',
+          fontSize: '12px',
+          color: 'var(--prompd-muted)',
+          fontFamily: 'ui-monospace, monospace'
+        }}
+      >
+        <div style={{ color: colors.text, flexShrink: 0 }}>
+          {status === 'running' ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <FileText className="w-3 h-3" />
+          )}
+        </div>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {status === 'running' ? 'Reading' : 'Read'} {String(toolParams.path || 'file')}
+        </span>
+        {duration && status !== 'running' && (
+          <span style={{ fontSize: '10px', opacity: 0.6, flexShrink: 0 }}>{(duration / 1000).toFixed(2)}s</span>
+        )}
+      </div>
+    )
+  }
+
+  // Determine if this is expandable (read_file errors still show expand)
+  const isExpandable = !isReadFile || status === 'error'
+
   return (
     <div
       style={{
@@ -246,7 +359,7 @@ function ToolExecutionMessage({
     >
       {/* Header - always visible */}
       <button
-        onClick={() => setExpanded(!expanded)}
+        onClick={isExpandable ? () => setExpanded(!expanded) : undefined}
         style={{
           width: '100%',
           padding: '10px 14px',
@@ -255,7 +368,7 @@ function ToolExecutionMessage({
           gap: '10px',
           background: 'transparent',
           border: 'none',
-          cursor: 'pointer',
+          cursor: isExpandable ? 'pointer' : 'default',
           textAlign: 'left'
         }}
       >
@@ -296,9 +409,11 @@ function ToolExecutionMessage({
         </div>
 
         {/* Expand/collapse indicator */}
-        <div style={{ color: 'var(--prompd-muted)', flexShrink: 0 }}>
-          {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-        </div>
+        {isExpandable && (
+          <div style={{ color: 'var(--prompd-muted)', flexShrink: 0 }}>
+            {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </div>
+        )}
       </button>
 
       {/* Expandable details */}
@@ -308,8 +423,16 @@ function ToolExecutionMessage({
           borderTop: `1px solid ${colors.border}`,
           marginTop: '0'
         }}>
-          {/* Show diff preview for edit_file operations */}
+          {/* Side-by-side diff for edit_file operations */}
           {isEditFile && edits && edits.length > 0 ? (
+            <div style={{ marginTop: '10px' }}>
+              <SideBySideDiff
+                edits={edits}
+                path={typeof toolParams.path === 'string' ? toolParams.path : undefined}
+              />
+            </div>
+          ) : isWriteFile && typeof toolParams.content === 'string' ? (
+            /* write_file: show content preview */
             <div style={{ marginTop: '10px' }}>
               <div style={{
                 fontSize: '10px',
@@ -319,20 +442,48 @@ function ToolExecutionMessage({
                 letterSpacing: '0.5px',
                 marginBottom: '6px'
               }}>
-                Changes
+                Content Written
               </div>
-              <EditDiffPreview edits={edits} />
-              {/* Show file path */}
-              {typeof toolParams.path === 'string' && toolParams.path && (
-                <div style={{
-                  marginTop: '8px',
-                  fontSize: '11px',
-                  color: 'var(--prompd-muted)',
-                  fontFamily: 'ui-monospace, monospace'
-                }}>
-                  File: {toolParams.path}
-                </div>
-              )}
+              <div style={{
+                background: 'rgba(34, 197, 94, 0.08)',
+                borderRadius: '6px',
+                padding: '8px',
+                fontFamily: 'ui-monospace, monospace',
+                fontSize: '11px',
+                overflow: 'auto',
+                maxHeight: '300px'
+              }}>
+                {(toolParams.content as string).split('\n').slice(0, 30).map((line, i) => (
+                  <div key={i} style={{
+                    display: 'flex',
+                    gap: '8px',
+                    lineHeight: '18px'
+                  }}>
+                    <span style={{
+                      color: 'rgba(34, 197, 94, 0.4)',
+                      userSelect: 'none',
+                      minWidth: '24px',
+                      textAlign: 'right',
+                      flexShrink: 0,
+                      fontSize: '10px',
+                      lineHeight: '18px'
+                    }}>{i + 1}</span>
+                    <pre style={{
+                      margin: 0,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      color: '#86efac',
+                      flex: 1,
+                      minWidth: 0
+                    }}>{line}</pre>
+                  </div>
+                ))}
+                {(toolParams.content as string).split('\n').length > 30 && (
+                  <div style={{ color: 'rgba(34, 197, 94, 0.5)', fontSize: '10px', marginTop: '4px', fontStyle: 'italic', paddingLeft: '32px' }}>
+                    ...{(toolParams.content as string).split('\n').length - 30} more lines
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             /* Default: show parameters as JSON */
@@ -365,23 +516,23 @@ function ToolExecutionMessage({
             </div>
           )}
 
-          {/* Result or Error */}
-          {(result || error) && (
+          {/* Error display */}
+          {error && (
             <div style={{ marginTop: '10px' }}>
               <div style={{
                 fontSize: '10px',
                 fontWeight: 600,
-                color: error ? '#ef4444' : 'var(--prompd-muted)',
+                color: '#ef4444',
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
                 marginBottom: '6px'
               }}>
-                {error ? 'Error' : 'Result'}
+                Error
               </div>
               <pre style={{
                 fontSize: '11px',
                 fontFamily: 'ui-monospace, monospace',
-                color: error ? '#ef4444' : 'var(--prompd-text)',
+                color: '#ef4444',
                 background: 'var(--prompd-panel)',
                 padding: '8px 10px',
                 borderRadius: '6px',
@@ -391,12 +542,377 @@ function ToolExecutionMessage({
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word'
               }}>
-                {error || (typeof result === 'string' ? result : JSON.stringify(result, null, 2))}
+                {error}
               </pre>
+            </div>
+          )}
+
+          {/* Rich result display for non-file-modification tools */}
+          {result && !error && !isEditFile && !isWriteFile && (
+            <div style={{ marginTop: '10px' }}>
+              <ToolResultView toolName={toolName} result={result} />
             </div>
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// Format bytes to human-readable string
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// Rich result formatter - replaces raw JSON dumps with tool-specific views
+function ToolResultView({ toolName, result }: { toolName: string; result: string }) {
+  // Parse the JSON result string
+  let parsed: Record<string, unknown> | null = null
+  try {
+    parsed = JSON.parse(result)
+  } catch {
+    // Not valid JSON - show as plain text
+    return (
+      <pre style={{
+        fontSize: '11px',
+        fontFamily: 'ui-monospace, monospace',
+        color: 'var(--prompd-text)',
+        background: 'var(--prompd-panel)',
+        padding: '8px 10px',
+        borderRadius: '6px',
+        overflow: 'auto',
+        maxHeight: '200px',
+        margin: 0,
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word'
+      }}>
+        {result}
+      </pre>
+    )
+  }
+
+  if (!parsed) return null
+
+  // run_command: show terminal-style output
+  if (toolName === 'run_command') {
+    const stdout = parsed.stdout as string || ''
+    const stderr = parsed.stderr as string || ''
+    const exitCode = parsed.exitCode as number
+    return (
+      <div style={{
+        background: '#0d1117',
+        borderRadius: '6px',
+        overflow: 'auto',
+        maxHeight: '250px',
+        fontFamily: 'ui-monospace, monospace',
+        fontSize: '11px'
+      }}>
+        {stdout && (
+          <pre style={{
+            margin: 0,
+            padding: '8px 10px',
+            color: '#e6edf3',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word'
+          }}>{stdout}</pre>
+        )}
+        {stderr && (
+          <pre style={{
+            margin: 0,
+            padding: '8px 10px',
+            color: '#f97583',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            borderTop: stdout ? '1px solid rgba(255,255,255,0.06)' : undefined
+          }}>{stderr}</pre>
+        )}
+        {exitCode !== undefined && exitCode !== 0 && (
+          <div style={{
+            padding: '4px 10px 6px',
+            color: '#f97583',
+            fontSize: '10px',
+            borderTop: '1px solid rgba(255,255,255,0.06)'
+          }}>
+            Exit code: {exitCode}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // search_files: show matches as a file list with line + snippet
+  if (toolName === 'search_files' && Array.isArray(parsed.matches)) {
+    const matches = parsed.matches as Array<{ file: string; line: number; content: string }>
+    const count = (parsed.count as number) || matches.length
+    const truncated = parsed.truncated as boolean
+    return (
+      <div style={{
+        borderRadius: '6px',
+        overflow: 'auto',
+        maxHeight: '250px'
+      }}>
+        <div style={{
+          fontSize: '10px',
+          fontWeight: 600,
+          color: 'var(--prompd-muted)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+          marginBottom: '6px'
+        }}>
+          {count} match{count !== 1 ? 'es' : ''}{truncated ? ' (truncated)' : ''}
+        </div>
+        <div style={{
+          background: 'var(--prompd-panel)',
+          borderRadius: '6px',
+          fontFamily: 'ui-monospace, monospace',
+          fontSize: '11px'
+        }}>
+          {matches.slice(0, 20).map((m, i) => (
+            <div key={i} style={{
+              padding: '4px 10px',
+              borderBottom: i < Math.min(matches.length, 20) - 1 ? '1px solid rgba(255,255,255,0.04)' : undefined,
+              display: 'flex',
+              gap: '8px',
+              alignItems: 'baseline'
+            }}>
+              <span style={{ color: '#60a5fa', flexShrink: 0 }}>{m.file}</span>
+              <span style={{ color: 'var(--prompd-muted)', flexShrink: 0 }}>:{m.line}</span>
+              <span style={{
+                color: 'var(--prompd-text)',
+                opacity: 0.7,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}>{m.content}</span>
+            </div>
+          ))}
+          {matches.length > 20 && (
+            <div style={{ padding: '4px 10px', color: 'var(--prompd-muted)', fontSize: '10px', fontStyle: 'italic' }}>
+              ...{matches.length - 20} more matches
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // list_files: show as compact file list
+  if (toolName === 'list_files' && Array.isArray(parsed.files)) {
+    const files = parsed.files as Array<{ name: string; path: string; type: string; size?: number }>
+    const count = (parsed.count as number) || files.length
+    return (
+      <div style={{
+        borderRadius: '6px',
+        overflow: 'auto',
+        maxHeight: '250px'
+      }}>
+        <div style={{
+          fontSize: '10px',
+          fontWeight: 600,
+          color: 'var(--prompd-muted)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+          marginBottom: '6px'
+        }}>
+          {count} item{count !== 1 ? 's' : ''}
+        </div>
+        <div style={{
+          background: 'var(--prompd-panel)',
+          borderRadius: '6px',
+          fontFamily: 'ui-monospace, monospace',
+          fontSize: '11px'
+        }}>
+          {files.slice(0, 30).map((f, i) => (
+            <div key={i} style={{
+              padding: '3px 10px',
+              borderBottom: i < Math.min(files.length, 30) - 1 ? '1px solid rgba(255,255,255,0.04)' : undefined,
+              display: 'flex',
+              gap: '6px',
+              alignItems: 'center'
+            }}>
+              <span style={{ color: 'var(--prompd-muted)', flexShrink: 0, fontSize: '10px' }}>
+                {f.type === 'directory' ? <Folder className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
+              </span>
+              <span style={{ color: f.type === 'directory' ? '#60a5fa' : 'var(--prompd-text)' }}>
+                {f.path || f.name}
+              </span>
+              {f.size !== undefined && f.type === 'file' && (
+                <span style={{ color: 'var(--prompd-muted)', fontSize: '10px', marginLeft: 'auto', flexShrink: 0 }}>
+                  {formatBytes(f.size)}
+                </span>
+              )}
+            </div>
+          ))}
+          {files.length > 30 && (
+            <div style={{ padding: '4px 10px', color: 'var(--prompd-muted)', fontSize: '10px', fontStyle: 'italic' }}>
+              ...{files.length - 30} more items
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // search_registry: show package cards
+  if (toolName === 'search_registry' && Array.isArray(parsed.packages)) {
+    const packages = parsed.packages as Array<{ name: string; version: string; description?: string; keywords?: string[]; downloads?: number; author?: string }>
+    const total = (parsed.total as number) || packages.length
+    return (
+      <div style={{
+        borderRadius: '6px',
+        overflow: 'auto',
+        maxHeight: '300px'
+      }}>
+        <div style={{
+          fontSize: '10px',
+          fontWeight: 600,
+          color: 'var(--prompd-muted)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+          marginBottom: '6px'
+        }}>
+          {total} package{total !== 1 ? 's' : ''} found
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {packages.slice(0, 10).map((pkg, i) => (
+            <div key={i} style={{
+              background: 'var(--prompd-panel)',
+              borderRadius: '6px',
+              padding: '8px 10px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                <span style={{
+                  fontWeight: 600,
+                  fontSize: '12px',
+                  color: '#60a5fa',
+                  fontFamily: 'ui-monospace, monospace'
+                }}>{pkg.name}</span>
+                <span style={{
+                  fontSize: '10px',
+                  color: 'var(--prompd-muted)',
+                  fontFamily: 'ui-monospace, monospace'
+                }}>v{pkg.version}</span>
+                {pkg.author && (
+                  <span style={{ fontSize: '10px', color: 'var(--prompd-muted)', marginLeft: 'auto' }}>
+                    by {pkg.author}
+                  </span>
+                )}
+              </div>
+              {pkg.description && (
+                <div style={{
+                  fontSize: '11px',
+                  color: 'var(--prompd-text)',
+                  opacity: 0.8,
+                  marginTop: '3px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}>{pkg.description}</div>
+              )}
+              {pkg.keywords && pkg.keywords.length > 0 && (
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px' }}>
+                  {pkg.keywords.slice(0, 5).map((kw, j) => (
+                    <span key={j} style={{
+                      fontSize: '9px',
+                      padding: '1px 6px',
+                      borderRadius: '3px',
+                      background: 'rgba(99, 102, 241, 0.15)',
+                      color: '#818cf8'
+                    }}>{kw}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          {packages.length > 10 && (
+            <div style={{ color: 'var(--prompd-muted)', fontSize: '10px', fontStyle: 'italic', padding: '2px 0' }}>
+              ...{packages.length - 10} more packages
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // list_package_files: show as package file tree
+  if (toolName === 'list_package_files' && Array.isArray(parsed.files)) {
+    const files = parsed.files as string[]
+    const packageId = (parsed.packageId as string) || `${parsed.packageName}@${parsed.version}`
+    return (
+      <div style={{
+        borderRadius: '6px',
+        overflow: 'auto',
+        maxHeight: '250px'
+      }}>
+        <div style={{
+          fontSize: '10px',
+          fontWeight: 600,
+          color: 'var(--prompd-muted)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+          marginBottom: '6px'
+        }}>
+          {packageId} - {files.length} file{files.length !== 1 ? 's' : ''}
+        </div>
+        <div style={{
+          background: 'var(--prompd-panel)',
+          borderRadius: '6px',
+          fontFamily: 'ui-monospace, monospace',
+          fontSize: '11px',
+          padding: '4px 0'
+        }}>
+          {files.slice(0, 30).map((f, i) => (
+            <div key={i} style={{
+              padding: '2px 10px',
+              color: 'var(--prompd-text)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <FileText className="w-3 h-3" style={{ color: 'var(--prompd-muted)', flexShrink: 0 }} />
+              {f}
+            </div>
+          ))}
+          {files.length > 30 && (
+            <div style={{ padding: '4px 10px', color: 'var(--prompd-muted)', fontSize: '10px', fontStyle: 'italic' }}>
+              ...{files.length - 30} more files
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // Fallback: JSON display (for unknown tools or unexpected shapes)
+  return (
+    <div>
+      <div style={{
+        fontSize: '10px',
+        fontWeight: 600,
+        color: 'var(--prompd-muted)',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        marginBottom: '6px'
+      }}>
+        Result
+      </div>
+      <pre style={{
+        fontSize: '11px',
+        fontFamily: 'ui-monospace, monospace',
+        color: 'var(--prompd-text)',
+        background: 'var(--prompd-panel)',
+        padding: '8px 10px',
+        borderRadius: '6px',
+        overflow: 'auto',
+        maxHeight: '200px',
+        margin: 0,
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word'
+      }}>
+        {result}
+      </pre>
     </div>
   )
 }

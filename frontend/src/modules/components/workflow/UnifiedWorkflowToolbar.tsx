@@ -48,6 +48,7 @@ interface UnifiedWorkflowToolbarProps {
   isPaused?: boolean
   onDeploy?: () => void
   onExport?: () => void
+  hasErrors?: boolean
 }
 
 type DockPosition = 'top' | 'bottom' | 'left' | 'right'
@@ -98,6 +99,7 @@ export function UnifiedWorkflowToolbar({
   onResume,
   isPaused = false,
   onDeploy,
+  hasErrors = false,
 }: UnifiedWorkflowToolbarProps) {
   const reactFlow = useReactFlow()
   const [showModeMenu, setShowModeMenu] = useState(false)
@@ -564,16 +566,16 @@ export function UnifiedWorkflowToolbar({
             {onDeploy && (
               <button
                 onClick={onDeploy}
-                disabled={isExecuting}
+                disabled={isExecuting || hasErrors}
                 style={{
                   ...buttonBaseStyle,
                   padding: '6px 10px',
                   gap: '4px',
-                  opacity: isExecuting ? 0.5 : 1,
+                  opacity: (isExecuting || hasErrors) ? 0.5 : 1,
                   background: 'color-mix(in srgb, var(--node-purple) 15%, transparent)',
-                  color: isExecuting ? 'var(--muted)' : 'var(--node-purple)',
+                  color: (isExecuting || hasErrors) ? 'var(--muted)' : 'var(--node-purple)',
                 }}
-                title="Deploy workflow"
+                title={hasErrors ? "Fix validation errors before deploying" : "Deploy workflow"}
               >
                 <Package style={{ width: 14, height: 14 }} />
                 <span style={{ fontSize: '11px', fontWeight: 500 }}>Deploy</span>

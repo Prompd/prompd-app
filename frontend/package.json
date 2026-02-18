@@ -156,7 +156,7 @@
     "@clerk/clerk-react": "^5.58.1",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@monaco-editor/react": "^4.6.0",
-    "@prompd/cli": "^0.4.10",
+    "@prompd/cli": "file:../../../Logikbug/prompd-cli/cli/npm",
     "@prompd/react": "file:../packages/react",
     "@prompd/scheduler": "file:../packages/scheduler",
     "@tiptap/extension-code-block-lowlight": "^3.19.0",

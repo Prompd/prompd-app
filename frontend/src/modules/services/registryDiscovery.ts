@@ -3,6 +3,7 @@
 // Provides endpoint URL resolution for registry operations
 
 import { configService } from './configService'
+import { electronFetch } from './electronFetch'
 
 // Types matching registry.json structure
 export interface RegistryDiscoveryResponse {
@@ -209,7 +210,7 @@ class RegistryDiscoveryService {
     try {
       console.log('[RegistryDiscovery] Fetching:', discoveryUrl)
 
-      const response = await fetch(discoveryUrl, {
+      const response = await electronFetch(discoveryUrl, {
         signal: controller.signal,
         headers: {
           'Accept': 'application/json'

@@ -8,6 +8,7 @@ import AiChatPanel from './editor/AiChatPanel'
 import TabsBar from './editor/TabsBar'
 import StatusBar from './editor/StatusBar'
 import EditorHeader from './editor/EditorHeader'
+import TitleBar from './components/TitleBar'
 import ActivityBar from './editor/ActivityBar'
 import GuidedPromptWizard from './wizard/GuidedPromptWizard'
 import { PrompdExecutionTab } from './editor/PrompdExecutionTab'
@@ -609,13 +610,15 @@ export default function App() {
     restoreTabHandles()
   }, [explorerDirPath, tabs, updateTab])
 
-  // Apply theme to document element
+  // Apply theme to document element and sync with Electron native theme
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.setAttribute('data-theme', 'dark')
     } else {
       document.documentElement.removeAttribute('data-theme')
     }
+    // Sync Electron window chrome (title bar, scrollbars) with app theme
+    ;(window as any).electronAPI?.setNativeTheme?.(theme)
   }, [theme])
 
   // Monaco marker listening is now handled by MonacoMarkerListener component
@@ -3814,6 +3817,7 @@ Write your prompt here...
           onMarkersChange={setMonacoMarkers}
         />
       )}
+      <TitleBar theme={theme} />
       <EditorHeader
         theme={theme}
         onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -4513,6 +4517,12 @@ Write your prompt here...
                           }
                         } else {
                           console.warn('[App.tsx] Cannot resolve source path - missing handle or explorer dir')
+                        }
+
+                        // Fallback: use tab.filePath (full disk path stored for persistence)
+                        if (!sourceFilePath && currentTab.filePath) {
+                          sourceFilePath = currentTab.filePath
+                          console.log('[App.tsx] Source file path from tab.filePath:', sourceFilePath)
                         }
 
                         // Fallback: extract from package reference

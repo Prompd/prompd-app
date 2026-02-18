@@ -35,6 +35,8 @@ class TrayManager extends EventEmitter {
       fileWatchers: 0,
       webhookServerRunning: false,
       webhookPort: undefined,
+      mcpServerRunning: false,
+      mcpServerPort: undefined,
       nextScheduledRun: undefined,
       lastError: undefined,
       deployments: [],
@@ -213,6 +215,23 @@ class TrayManager extends EventEmitter {
           {
             label: 'Restart File Watchers',
             click: () => this.emit('restart-all-file-watchers'),
+          },
+        ],
+      },
+      { type: 'separator' },
+
+      // MCP Server
+      {
+        label: `MCP Server${this.state.mcpServerRunning ? ` (port ${this.state.mcpServerPort || '18791'})` : ''}`,
+        submenu: [
+          {
+            label: this.state.mcpServerRunning ? 'Stop MCP Server' : 'Start MCP Server',
+            click: () => this.emit(this.state.mcpServerRunning ? 'mcp-server-stop' : 'mcp-server-start'),
+          },
+          {
+            label: 'Copy Connection Config',
+            enabled: this.state.mcpServerRunning,
+            click: () => this.emit('mcp-server-copy-config'),
           },
         ],
       },

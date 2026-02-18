@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Environment variables (filtered by prefix for security)
   // Only PROMPD_* vars are exposed - returns { VAR_NAME: value } with prefix stripped
   getSystemEnvVars: (prefix) => ipcRenderer.invoke('env:getFiltered', prefix),
+
+  // Theme
+  setNativeTheme: (theme) => ipcRenderer.send('app:set-native-theme', theme),
+
   // File dialogs
   openFile: () => ipcRenderer.invoke('dialog:openFile'),
   openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
@@ -35,6 +39,44 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // API requests (bypasses CORS by using main process)
   apiRequest: (url, options) => ipcRenderer.invoke('api:request', url, options),
+
+  // Custom title bar support
+  platform: process.platform,
+  triggerMenuAction: (action, ...args) => ipcRenderer.invoke('menu:trigger', action, ...args),
+  getWindowTitle: () => ipcRenderer.invoke('app:getWindowTitle'),
+  onWindowTitleChanged: (callback) => {
+    const handler = (_event, title) => callback(title)
+    ipcRenderer.on('window-title-changed', handler)
+    return () => ipcRenderer.removeListener('window-title-changed', handler)
+  },
+  getMenuState: () => ipcRenderer.invoke('app:getMenuState'),
+  onMenuStateChanged: (callback) => {
+    const handler = (_event, state) => callback(state)
+    ipcRenderer.on('menu-state-changed', handler)
+    return () => ipcRenderer.removeListener('menu-state-changed', handler)
+  },
+  // Edit operations (for custom menu bar)
+  editUndo: () => ipcRenderer.invoke('edit:undo'),
+  editRedo: () => ipcRenderer.invoke('edit:redo'),
+  editCut: () => ipcRenderer.invoke('edit:cut'),
+  editCopy: () => ipcRenderer.invoke('edit:copy'),
+  editPaste: () => ipcRenderer.invoke('edit:paste'),
+  editDelete: () => ipcRenderer.invoke('edit:delete'),
+  editSelectAll: () => ipcRenderer.invoke('edit:selectAll'),
+  // View operations (for custom menu bar)
+  viewReload: () => ipcRenderer.invoke('view:reload'),
+  viewForceReload: () => ipcRenderer.invoke('view:forceReload'),
+  viewToggleDevTools: () => ipcRenderer.invoke('view:toggleDevTools'),
+  viewResetZoom: () => ipcRenderer.invoke('view:resetZoom'),
+  viewZoomIn: () => ipcRenderer.invoke('view:zoomIn'),
+  viewZoomOut: () => ipcRenderer.invoke('view:zoomOut'),
+  viewToggleFullscreen: () => ipcRenderer.invoke('view:toggleFullscreen'),
+  // File/App operations (for custom menu bar)
+  openFileDialog: () => ipcRenderer.invoke('menu:openFileDialog'),
+  openFolderDialog: () => ipcRenderer.invoke('menu:openFolderDialog'),
+  closeFolder: () => ipcRenderer.invoke('menu:closeFolder'),
+  quit: () => ipcRenderer.invoke('app:quit'),
+  checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
 
   // Connection testing
   testSSHConnection: (config) => ipcRenderer.invoke('connection:testSSH', config),
@@ -301,7 +343,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('connections:save', connections, workspacePath),
   },
 
-  // MCP server management (config, connections, tool discovery, registry search)
+  // MCP client management (config, connections, tool discovery, registry search)
   mcp: {
     listServers: () => ipcRenderer.invoke('mcp:listServers'),
     addServer: (name, config) => ipcRenderer.invoke('mcp:addServer', name, config),
@@ -312,6 +354,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     listTools: (serverName) => ipcRenderer.invoke('mcp:listTools', serverName),
     callTool: (serverName, toolName, args) => ipcRenderer.invoke('mcp:callTool', serverName, toolName, args),
     searchRegistry: (query, limit) => ipcRenderer.invoke('mcp:searchRegistry', query, limit),
+  },
+
+  // MCP server (Prompd-as-server for OpenClaw and other MCP clients)
+  mcpServer: {
+    start: (opts) => ipcRenderer.invoke('mcpServer:start', opts),
+    stop: () => ipcRenderer.invoke('mcpServer:stop'),
+    status: () => ipcRenderer.invoke('mcpServer:status'),
+    getConfig: (format) => ipcRenderer.invoke('mcpServer:getConfig', format),
+    regenerateApiKey: () => ipcRenderer.invoke('mcpServer:regenerateApiKey'),
+    getClients: () => ipcRenderer.invoke('mcpServer:getClients'),
   },
 
   // Local compilation using @prompd/cli library
@@ -357,6 +409,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Returns: { success, message, installed: [{name, version, status}], failed?: [{name, version, error}] }
     installAll: (workspacePath) =>
       ipcRenderer.invoke('package:installAll', workspacePath)
+  },
+
+  // Node template management - save/restore workflow node configurations
+  templates: {
+    save: (workspacePath, templateData, scope, workflowFilePath) =>
+      ipcRenderer.invoke('template:save', workspacePath, templateData, scope || 'workspace', workflowFilePath),
+    list: (workspacePath) =>
+      ipcRenderer.invoke('template:list', workspacePath),
+    delete: (workspacePath, fileName, scope) =>
+      ipcRenderer.invoke('template:delete', workspacePath, fileName, scope),
+    insert: (workspacePath, fileName, scope, workflowFilePath) =>
+      ipcRenderer.invoke('template:insert', workspacePath, fileName, scope, workflowFilePath),
   },
 
   // Trigger service - background workflow execution management

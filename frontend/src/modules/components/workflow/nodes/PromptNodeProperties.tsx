@@ -724,6 +724,15 @@ export function PromptNodeProperties({ data, onChange, onOpenPrompd }: PromptNod
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Shield size={14} style={{ color: 'var(--accent)' }} />
             Guardrail Settings
+            <span style={{
+              fontSize: '10px',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              background: data.guardrail?.enabled ? 'color-mix(in srgb, var(--node-amber) 20%, transparent)' : 'var(--panel)',
+              color: data.guardrail?.enabled ? 'var(--node-amber)' : 'var(--muted)',
+            }}>
+              {data.guardrail?.enabled ? 'Enabled' : 'Disabled'}
+            </span>
           </div>
           {guardrailExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </button>
@@ -739,6 +748,29 @@ export function PromptNodeProperties({ data, onChange, onOpenPrompd }: PromptNod
             flexDirection: 'column',
             gap: '12px'
           }}>
+            {/* Enable/Disable Toggle */}
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={data.guardrail?.enabled || false}
+                onChange={(e) => onChange('guardrail', {
+                  ...data.guardrail,
+                  enabled: e.target.checked
+                })}
+                style={{ margin: 0, width: '16px', height: '16px' }}
+              />
+              <span style={{ fontSize: '13px', color: 'var(--text)' }}>
+                Validate output before passing to next node
+              </span>
+            </label>
+
+            {data.guardrail?.enabled && (
+            <>
             {/* Output Mode */}
             <div>
               <label style={labelStyle}>Output Mode</label>
@@ -900,6 +932,8 @@ export function PromptNodeProperties({ data, onChange, onOpenPrompd }: PromptNod
                 4. If false → throw error
               </code>
             </div>
+            </>
+            )}
           </div>
         )}
       </div>

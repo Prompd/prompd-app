@@ -236,8 +236,9 @@ body { background: var(--bg); color: var(--text); font: 14px/1.4 Inter, system-u
 .layout {
   display: grid;
   grid-template-columns: 48px 240px minmax(0,1fr);
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: 39px auto 1fr auto;
   grid-template-areas:
+    'titlebar titlebar titlebar'
     'activity sidebar header'
     'activity sidebar left'
     'status status status';
@@ -245,14 +246,121 @@ body { background: var(--bg); color: var(--text); font: 14px/1.4 Inter, system-u
 }
 .layout.no-sidebar {
   grid-template-areas:
+    'titlebar titlebar titlebar'
     'activity header header'
     'activity left left'
     'status status status';
 }
+
+/* ── Custom Title Bar ── */
+.titlebar {
+  grid-area: titlebar;
+  display: flex;
+  align-items: center;
+  height: 40px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 100;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.titlebar-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 100%;
+  -webkit-app-region: no-drag;
+  flex-shrink: 0;
+}
+.titlebar-logo img { opacity: 0.85; }
+.titlebar-menu {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+.titlebar-menu-label {
+  padding: 0 10px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text);
+  cursor: default;
+  border: none;
+  background: transparent;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.titlebar-menu-label:hover,
+.titlebar-menu-label.active {
+  background: var(--hover);
+}
+.titlebar-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  color: var(--text-secondary);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.titlebar-dropdown {
+  position: fixed;
+  min-width: 240px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  padding: 4px 0;
+  z-index: 10000;
+  -webkit-app-region: no-drag;
+}
+.titlebar-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  cursor: default;
+  text-align: left;
+  white-space: nowrap;
+  font-family: inherit;
+  gap: 24px;
+}
+.titlebar-dropdown-item:hover:not(:disabled),
+.titlebar-dropdown-item.focused:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+.titlebar-dropdown-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.titlebar-dropdown-item .accelerator {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-left: auto;
+}
+.titlebar-dropdown-item:hover:not(:disabled) .accelerator,
+.titlebar-dropdown-item.focused:not(:disabled) .accelerator {
+  color: rgba(255, 255, 255, 0.75);
+}
+.titlebar-dropdown-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 8px;
+}
 .activity { grid-area: activity; background: var(--panel); border-right: 1px solid var(--border); display:flex; }
 .ab-items { display:flex; flex-direction: column; align-items:center; padding: 8px 6px; gap: 6px; width: 100%; }
-.ab-item { width: 32px; height: 32px; display:flex; align-items:center; justify-content:center; border: 1px solid var(--button-border); border-radius: 6px; background: var(--button-bg); cursor: pointer; font-size: 16px; }
-.ab-item:hover { border-color: var(--ring); }
+.ab-item { width: 36px; height: 36px; display:flex; align-items:center; justify-content:center; border: 1px solid transparent; border-radius: 6px; background: transparent; cursor: pointer; font-size: 16px; }
+.ab-item:hover { border-color: var(--ring); background: var(--panel-2); }
 .ab-item.active { outline: 1px solid var(--ring); }
 .ab-item:disabled { opacity: 0.6; cursor: not-allowed; }
 .ab-spacer { flex: 1; }
@@ -1611,6 +1719,65 @@ select.input {
 
 .react-flow .react-flow__edge {
   pointer-events: visibleStroke;
+}
+
+/* ============================================================================
+   ActionEdge - Hover action buttons on edges
+   ============================================================================ */
+
+.action-edge-toolbar {
+  z-index: 1000;
+  animation: actionEdgeFadeIn 0.15s ease-out;
+}
+
+.action-edge-buttons {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.action-edge-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s, color 0.15s, transform 0.1s, box-shadow 0.15s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.action-edge-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.action-edge-btn-delete:hover {
+  background: var(--error);
+  color: white;
+  border-color: var(--error);
+}
+
+.action-edge-btn-add:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+@keyframes actionEdgeFadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
 }
 
 /* Attribution removal (for pro users with license) */

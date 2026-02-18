@@ -19,6 +19,7 @@ import {
 import type {
   WorkflowFile,
   WorkflowNode,
+  WorkflowEdge,
   WorkflowNodeType,
   WorkflowExecutionState,
   WorkflowValidationError,
@@ -473,6 +474,7 @@ interface WorkflowStoreState {
   copyNode: (nodeId: string) => void
   cutNode: (nodeId: string) => void
   pasteNode: (position: { x: number; y: number }) => string | null
+  addNodeFromTemplate: (templateData: Record<string, unknown>, position: { x: number; y: number }, onEdgeId?: string) => string | null
   toggleNodeDisabled: (nodeId: string) => void
   ejectChildNodes: (containerId: string) => void
 
@@ -484,6 +486,7 @@ interface WorkflowStoreState {
   onEdgesChange: (changes: EdgeChange<WorkflowCanvasEdge>[]) => void
   onConnect: (connection: Connection) => void
   deleteEdge: (edgeId: string) => void
+  addNodeOnEdge: (edgeId: string, nodeType: WorkflowNodeType) => string | null
 
   // Node docking operations
   dockNode: (nodeId: string, hostNodeId: string, handleId: string) => void
@@ -1528,6 +1531,239 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
       return newId
     },
 
+    // Add a node from a saved template. If onEdgeId is provided, insert on that edge
+    // (remove original edge, wire source -> template root -> target) in a single atomic operation.
+    addNodeFromTemplate: (templateData, position, onEdgeId?) => {
+      // Support both nested (node: {}) and legacy flat structure
+      const nodeInfo = (templateData.node || templateData) as Record<string, unknown>
+      if (!nodeInfo?.nodeType) return null
+
+      // If inserting on an edge, resolve midpoint and validate
+      let edgeToReplace: WorkflowCanvasEdge | undefined
+      let edgeSourceHandle: string | undefined
+      let edgeTargetHandle: string | undefined
+      if (onEdgeId) {
+        const currentState = get()
+        edgeToReplace = currentState.edges.find(e => e.id === onEdgeId)
+        if (!edgeToReplace) return null
+        const sourceNode = currentState.nodes.find(n => n.id === edgeToReplace!.source)
+        const targetNode = currentState.nodes.find(n => n.id === edgeToReplace!.target)
+        if (!sourceNode || !targetNode) return null
+        position = {
+          x: (sourceNode.position.x + targetNode.position.x) / 2,
+          y: (sourceNode.position.y + targetNode.position.y) / 2,
+        }
+        edgeSourceHandle = edgeToReplace.sourceHandle || 'output'
+        edgeTargetHandle = edgeToReplace.targetHandle || 'input'
+      }
+
+      get().pushHistory()
+
+      const nodeType = nodeInfo.nodeType as WorkflowNodeType
+      const now = Date.now()
+      const rootId = `${nodeType}-${now}`
+
+      // Clone the node data from the template
+      const rootData = JSON.parse(JSON.stringify(nodeInfo.nodeData || {}))
+
+      // Build the root node
+      const rootWorkflowNode: WorkflowNode = {
+        id: rootId,
+        type: nodeType,
+        position,
+        data: rootData,
+        ...(nodeInfo.dimensions ? {
+          width: (nodeInfo.dimensions as { width: number; height: number }).width,
+          height: (nodeInfo.dimensions as { width: number; height: number }).height,
+        } : {}),
+      }
+
+      const rootRfNode: WorkflowCanvasNode = {
+        id: rootId,
+        type: nodeType,
+        position,
+        data: rootData,
+      }
+
+      if (nodeInfo.dimensions) {
+        const dims = nodeInfo.dimensions as { width: number; height: number }
+        rootRfNode.width = dims.width
+        rootRfNode.height = dims.height
+      }
+
+      // Process children (for container nodes)
+      const children = nodeInfo.children as Array<{
+        type: string
+        data: Record<string, unknown>
+        relativePosition: { x: number; y: number }
+        dimensions?: { width: number; height: number }
+        originalId: string
+      }> | undefined
+
+      const templateEdges = nodeInfo.edges as Array<{
+        source: string
+        target: string
+        sourceHandle?: string
+        targetHandle?: string
+      }> | undefined
+
+      // Build ID mapping: originalId -> newId (root node maps too for edge remapping)
+      const idMap: Record<string, string> = {}
+
+      // Map root node's original ID so edges referencing it remap correctly
+      if (nodeInfo.originalId) {
+        idMap[nodeInfo.originalId as string] = rootId
+      }
+
+      const childWorkflowNodes: WorkflowNode[] = []
+      const childRfNodes: WorkflowCanvasNode[] = []
+
+      if (children && children.length > 0) {
+        children.forEach((child, idx) => {
+          const childId = `${child.type}-${now + idx + 1}`
+          idMap[child.originalId] = childId
+
+          const childData = JSON.parse(JSON.stringify(child.data))
+
+          const childWorkflowNode: WorkflowNode = {
+            id: childId,
+            type: child.type as WorkflowNodeType,
+            position: child.relativePosition,
+            data: childData,
+            parentId: rootId,
+            extent: 'parent',
+            ...(child.dimensions ? {
+              width: child.dimensions.width,
+              height: child.dimensions.height,
+            } : {}),
+          }
+
+          const childRfNode: WorkflowCanvasNode = {
+            id: childId,
+            type: child.type as WorkflowNodeType,
+            position: child.relativePosition,
+            data: childData,
+            parentId: rootId,
+            extent: 'parent' as const,
+          }
+
+          if (child.dimensions) {
+            childRfNode.width = child.dimensions.width
+            childRfNode.height = child.dimensions.height
+          }
+
+          childWorkflowNodes.push(childWorkflowNode)
+          childRfNodes.push(childRfNode)
+        })
+      }
+
+      // Remap edges
+      const newEdges: WorkflowCanvasEdge[] = []
+      const newWorkflowEdges: WorkflowEdge[] = []
+
+      if (templateEdges && templateEdges.length > 0) {
+        // Also map root's original edges (root node's ID needs mapping too)
+        // Root doesn't have originalId in template — check if edges reference root via any key
+        templateEdges.forEach((edge, idx) => {
+          const newSource = idMap[edge.source] || edge.source
+          const newTarget = idMap[edge.target] || edge.target
+          const edgeId = `edge-${now}-${idx}`
+
+          const newEdge: WorkflowCanvasEdge = {
+            id: edgeId,
+            source: newSource,
+            target: newTarget,
+            sourceHandle: edge.sourceHandle,
+            targetHandle: edge.targetHandle,
+          }
+
+          const workflowEdge: WorkflowEdge = {
+            id: edgeId,
+            source: newSource,
+            target: newTarget,
+            sourceHandle: edge.sourceHandle,
+            targetHandle: edge.targetHandle,
+          }
+
+          newEdges.push(newEdge)
+          newWorkflowEdges.push(workflowEdge)
+        })
+      }
+
+      set(state => {
+        // Add root node
+        state.nodes.push(rootRfNode)
+        if (state.workflowFile) {
+          state.workflowFile.nodes.push(rootWorkflowNode)
+        }
+
+        // Add children (must come after parent in array)
+        for (const childRf of childRfNodes) {
+          state.nodes.push(childRf)
+        }
+        if (state.workflowFile) {
+          for (const childWf of childWorkflowNodes) {
+            state.workflowFile.nodes.push(childWf)
+          }
+        }
+
+        // Add template-internal edges
+        for (const edge of newEdges) {
+          state.edges.push(edge)
+        }
+        if (state.workflowFile) {
+          for (const workflowEdge of newWorkflowEdges) {
+            state.workflowFile.edges.push(workflowEdge)
+          }
+        }
+
+        // If inserting on an edge, remove original edge and wire routing edges
+        if (edgeToReplace && edgeSourceHandle && edgeTargetHandle) {
+          state.edges = state.edges.filter(e => e.id !== edgeToReplace!.id)
+          if (state.workflowFile) {
+            state.workflowFile.edges = state.workflowFile.edges.filter(e => e.id !== edgeToReplace!.id)
+          }
+
+          const routeNow = Date.now()
+          const routeEdge1: WorkflowCanvasEdge = {
+            id: `e-${edgeToReplace.source}-${rootId}-${routeNow}`,
+            source: edgeToReplace.source,
+            target: rootId,
+            sourceHandle: edgeSourceHandle,
+            targetHandle: 'input',
+            animated: shouldEdgeBeAnimated(edgeSourceHandle),
+          }
+          const routeEdge2: WorkflowCanvasEdge = {
+            id: `e-${rootId}-${edgeToReplace.target}-${routeNow + 1}`,
+            source: rootId,
+            target: edgeToReplace.target,
+            sourceHandle: 'output',
+            targetHandle: edgeTargetHandle,
+            animated: shouldEdgeBeAnimated('output') || shouldEdgeBeAnimated(edgeTargetHandle),
+          }
+          state.edges.push(routeEdge1, routeEdge2)
+
+          if (state.workflowFile) {
+            state.workflowFile.edges.push(
+              {
+                id: routeEdge1.id, source: routeEdge1.source, target: routeEdge1.target,
+                sourceHandle: edgeSourceHandle, targetHandle: 'input', animated: routeEdge1.animated,
+              },
+              {
+                id: routeEdge2.id, source: routeEdge2.source, target: routeEdge2.target,
+                sourceHandle: 'output', targetHandle: edgeTargetHandle, animated: routeEdge2.animated,
+              },
+            )
+          }
+        }
+
+        state.selectedNodeId = rootId
+        state.isDirty = true
+      })
+
+      return rootId
+    },
+
     // Cut a node (copy + delete)
     cutNode: (nodeId) => {
       const state = get()
@@ -2058,6 +2294,135 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         }
         state.isDirty = true
       })
+    },
+
+    // Insert a node on an edge: remove original edge, create node at midpoint, wire two new edges
+    addNodeOnEdge: (edgeId, nodeType) => {
+      const currentState = get()
+      const edge = currentState.edges.find(e => e.id === edgeId)
+      if (!edge) return null
+
+      const sourceNode = currentState.nodes.find(n => n.id === edge.source)
+      const targetNode = currentState.nodes.find(n => n.id === edge.target)
+      if (!sourceNode || !targetNode) return null
+
+      get().pushHistory()
+
+      // Compute midpoint between source and target node positions
+      const midX = (sourceNode.position.x + targetNode.position.x) / 2
+      const midY = (sourceNode.position.y + targetNode.position.y) / 2
+
+      const newNode = createWorkflowNode(nodeType, { x: midX, y: midY })
+
+      const originalSourceHandle = edge.sourceHandle || 'output'
+      const originalTargetHandle = edge.targetHandle || 'input'
+      const isConditionEdge =
+        originalSourceHandle.startsWith('condition-') ||
+        originalSourceHandle === 'default'
+
+      const now = Date.now()
+
+      set(state => {
+        // 1. Remove the original edge
+        state.edges = state.edges.filter(e => e.id !== edgeId)
+        if (state.workflowFile) {
+          state.workflowFile.edges = state.workflowFile.edges.filter(e => e.id !== edgeId)
+        }
+
+        // 2. Add the new node
+        const rfNode: WorkflowCanvasNode = {
+          id: newNode.id,
+          type: newNode.type,
+          position: { x: midX, y: midY },
+          data: newNode.data,
+        }
+        if (newNode.width) rfNode.width = newNode.width
+        if (newNode.height) rfNode.height = newNode.height
+
+        state.nodes.push(rfNode)
+        if (state.workflowFile) {
+          state.workflowFile.nodes.push(newNode)
+        }
+
+        // 3. Create edge: source -> newNode
+        const edge1: WorkflowCanvasEdge = {
+          id: `e-${edge.source}-${newNode.id}-${now}`,
+          source: edge.source,
+          target: newNode.id,
+          sourceHandle: originalSourceHandle,
+          targetHandle: 'input',
+          animated: shouldEdgeBeAnimated(originalSourceHandle),
+        }
+
+        // 4. Create edge: newNode -> target
+        const edge2: WorkflowCanvasEdge = {
+          id: `e-${newNode.id}-${edge.target}-${now + 1}`,
+          source: newNode.id,
+          target: edge.target,
+          sourceHandle: 'output',
+          targetHandle: originalTargetHandle,
+          animated: shouldEdgeBeAnimated('output') || shouldEdgeBeAnimated(originalTargetHandle),
+        }
+
+        state.edges.push(edge1, edge2)
+
+        if (state.workflowFile) {
+          state.workflowFile.edges.push(
+            {
+              id: edge1.id,
+              source: edge1.source,
+              target: edge1.target,
+              sourceHandle: originalSourceHandle,
+              targetHandle: 'input',
+              animated: edge1.animated,
+            },
+            {
+              id: edge2.id,
+              source: edge2.source,
+              target: edge2.target,
+              sourceHandle: 'output',
+              targetHandle: originalTargetHandle,
+              animated: edge2.animated,
+            },
+          )
+        }
+
+        // 5. Handle condition edge data update — point condition target to new node
+        if (isConditionEdge) {
+          const condSourceNode = state.nodes.find(n => n.id === edge.source)
+          if (condSourceNode && condSourceNode.type === 'condition') {
+            if (originalSourceHandle === 'default') {
+              condSourceNode.data = { ...condSourceNode.data, default: newNode.id }
+              const fileNode = state.workflowFile?.nodes.find(n => n.id === edge.source)
+              if (fileNode) {
+                fileNode.data = { ...fileNode.data, default: newNode.id }
+              }
+            } else if (originalSourceHandle.startsWith('condition-')) {
+              const conditionId = originalSourceHandle.replace('condition-', '')
+              const condData = condSourceNode.data as { conditions?: Array<{ id: string; target?: string }> }
+              const updatedConditions = (condData.conditions || []).map(c =>
+                c.id === conditionId ? { ...c, target: newNode.id } : c
+              )
+              condSourceNode.data = { ...condSourceNode.data, conditions: updatedConditions }
+              const fileNode = state.workflowFile?.nodes.find(n => n.id === edge.source)
+              if (fileNode && 'conditions' in fileNode.data) {
+                const fileConditions = (fileNode.data as { conditions: Array<{ id: string; target?: string }> }).conditions
+                const idx = fileConditions.findIndex(c => c.id === conditionId)
+                if (idx >= 0) {
+                  fileConditions[idx] = { ...fileConditions[idx], target: newNode.id }
+                }
+              }
+            }
+          }
+        }
+
+        // 6. Select the new node
+        state.selectedNodeId = newNode.id
+        state.selectedEdgeId = null
+        state.isDirty = true
+      })
+
+      return newNode.id
     },
 
     // Selection

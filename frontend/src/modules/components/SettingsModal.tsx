@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
-import { X, Keyboard, User, Key, BarChart3, Trash2, Plus, Eye, EyeOff, Check, AlertCircle, ExternalLink, ChevronDown, Star, Database, Globe, Code, Layout, Shield, Package, Loader, RefreshCw, Clock, Pencil } from 'lucide-react'
+import { X, Keyboard, User, Key, BarChart3, Trash2, Plus, Eye, EyeOff, Check, AlertCircle, ExternalLink, ChevronDown, Star, Database, Globe, Code, Layout, Shield, Package, Loader, RefreshCw, Clock, Pencil, Server } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { OrganizationSwitcher } from '@clerk/clerk-react'
 import { useAuthenticatedUser } from '../auth/ClerkWrapper'
 import HotkeySettings from './HotkeySettings'
 import { isElectron } from '../auth/ClerkWrapper'
 import { DeploymentSettings } from './settings/DeploymentSettings'
+import { McpServerSettings } from './settings/McpServerSettings'
 import {
   getLLMProviders,
   setLlmApiKey as setLlmApiKeyRemote,
@@ -112,7 +113,7 @@ interface SettingsModalProps {
   initialTab?: TabType
 }
 
-type TabType = 'profile' | 'api-keys' | 'registries' | 'usage' | 'shortcuts' | 'deployments'
+type TabType = 'profile' | 'api-keys' | 'registries' | 'usage' | 'shortcuts' | 'deployments' | 'mcp-server'
 
 // Default View Mode Button Component
 function DefaultViewModeButton({
@@ -1103,7 +1104,8 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
     { id: 'registries', label: 'Registries', icon: <Database size={16} /> },
     { id: 'usage', label: 'Usage', icon: <BarChart3 size={16} /> },
     { id: 'shortcuts', label: 'Shortcuts', icon: <Keyboard size={16} /> },
-    { id: 'deployments', label: 'Deployments', icon: <Package size={16} /> }
+    { id: 'deployments', label: 'Deployments', icon: <Package size={16} /> },
+    { id: 'mcp-server', label: 'MCP Server', icon: <Server size={16} /> }
   ]
 
   return (
@@ -3049,6 +3051,11 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
                 useUIStore.getState().openModal('deployment')
               }}
             />
+          )}
+
+          {/* MCP Server Tab */}
+          {activeTab === 'mcp-server' && (
+            <McpServerSettings colors={colors} />
           )}
 
         </div>

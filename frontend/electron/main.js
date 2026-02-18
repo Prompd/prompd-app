@@ -11,7 +11,7 @@ try {
   console.log('[Electron] Running without dotenv (production mode)')
 }
 
-const { app, BrowserWindow, ipcMain, dialog, Menu, shell, powerMonitor, net, protocol } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell, powerMonitor, net, protocol, nativeTheme, clipboard } = require('electron')
 const fs = require('fs-extra')
 const os = require('os')
 
@@ -26,9 +26,14 @@ function getAutoUpdater() {
 
 // Modular IPC registration (new pattern — migrate others here over time)
 const { McpIpcRegistration } = require('./ipc/McpIpcRegistration')
+const { McpServerIpcRegistration } = require('./ipc/McpServerIpcRegistration')
+const { TemplateIpcRegistration } = require('./ipc/TemplateIpcRegistration')
 const mcpService = require('./services/mcpService')
+const { mcpServerService } = require('./services/mcpServerService')
 const ipcModules = [
   new McpIpcRegistration(),
+  new McpServerIpcRegistration(),
+  new TemplateIpcRegistration(),
 ]
 
 // Tray and trigger services for background workflow execution
@@ -108,11 +113,17 @@ if (!process.env.CLERK_OAUTH_CLIENT_ID || !process.env.CLERK_FRONTEND_API) {
 // Update window title based on workspace
 function updateWindowTitle() {
   if (!mainWindow) return
+  let title
   if (currentWorkspacePath) {
     const folderName = path.basename(currentWorkspacePath)
-    mainWindow.setTitle(`Prompd - ${folderName}`)
+    title = `Prompd - ${folderName}`
   } else {
-    mainWindow.setTitle('Prompd')
+    title = 'Prompd'
+  }
+  mainWindow.setTitle(title)
+  // Notify renderer for custom title bar
+  if (!mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('window-title-changed', title)
   }
 }
 
@@ -207,7 +218,14 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 768,
     icon: iconPath,
-    autoHideMenuBar: false, // Always show menu bar
+    // Custom title bar: hide native title bar, show OS window controls as overlay
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#0f172a',
+      symbolColor: '#f1f5f9',
+      height: 39
+    },
+    autoHideMenuBar: true, // Hide native menu bar (keep for keyboard accelerators)
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -216,7 +234,7 @@ function createWindow() {
       userAgent: `Prompd/${app.getVersion()} (${os.type()} ${os.arch()}) Electron/${process.versions.electron}`
     },
     title: 'Prompd',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#0b1220',
     show: false // Don't show until ready
   })
 
@@ -762,6 +780,10 @@ function createMenu() {
 
   const menu = Menu.buildFromTemplate(template)
   Menu.setApplicationMenu(menu)
+  // Hide native menu bar but keep accelerators working
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setMenuBarVisibility(false)
+  }
 }
 
 // This method will be called when Electron has finished initialization
@@ -981,6 +1003,33 @@ app.whenReady().then(() => {
     })
     console.log('[Electron] Deployment service initialized')
 
+    // Initialize MCP server service with main-process references
+    const { loadConnections } = require('./services/connectionStorage')
+    mcpServerService.init({
+      compilePrompt,
+      getPrompdCli,
+      deploymentService,
+      connectionStorage: { loadConnections: () => loadConnections(currentWorkspacePath) },
+      workspacePath: currentWorkspacePath,
+    })
+    console.log('[Electron] MCP server service initialized')
+
+    // Auto-start MCP server if configured (async, non-blocking)
+    ;(async () => {
+      try {
+        const mcpConfig = await readConfigFile(getGlobalConfigPath())
+        if (mcpConfig?.services?.mcp_server?.auto_start) {
+          const mcpPort = mcpConfig.services.mcp_server.port || 18791
+          const mcpApiKey = mcpConfig.services.mcp_server.api_key || undefined
+          console.log('[Electron] Auto-starting MCP server on port', mcpPort)
+          await mcpServerService.start({ port: mcpPort, apiKey: mcpApiKey })
+          trayManager.setState({ mcpServerRunning: true, mcpServerPort: mcpPort })
+        }
+      } catch (mcpErr) {
+        console.error('[Electron] Failed to auto-start MCP server:', mcpErr.message)
+      }
+    })()
+
     // Update tray with deployments
     updateTrayWithDeployments()
 
@@ -1172,6 +1221,48 @@ app.whenReady().then(() => {
     }
   })
 
+  trayManager.on('mcp-server-start', async () => {
+    try {
+      await mcpServerService.start()
+      trayManager.setState({ mcpServerRunning: true, mcpServerPort: mcpServerService.port })
+    } catch (err) {
+      console.error('[Tray] Failed to start MCP server:', err.message)
+      trayManager.setState({ mcpServerRunning: false })
+    }
+  })
+
+  trayManager.on('mcp-server-stop', async () => {
+    try {
+      await mcpServerService.stop()
+      trayManager.setState({ mcpServerRunning: false, mcpServerPort: undefined })
+    } catch (err) {
+      console.error('[Tray] Failed to stop MCP server:', err.message)
+    }
+  })
+
+  trayManager.on('mcp-server-copy-config', () => {
+    const info = mcpServerService.getInfo()
+    if (info.running) {
+      const config = {
+        mcpServers: {
+          'prompd-desktop': {
+            url: info.url,
+            transport: 'streamable-http',
+            headers: {
+              Authorization: `Bearer ${info.apiKey}`,
+            },
+          },
+        },
+      }
+      clipboard.writeText(JSON.stringify(config, null, 2))
+      trayManager.showNotification({
+        title: 'MCP Config Copied',
+        body: 'Connection configuration copied to clipboard',
+        type: 'info'
+      })
+    }
+  })
+
   app.on('activate', () => {
     console.log('[Electron] App activated')
     // On macOS it's common to re-create a window when dock icon is clicked
@@ -1232,6 +1323,19 @@ app.on('window-all-closed', () => {
   }
 })
 
+// Sync Electron native theme with renderer theme
+ipcMain.on('app:set-native-theme', (event, theme) => {
+  nativeTheme.themeSource = theme === 'dark' ? 'dark' : 'light'
+  const bgColor = theme === 'dark' ? '#0f172a' : '#ffffff'
+  const symbolColor = theme === 'dark' ? '#f1f5f9' : '#0f1117'
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setBackgroundColor(bgColor)
+    try {
+      mainWindow.setTitleBarOverlay({ color: bgColor, symbolColor, height: 39 })
+    } catch (_e) { /* titleBarOverlay not supported on this platform */ }
+  }
+})
+
 // Register modular IPC handlers
 ipcModules.forEach(m => m.register(ipcMain))
 
@@ -1259,6 +1363,7 @@ ipcMain.handle('dialog:openFolder', async () => {
   }
   // Automatically set workspace path for git operations
   currentWorkspacePath = filePaths[0]
+  mcpServerService.setWorkspacePath(currentWorkspacePath)
   updateWindowTitle()
   return filePaths[0]
 })
@@ -1689,19 +1794,22 @@ ipcMain.handle('api:request', async (_event, url, options) => {
         })
 
         response.on('end', () => {
-          const responseData = Buffer.concat(chunks).toString('utf8')
+          const buffer = Buffer.concat(chunks)
           const headers = {}
           const rawHeaders = response.rawHeaders
           for (let i = 0; i < rawHeaders.length; i += 2) {
             headers[rawHeaders[i].toLowerCase()] = rawHeaders[i + 1]
           }
 
+          // Return base64 for binary responses to preserve data integrity
+          const isBinary = options.responseType === 'arraybuffer'
           resolve({
             success: true,
             status: response.statusCode,
             statusText: response.statusMessage,
             headers: headers,
-            body: responseData,
+            body: isBinary ? buffer.toString('base64') : buffer.toString('utf8'),
+            binary: isBinary,
             ok: response.statusCode >= 200 && response.statusCode < 300
           })
         })
@@ -1962,6 +2070,7 @@ ipcMain.handle('workspace:setPath', async (event, workspacePath) => {
       const stats = await fs.promises.stat(workspacePath)
       if (stats.isDirectory()) {
         currentWorkspacePath = workspacePath
+        mcpServerService.setWorkspacePath(currentWorkspacePath)
         updateWindowTitle()
         return { success: true, path: workspacePath }
       }
@@ -2323,7 +2432,101 @@ ipcMain.handle('app:updateMenuState', async (_event, newState) => {
   menuState = { ...menuState, ...newState }
   // Rebuild menu with new state
   createMenu()
+  // Notify renderer for custom title bar menu
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('menu-state-changed', menuState)
+  }
   return true
+})
+
+// ── Custom title bar IPC handlers ──
+
+// Generic menu trigger: renderer fires same IPC events as native menu
+ipcMain.handle('menu:trigger', async (_event, action, ...args) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(action, ...args)
+  }
+})
+
+// Window title query
+ipcMain.handle('app:getWindowTitle', async () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return 'Prompd'
+  return mainWindow.getTitle()
+})
+
+// Menu state query
+ipcMain.handle('app:getMenuState', async () => {
+  return { ...menuState }
+})
+
+// Edit operations (for custom menu — proxy to webContents methods)
+ipcMain.handle('edit:undo', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.undo() })
+ipcMain.handle('edit:redo', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.redo() })
+ipcMain.handle('edit:cut', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.cut() })
+ipcMain.handle('edit:copy', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.copy() })
+ipcMain.handle('edit:paste', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.paste() })
+ipcMain.handle('edit:delete', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.delete() })
+ipcMain.handle('edit:selectAll', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.selectAll() })
+
+// View operations (for custom menu)
+ipcMain.handle('view:reload', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.reload() })
+ipcMain.handle('view:forceReload', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reloadIgnoringCache() })
+ipcMain.handle('view:toggleDevTools', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.toggleDevTools() })
+ipcMain.handle('view:resetZoom', async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.setZoomLevel(0) })
+ipcMain.handle('view:zoomIn', async () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.setZoomLevel(mainWindow.webContents.getZoomLevel() + 0.5)
+  }
+})
+ipcMain.handle('view:zoomOut', async () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.setZoomLevel(mainWindow.webContents.getZoomLevel() - 0.5)
+  }
+})
+ipcMain.handle('view:toggleFullscreen', async () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setFullScreen(!mainWindow.isFullScreen())
+})
+
+// File dialog menu actions (require main-process dialog)
+ipcMain.handle('menu:openFileDialog', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [
+      { name: 'Prompd Files', extensions: ['prmd'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  })
+  if (!result.canceled && result.filePaths.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('menu-open-file', result.filePaths[0])
+  }
+})
+
+ipcMain.handle('menu:openFolderDialog', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory']
+  })
+  if (!result.canceled && result.filePaths.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('menu-open-folder', result.filePaths[0])
+  }
+})
+
+ipcMain.handle('menu:closeFolder', async () => {
+  currentWorkspacePath = null
+  updateWindowTitle()
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('menu-close-folder')
+  }
+})
+
+ipcMain.handle('app:quit', async () => { app.quit() })
+
+ipcMain.handle('app:checkForUpdates', async () => {
+  try {
+    const updater = getAutoUpdater()
+    updater.checkForUpdatesAndNotify()
+  } catch (e) {
+    console.warn('[Electron] Auto-updater check failed:', e.message)
+  }
 })
 
 // Hotkey accelerator storage - maps action IDs to Electron accelerator strings
@@ -2395,8 +2598,8 @@ ipcMain.handle('agent:runCommand', async (_event, command, cwd) => {
 
   // Validate all arguments for security
   for (const arg of args) {
-    // Prevent path traversal with ..
-    if (arg.includes('..')) {
+    // Prevent path traversal patterns (../ or ..\) not just '..' in text
+    if (/(?:^|[/\\])\.\.(?:[/\\]|$)/.test(arg)) {
       return { success: false, output: 'Path traversal (..) not allowed in arguments', exitCode: -1 }
     }
     // Prevent home directory expansion
@@ -3169,6 +3372,7 @@ const DEFAULT_CONFIG = {
   api_keys: {},
   custom_providers: {},
   provider_configs: {},
+  services: {},
   registry: {
     default: 'prompdhub',
     current_namespace: '',
@@ -4278,27 +4482,107 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath) => {
     console.log('[Package] Installed:', packageRef)
     analytics.trackPackageInstall(packageRef)
 
+    // Parse package name and version from ref
+    // Formats: @scope/name@version, @scope/name, name@version, name
+    let pkgName, pkgVersion
+    if (packageRef.startsWith('@')) {
+      const lastAt = packageRef.lastIndexOf('@')
+      if (lastAt > 0) {
+        pkgName = packageRef.substring(0, lastAt)
+        pkgVersion = packageRef.substring(lastAt + 1)
+      } else {
+        pkgName = packageRef
+      }
+    } else {
+      const atIdx = packageRef.indexOf('@')
+      if (atIdx > 0) {
+        pkgName = packageRef.substring(0, atIdx)
+        pkgVersion = packageRef.substring(atIdx + 1)
+      } else {
+        pkgName = packageRef
+      }
+    }
+
+    const cacheDir = path.join(workspacePath, '.prompd', 'cache')
+
+    // If no version in ref, find it from the installed cache directory
+    if (!pkgVersion && fs.existsSync(cacheDir)) {
+      try {
+        if (pkgName.startsWith('@')) {
+          // Scoped: cache structure is .prompd/cache/@scope/name@version/
+          const [scope, name] = pkgName.split('/')
+          const scopeDir = path.join(cacheDir, scope)
+          if (fs.existsSync(scopeDir)) {
+            const match = fs.readdirSync(scopeDir).find(e => e.startsWith(name + '@'))
+            if (match) pkgVersion = match.substring(name.length + 1)
+          }
+        } else {
+          const match = fs.readdirSync(cacheDir).find(e => e.startsWith(pkgName + '@'))
+          if (match) pkgVersion = match.substring(pkgName.length + 1)
+        }
+      } catch (lookupErr) {
+        console.warn('[Package] Cache version lookup failed:', lookupErr.message)
+      }
+    }
+
+    // Update prompd.json with the dependency
+    if (pkgName && pkgVersion) {
+      try {
+        const prompdJsonPath = path.join(workspacePath, 'prompd.json')
+        let prompdJson = { dependencies: {} }
+
+        if (fs.existsSync(prompdJsonPath)) {
+          const content = fs.readFileSync(prompdJsonPath, 'utf8')
+          if (content && content.trim() !== '') {
+            prompdJson = JSON.parse(content)
+          }
+        }
+
+        if (!prompdJson.dependencies) {
+          prompdJson.dependencies = {}
+        }
+
+        prompdJson.dependencies[pkgName] = pkgVersion
+
+        fs.writeFileSync(prompdJsonPath, JSON.stringify(prompdJson, null, 2) + '\n')
+        console.log('[Package] Updated prompd.json with dependency:', pkgName, '@', pkgVersion)
+      } catch (depErr) {
+        console.warn('[Package] Failed to update prompd.json (non-fatal):', depErr.message)
+      }
+    } else {
+      console.warn('[Package] Could not determine package name/version for prompd.json update')
+    }
+
     // Check installed package for MCP dependencies
     let missingMcps = []
     try {
-      // Find the installed package's prompd.json in the cache
-      const cacheDir = path.join(workspacePath, '.prompd', 'cache')
       if (fs.existsSync(cacheDir)) {
-        // packageRef may be "@scope/name@version" or "name@version" or just "@scope/name"
-        const entries = fs.readdirSync(cacheDir)
-        // Match entries that start with the package name (before the @ version separator)
-        const pkgName = packageRef.includes('@') && !packageRef.startsWith('@')
-          ? packageRef.split('@')[0]
-          : packageRef.startsWith('@')
-            ? packageRef.substring(0, packageRef.lastIndexOf('@') > 0 ? packageRef.lastIndexOf('@') : packageRef.length)
-            : packageRef
-        const matchingDir = entries.find(e => e.startsWith(pkgName + '@') || e === pkgName)
-        if (matchingDir) {
-          const pkgJsonPath = path.join(cacheDir, matchingDir, 'prompd.json')
+        // For scoped packages, build the cache path: @scope/name@version
+        let matchingCachePath
+        if (pkgName && pkgVersion) {
+          if (pkgName.startsWith('@')) {
+            const [scope, name] = pkgName.split('/')
+            matchingCachePath = path.join(cacheDir, scope, `${name}@${pkgVersion}`)
+          } else {
+            matchingCachePath = path.join(cacheDir, `${pkgName}@${pkgVersion}`)
+          }
+        }
+
+        // Fallback: scan top-level entries (original approach for non-scoped)
+        if (!matchingCachePath || !fs.existsSync(matchingCachePath)) {
+          const entries = fs.readdirSync(cacheDir)
+          const fallbackName = pkgName || packageRef
+          const matchingDir = entries.find(e => e.startsWith(fallbackName + '@') || e === fallbackName)
+          if (matchingDir) {
+            matchingCachePath = path.join(cacheDir, matchingDir)
+          }
+        }
+
+        if (matchingCachePath && fs.existsSync(matchingCachePath)) {
+          const pkgJsonPath = path.join(matchingCachePath, 'prompd.json')
           if (fs.existsSync(pkgJsonPath)) {
             const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'))
             if (pkgJson.mcps && Array.isArray(pkgJson.mcps) && pkgJson.mcps.length > 0) {
-              // Check which MCP servers are not configured
               const mcpConfig = mcpService.loadMcpConfig()
               const configuredNames = new Set(Object.keys(mcpConfig.mcpServers || {}))
               missingMcps = pkgJson.mcps.filter(name => !configuredNames.has(name))
@@ -4842,13 +5126,22 @@ const pendingUserInputs = new Map() // requestId -> { resolve, reject }
 let popupWindow = null
 let currentPopupRequest = null
 
-function createInputPopupWindow(request, requestId, metadata) {
-  // Close existing popup if any
-  if (popupWindow && !popupWindow.isDestroyed()) {
-    popupWindow.close()
-  }
+// Track which executionId owns the popup so we can close it on completion
+let popupExecutionId = null
 
+function createInputPopupWindow(request, requestId, metadata) {
   currentPopupRequest = { request, requestId, metadata }
+  popupExecutionId = metadata?.executionId || null
+
+  // If popup already exists and is alive, push the new request into it
+  if (popupWindow && !popupWindow.isDestroyed()) {
+    popupWindow.webContents.send('popup:newRequest', {
+      request: currentPopupRequest.request,
+      metadata: currentPopupRequest.metadata
+    })
+    popupWindow.focus()
+    return
+  }
 
   // Resolve icon path (reuse same logic as main window)
   const isPackaged = app.isPackaged
@@ -4865,15 +5158,18 @@ function createInputPopupWindow(request, requestId, metadata) {
   }
 
   popupWindow = new BrowserWindow({
-    width: 450,
-    height: 500,
+    width: 520,
+    height: 600,
+    minWidth: 400,
+    minHeight: 400,
     resizable: true,
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
+    frame: false,
     icon: popupIcon,
     title: 'User Input Required - Prompd',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#0f172a',
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'popup-preload.js'),
@@ -4895,11 +5191,11 @@ function createInputPopupWindow(request, requestId, metadata) {
   })
 
   popupWindow.on('closed', () => {
-    // If user closed window without responding, cancel the request
-    if (currentPopupRequest && currentPopupRequest.requestId === requestId) {
-      const pending = pendingUserInputs.get(requestId)
+    // If user closed window without responding, cancel the pending request
+    if (currentPopupRequest) {
+      const pending = pendingUserInputs.get(currentPopupRequest.requestId)
       if (pending) {
-        pendingUserInputs.delete(requestId)
+        pendingUserInputs.delete(currentPopupRequest.requestId)
         if (currentPopupRequest.isCheckpoint) {
           pending.resolve(false)
         } else {
@@ -4909,7 +5205,26 @@ function createInputPopupWindow(request, requestId, metadata) {
       currentPopupRequest = null
     }
     popupWindow = null
+    popupExecutionId = null
   })
+}
+
+/**
+ * Close the popup window gracefully (called when workflow execution ends).
+ * Sends a 'done' message so the popup can show a completion state before closing.
+ */
+function closePopupWindow(status, message) {
+  if (popupWindow && !popupWindow.isDestroyed()) {
+    popupWindow.webContents.send('popup:done', { status, message })
+    // Auto-close after a short delay so the user sees the completion message
+    setTimeout(() => {
+      if (popupWindow && !popupWindow.isDestroyed()) {
+        currentPopupRequest = null
+        popupWindow.close()
+      }
+    }, 2500)
+  }
+  popupExecutionId = null
 }
 
 // Import CLI modules once at startup (prevents blocking on first execution)
@@ -5055,9 +5370,7 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               setTimeout(() => {
                 if (pendingUserInputs.has(requestId)) {
                   pendingUserInputs.delete(requestId)
-                  if (popupWindow && !popupWindow.isDestroyed()) {
-                    popupWindow.close()
-                  }
+                  closePopupWindow('error', 'Input timed out after 10 minutes')
                   reject(new Error('User input timed out after 10 minutes'))
                 }
               }, 600000)
@@ -5126,9 +5439,7 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               setTimeout(() => {
                 if (pendingUserInputs.has(requestId)) {
                   pendingUserInputs.delete(requestId)
-                  if (popupWindow && !popupWindow.isDestroyed()) {
-                    popupWindow.close()
-                  }
+                  closePopupWindow('error', 'Checkpoint timed out after 10 minutes')
                   reject(new Error('Checkpoint timed out after 10 minutes'))
                 }
               }, 600000)
@@ -5156,14 +5467,14 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
             }, 300000)
           })
         },
-        // Local prompt execution through CLI (centralized compilation + execution)
+        // Centralized .prmd execution — single path for all workflow prompt execution
         executePrompt: async (source, promptParams, provider, model) => {
           // Merge workflow-level params (includes defaults) into node-level prompt params
           // Node params take priority over workflow params
           const mergedParams = { ...params, ...promptParams }
           let tempFilePath = null
           try {
-            console.log(`[Workflow Executor] Executing prompt via CLI: ${source}`)
+            console.log(`[Workflow Executor] Executing prompt via CLI: ${source.substring(0, 80)}`)
 
             // Determine file path to execute
             let fileToExecute = source
@@ -5213,11 +5524,15 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
             }
 
             // Execute through CLI (centralized compilation + execution)
+            const resolvedWorkspaceRoot = options?.workflowFilePath
+              ? path.dirname(options.workflowFilePath)
+              : currentWorkspacePath
             const executeResult = await prompdExecutor.execute(fileToExecute, {
               provider: provider || 'openai',
               model: model || 'gpt-4o',
               apiKey,
-              params: mergedParams
+              params: mergedParams,
+              workspaceRoot: resolvedWorkspaceRoot || currentWorkspacePath
             })
 
             // Clean up temp file
@@ -5236,21 +5551,10 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
           }
         },
         // Agent LLM execution (for chat-agent nodes)
+        // Routes through executePrompt for single execution path
         onPromptExecute: async (request) => {
-          let tempFilePath = null
           try {
             console.log(`[Workflow Executor] Agent LLM request from node: ${request.nodeId}`)
-
-            // Get API key from config
-            const config = await configManager.load()
-            const apiKey = config.apiKeys?.[request.provider] || process.env[`${request.provider.toUpperCase()}_API_KEY`]
-
-            if (!apiKey) {
-              return {
-                success: false,
-                error: `No API key found for provider: ${request.provider}`
-              }
-            }
 
             // Format prompt with system message and conversation history
             let fullPrompt = request.prompt + '\n\n'
@@ -5263,7 +5567,7 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
             }
             fullPrompt += 'Assistant:'
 
-            // Write to temp .prmd file (PrompdExecutor requires file path)
+            // Build .prmd content and route through executePrompt (single execution path)
             const uniqueId = `agent-prompt-${Date.now()}`
             const promptContent = [
               '---',
@@ -5276,29 +5580,18 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               fullPrompt
             ].join('\n')
 
-            tempFilePath = path.join(app.getPath('temp'), `${uniqueId}.prmd`)
-            await fs.writeFile(tempFilePath, promptContent, 'utf-8')
-
-            // Execute through CLI (centralized compilation + execution)
-            const executeResult = await prompdExecutor.execute(tempFilePath, {
-              provider: request.provider || 'openai',
-              model: request.model || 'gpt-4o',
-              apiKey,
-              params: {}
-            })
-
-            // Clean up temp file
-            await fs.unlink(tempFilePath).catch(() => {})
+            const response = await executorOptions.executePrompt(
+              promptContent,
+              {},
+              request.provider || 'openai',
+              request.model || 'gpt-4o'
+            )
 
             return {
               success: true,
-              response: executeResult.response || executeResult.content || ''
+              response: response || ''
             }
           } catch (err) {
-            // Clean up temp file on error
-            if (tempFilePath) {
-              await fs.unlink(tempFilePath).catch(() => {})
-            }
             console.error('[Workflow Executor] onPromptExecute failed:', err)
             return {
               success: false,
@@ -6149,7 +6442,8 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
 
             // Validate all arguments for security
             for (const arg of args) {
-              if (arg.includes('..')) {
+              // Check for actual path traversal patterns (../ or ..\) not just '..' in text
+              if (/(?:^|[/\\])\.\.(?:[/\\]|$)/.test(arg)) {
                 return { success: false, result: 'Path traversal (..) not allowed in arguments', error: 'Path traversal not allowed' }
               }
               if (arg.startsWith('~')) {
@@ -6270,6 +6564,11 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
       // Cleanup
       runningExecutions.delete(executionId)
 
+      // Close popup if it belongs to this execution
+      if (popupExecutionId === executionId) {
+        closePopupWindow('complete', 'Workflow completed')
+      }
+
       console.log(`[Workflow Executor] Execution completed: ${executionId}`)
     } catch (err) {
       console.error(`[Workflow Executor] Execution failed: ${executionId}`, err)
@@ -6284,6 +6583,11 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
 
       // Cleanup
       runningExecutions.delete(executionId)
+
+      // Close popup if it belongs to this execution
+      if (popupExecutionId === executionId) {
+        closePopupWindow('error', err.message)
+      }
     }
   })
 
@@ -6369,11 +6673,10 @@ ipcMain.handle('popup:submitInput', async (_event, response) => {
 
     console.log(`[Popup] Input received for: ${requestId}`)
 
-    // Close popup (will clear currentPopupRequest via closed handler)
-    if (popupWindow && !popupWindow.isDestroyed()) {
-      currentPopupRequest = null
-      popupWindow.close()
-    }
+    // Don't close popup — keep it alive for the next request in the loop.
+    // The popup will be closed when the workflow execution finishes
+    // (via closePopupWindow) or when the user manually closes it.
+    currentPopupRequest = null
 
     return { success: true }
   }

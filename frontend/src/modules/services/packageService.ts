@@ -1,5 +1,6 @@
 import { prompdSettings } from './prompdSettings'
 import { getApiBaseUrl } from './apiConfig'
+import { electronFetch } from './electronFetch'
 
 export interface PackageManifest {
   name: string
@@ -265,7 +266,7 @@ export class PackageService {
 
     console.log('[PackageService] Fetching namespaces from:', registryUrl)
 
-    const response = await fetch(`${registryUrl}/user/namespaces`, {
+    const response = await electronFetch(`${registryUrl}/user/namespaces`, {
       headers: {
         'Authorization': `Bearer ${authToken}`,
         'Content-Type': 'application/json'

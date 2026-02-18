@@ -294,6 +294,8 @@ export interface PromptNodeData extends BaseNodeData {
   outputSchema?: JsonSchema
   /** Guardrail configuration (for content filtering/validation) */
   guardrail?: {
+    /** Whether the guardrail is enabled */
+    enabled?: boolean
     /** Output mode when guardrail passes */
     outputMode?: 'passthrough' | 'original' | 'reject-message'
     /** Expected response format from LLM */

@@ -16,6 +16,15 @@ export interface ApiRequestResponse {
   error?: string
 }
 
+export interface MenuState {
+  hasWorkspace: boolean
+  hasActiveTab: boolean
+  isPrompdFile: boolean
+  isWorkflowFile: boolean
+  canExecute: boolean
+  isExecutionActive: boolean
+}
+
 export interface ElectronAPI {
   // System info
   getHomePath: () => Promise<string>
@@ -23,6 +32,47 @@ export interface ElectronAPI {
   // Environment variables (filtered by prefix for security)
   // Returns env vars with prefix stripped: PROMPD_API_KEY -> { API_KEY: value }
   getSystemEnvVars: (prefix: string) => Promise<Record<string, string>>
+
+  // Theme
+  setNativeTheme: (theme: 'light' | 'dark') => void
+
+  // Platform
+  platform: string
+
+  // Custom title bar support
+  triggerMenuAction: (action: string, ...args: unknown[]) => Promise<void>
+  getWindowTitle: () => Promise<string>
+  onWindowTitleChanged: (callback: (title: string) => void) => () => void
+  getMenuState: () => Promise<MenuState>
+  onMenuStateChanged: (callback: (state: MenuState) => void) => () => void
+
+  // Edit operations (for custom menu bar)
+  editUndo: () => Promise<void>
+  editRedo: () => Promise<void>
+  editCut: () => Promise<void>
+  editCopy: () => Promise<void>
+  editPaste: () => Promise<void>
+  editDelete: () => Promise<void>
+  editSelectAll: () => Promise<void>
+
+  // View operations (for custom menu bar)
+  viewReload: () => Promise<void>
+  viewForceReload: () => Promise<void>
+  viewToggleDevTools: () => Promise<void>
+  viewResetZoom: () => Promise<void>
+  viewZoomIn: () => Promise<void>
+  viewZoomOut: () => Promise<void>
+  viewToggleFullscreen: () => Promise<void>
+
+  // File/App operations (for custom menu bar)
+  openFileDialog: () => Promise<void>
+  openFolderDialog: () => Promise<void>
+  closeFolder: () => Promise<void>
+  quit: () => Promise<void>
+  checkForUpdates: () => Promise<void>
+
+  // Shell operations
+  openExternal: (url: string) => Promise<void>
 
   // File dialogs
   openFile: () => Promise<string | null>
@@ -270,6 +320,49 @@ export interface ElectronAPI {
 
     // Install all dependencies from prompd.json
     installAll: (workspacePath: string) => Promise<InstallAllResult>
+  }
+
+  // Node template management - save/restore workflow node configurations
+  templates?: {
+    save: (
+      workspacePath: string,
+      templateData: Record<string, unknown>,
+      scope?: 'workspace' | 'user',
+      workflowFilePath?: string
+    ) => Promise<{ success: boolean; fileName?: string; scope?: string; error?: string }>
+
+    list: (workspacePath: string) => Promise<{
+      success: boolean
+      templates: Array<{
+        fileName: string
+        name: string
+        description?: string
+        nodeType: string
+        nodeTypeLabel: string
+        scope: 'workspace' | 'user'
+        createdAt: string
+      }>
+      error?: string
+    }>
+
+    delete: (
+      workspacePath: string,
+      fileName: string,
+      scope: 'workspace' | 'user'
+    ) => Promise<{ success: boolean; error?: string }>
+
+    insert: (
+      workspacePath: string,
+      fileName: string,
+      scope: 'workspace' | 'user',
+      workflowFilePath?: string
+    ) => Promise<{
+      success: boolean
+      template?: Record<string, unknown>
+      extractedFiles?: string[]
+      skippedFiles?: string[]
+      error?: string
+    }>
   }
 
   // Workflow trigger management (schedule, webhook, file-watch)
@@ -581,6 +674,50 @@ export interface ElectronAPI {
     searchRegistry: (query: string, limit?: number) => Promise<{
       success: boolean
       servers?: McpRegistryServer[]
+      error?: string
+    }>
+  }
+
+  // MCP server (Prompd-as-server for OpenClaw and other MCP clients)
+  mcpServer?: {
+    start: (opts?: { port?: number; apiKey?: string }) => Promise<{
+      success: boolean
+      running?: boolean
+      port?: number
+      url?: string | null
+      apiKey?: string
+      error?: string
+    }>
+    stop: () => Promise<{ success: boolean; error?: string }>
+    status: () => Promise<{
+      success: boolean
+      running?: boolean
+      port?: number
+      url?: string | null
+      apiKey?: string
+      workspacePath?: string | null
+      toolCount?: number
+      error?: string
+    }>
+    getConfig: (format?: string) => Promise<{
+      success: boolean
+      config?: Record<string, unknown>
+      format?: string
+      error?: string
+    }>
+    regenerateApiKey: () => Promise<{
+      success: boolean
+      apiKey?: string
+      error?: string
+    }>
+    getClients: () => Promise<{
+      success: boolean
+      clients?: Array<{
+        ip: string
+        userAgent: string
+        lastSeen: string
+        requestCount: number
+      }>
       error?: string
     }>
   }
@@ -962,6 +1099,13 @@ export interface PrompdConfig {
   max_retries?: number
   verbose?: boolean
   disabled_providers?: string[]  // List of provider IDs to disable (preserves API keys)
+  services?: {
+    mcp_server?: {
+      auto_start?: boolean
+      port?: number
+      api_key?: string
+    }
+  }
 }
 
 export interface CustomProviderModelConfig {

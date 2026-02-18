@@ -86,6 +86,8 @@ export interface AgentState {
     completionTokens: number
     totalTokens: number
   }
+  /** Prompt tokens from the most recent LLM call (for context % display) */
+  lastPromptTokens: number
 }
 
 export interface UseAgentModeOptions {
@@ -166,7 +168,8 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
     pendingPlanReview: null,
     isAgentLoopActive: false,
     error: null,
-    tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+    tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+    lastPromptTokens: 0
   })
 
   // Constants
@@ -175,6 +178,7 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
   // Refs
   const toolExecutorRef = useRef<IToolExecutor | null>(null)
   const abortRef = useRef(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
   const agentLoopActiveRef = useRef(false)
   const agentLoopRetryCountRef = useRef(0)
   const lastToolResultsXmlRef = useRef<string | null>(null)
@@ -1025,26 +1029,65 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
 
       console.log('[useAgentMode] Sending to LLM via base client')
 
-      const response = await baseClient.send({
-        ...request,
-        messages: messagesWithContext
+      // Create an AbortController so stop() can cancel the in-flight request
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+
+      // Race the LLM request against the abort signal so stop() works
+      // for both local (IPC) and remote (fetch) execution paths
+      const abortPromise = new Promise<never>((_, reject) => {
+        if (controller.signal.aborted) {
+          reject(new DOMException('The operation was aborted.', 'AbortError'))
+          return
+        }
+        controller.signal.addEventListener('abort', () => {
+          reject(new DOMException('The operation was aborted.', 'AbortError'))
+        }, { once: true })
       })
+
+      let response: PrompdLLMResponse
+      try {
+        response = await Promise.race([
+          baseClient.send({
+            ...request,
+            messages: messagesWithContext,
+            signal: controller.signal
+          }),
+          abortPromise
+        ])
+      } catch (err) {
+        // If the request was aborted by stop(), return a stopped response
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          console.log('[useAgentMode] Request aborted by user')
+          restoreOverridesAndCleanup()
+          return {
+            content: '*Stopped by user.*',
+            provider: '',
+            model: '',
+            metadata: { done: true }
+          } as PrompdLLMResponse
+        }
+        throw err
+      } finally {
+        abortControllerRef.current = null
+      }
 
       // Track usage (global + per-session accumulation)
       if (response.usage) {
+        const { promptTokens, completionTokens, totalTokens } = response.usage
         tokenUsageRef.current = {
-          promptTokens: tokenUsageRef.current.promptTokens + response.usage.promptTokens,
-          completionTokens: tokenUsageRef.current.completionTokens + response.usage.completionTokens,
-          totalTokens: tokenUsageRef.current.totalTokens + response.usage.totalTokens
+          promptTokens: tokenUsageRef.current.promptTokens + promptTokens,
+          completionTokens: tokenUsageRef.current.completionTokens + completionTokens,
+          totalTokens: tokenUsageRef.current.totalTokens + totalTokens
         }
-        setState(s => ({ ...s, tokenUsage: { ...tokenUsageRef.current } }))
+        setState(s => ({ ...s, tokenUsage: { ...tokenUsageRef.current }, lastPromptTokens: promptTokens }))
         if (trackUsage) {
           trackUsage(
             'chat',
             response.provider,
             response.model,
-            response.usage.promptTokens,
-            response.usage.completionTokens,
+            promptTokens,
+            completionTokens,
             { mode: chatModeRef.current }
           )
         }
@@ -1080,19 +1123,55 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
               { role: 'user' as const, content: XML_FORMAT_REMINDER }
             ]
 
-            const retryResponse = await baseClient.send({
-              ...request,
-              messages: retryMessages
+            // Create a new AbortController for the retry request
+            const retryController = new AbortController()
+            abortControllerRef.current = retryController
+
+            const retryAbortPromise = new Promise<never>((_, reject) => {
+              if (retryController.signal.aborted) {
+                reject(new DOMException('The operation was aborted.', 'AbortError'))
+                return
+              }
+              retryController.signal.addEventListener('abort', () => {
+                reject(new DOMException('The operation was aborted.', 'AbortError'))
+              }, { once: true })
             })
+
+            let retryResponse: PrompdLLMResponse
+            try {
+              retryResponse = await Promise.race([
+                baseClient.send({
+                  ...request,
+                  messages: retryMessages,
+                  signal: retryController.signal
+                }),
+                retryAbortPromise
+              ])
+            } catch (retryErr) {
+              if (retryErr instanceof DOMException && retryErr.name === 'AbortError') {
+                console.log('[useAgentMode] Retry request aborted by user')
+                restoreOverridesAndCleanup()
+                return {
+                  content: '*Stopped by user.*',
+                  provider: '',
+                  model: '',
+                  metadata: { done: true }
+                } as PrompdLLMResponse
+              }
+              throw retryErr
+            } finally {
+              abortControllerRef.current = null
+            }
 
             // Track retry token usage
             if (retryResponse.usage) {
+              const { promptTokens: retryPrompt, completionTokens: retryCompletion, totalTokens: retryTotal } = retryResponse.usage
               tokenUsageRef.current = {
-                promptTokens: tokenUsageRef.current.promptTokens + retryResponse.usage.promptTokens,
-                completionTokens: tokenUsageRef.current.completionTokens + retryResponse.usage.completionTokens,
-                totalTokens: tokenUsageRef.current.totalTokens + retryResponse.usage.totalTokens
+                promptTokens: tokenUsageRef.current.promptTokens + retryPrompt,
+                completionTokens: tokenUsageRef.current.completionTokens + retryCompletion,
+                totalTokens: tokenUsageRef.current.totalTokens + retryTotal
               }
-              setState(s => ({ ...s, tokenUsage: { ...tokenUsageRef.current } }))
+              setState(s => ({ ...s, tokenUsage: { ...tokenUsageRef.current }, lastPromptTokens: retryPrompt }))
             }
 
             // Try parsing the retry response
@@ -1160,6 +1239,11 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
     console.log('[useAgentMode] stop() called - aborting agent loop')
     abortRef.current = true
     agentLoopActiveRef.current = false
+    // Abort any in-flight LLM request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
     // Restore permission level and chatMode if overridden by present_plan
     if (planOverrideRef.current !== null) {
       console.log(`[useAgentMode] stop() - restoring permission level to '${planOverrideRef.current}'`)

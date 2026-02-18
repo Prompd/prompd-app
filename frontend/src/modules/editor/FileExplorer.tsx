@@ -1940,12 +1940,13 @@ version: 1.0.0
 `
 }
 
-function defaultWorkflow() {
+function defaultWorkflow(fileName?: string) {
+  const { id, name } = formatFileName(fileName || 'new-workflow.pdflow')
   return JSON.stringify({
     version: '1.0.0',
     metadata: {
-      id: `workflow-${Date.now()}`,
-      name: 'New Workflow',
+      id,
+      name,
       description: ''
     },
     parameters: [],
@@ -1964,7 +1965,7 @@ function defaultPrompdJson() {
 
 function getDefaultContent(fileName: string): string {
   if (fileName.endsWith('.prmd')) return defaultPrompd(fileName)
-  if (fileName.endsWith('.pdflow')) return defaultWorkflow()
+  if (fileName.endsWith('.pdflow')) return defaultWorkflow(fileName)
   if (fileName === 'prompd.json') return defaultPrompdJson()
   return ''
 }

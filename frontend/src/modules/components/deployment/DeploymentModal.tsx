@@ -115,6 +115,11 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
     if (!open || activeTab !== 'deployments') return
     
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip hotkeys when typing in inputs or when a sub-modal is open
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return
+      if (parameterModalOpen) return
+
       // Escape to close modal
       if (e.key === 'Escape') {
         if (bulkMode) {
@@ -176,7 +181,7 @@ export function DeploymentModal({ open, onClose }: DeploymentModalProps) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [open, activeTab, filteredDeployments, selectedDeployment, bulkMode, selectedIndex])
+  }, [open, activeTab, filteredDeployments, selectedDeployment, bulkMode, selectedIndex, parameterModalOpen])
 
   // Reset selection when filter changes
   useEffect(() => {

@@ -13,6 +13,11 @@ import {
   getChatModesArray
 } from '@prompd/react'
 import { LLMClientRouter } from '../services/llmClientRouter'
+import { CompactingLLMClient, SlidingWindowCompactor } from '@prompd/react'
+import { resolveContextWindowSize, formatContextWindow } from '../services/contextWindowResolver'
+
+/** Module-level singleton — SlidingWindowCompactor is stateless */
+const slidingWindowCompactor = new SlidingWindowCompactor()
 import '@prompd/react/dist/style.css' // Import styles explicitly
 import { PrompdEditorIntegration } from '../integrations/PrompdEditorIntegration'
 import { registryApi } from '../services/registryApi'
@@ -669,10 +674,29 @@ export default function AiChatPanel({
       })
     }
 
-    // Use the shared agent LLM client wrapper
-    return agentActions.createAgentLLMClient(baseClient, chatRef, contextMessages)
+    // Wrap base client with context compaction (decorator pattern)
+    const contextWindowSize = resolveContextWindowSize(
+      llmProvider.provider,
+      llmProvider.model,
+      llmProvider.providersWithPricing
+    )
+    const compactingClient = new CompactingLLMClient(
+      baseClient,
+      slidingWindowCompactor,
+      contextWindowSize
+    )
+
+    // Use the shared agent LLM client wrapper (agent wrapper calls compactingClient.send())
+    return agentActions.createAgentLLMClient(compactingClient, chatRef, contextMessages)
   // Include activeTabId to trigger rebuild when active tab changes
   }, [llmProvider.provider, llmProvider.model, getToken, getText, getActiveTabName, agentActions, activeTabId])
+
+  // Context utilization for status bar display
+  const contextUtilization = useMemo(() => {
+    if (agentState.lastPromptTokens <= 0) return null
+    const ctxWindow = resolveContextWindowSize(llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing)
+    return { pct: Math.round((agentState.lastPromptTokens / ctxWindow) * 100), formatted: formatContextWindow(ctxWindow) }
+  }, [agentState.lastPromptTokens, llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing])
 
   // Custom empty state content - unified agent mode
   const emptyStateContent = useMemo(() => {
@@ -1805,6 +1829,11 @@ export default function AiChatPanel({
           <span style={{ opacity: 0.5 }}>
             ({agentState.tokenUsage.promptTokens.toLocaleString()} in / {agentState.tokenUsage.completionTokens.toLocaleString()} out)
           </span>
+          {contextUtilization && (
+            <span style={{ opacity: 0.5, marginLeft: 'auto' }}>
+              Context: {contextUtilization.pct}% of {contextUtilization.formatted}
+            </span>
+          )}
         </div>
       )}
     </div>

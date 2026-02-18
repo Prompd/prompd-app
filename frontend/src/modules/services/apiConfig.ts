@@ -9,6 +9,7 @@
  */
 
 import { prompdSettings } from './prompdSettings'
+import { electronFetch } from './electronFetch'
 
 // Storage keys
 const API_BASE_KEY = 'prompd.apiBase'
@@ -251,7 +252,7 @@ export async function checkRegistryConnection(): Promise<boolean> {
     const timeoutId = setTimeout(() => controller.abort(), 5000)
 
     // Try the packages endpoint as a health check
-    const response = await fetch(`${registryUrl}/packages?limit=1`, {
+    const response = await electronFetch(`${registryUrl}/packages?limit=1`, {
       method: 'GET',
       signal: controller.signal
     })

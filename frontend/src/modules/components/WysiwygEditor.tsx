@@ -39,7 +39,8 @@ function unescapeNunjucks(markdown: string): string {
 }
 
 /** Normalize markdown for comparison to prevent re-render loops from whitespace differences */
-function normalizeForCompare(s: string): string {
+function normalizeForCompare(s: string | undefined | null): string {
+  if (!s) return ''
   return s.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
@@ -50,7 +51,8 @@ function normalizeForCompare(s: string): string {
  * Converting to <img> tags works reliably when html: true is enabled.
  * Also normalizes whitespace in base64 data that LLMs sometimes add.
  */
-function preprocessBase64Images(markdown: string): string {
+function preprocessBase64Images(markdown: string | undefined | null): string {
+  if (!markdown) return ''
   // Match ![alt](data:image/TYPE;base64,DATA) - base64 charset includes whitespace
   // that LLMs may insert as line breaks
   return markdown.replace(
