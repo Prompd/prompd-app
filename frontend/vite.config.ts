@@ -42,19 +42,26 @@ export default defineConfig({
       'monaco-editor/esm/vs/editor/editor.api',
       'monaco-editor/esm/vs/basic-languages/yaml/yaml',
       'monaco-editor/esm/vs/basic-languages/markdown/markdown',
-      'monaco-editor/esm/vs/base/browser/ui/list/listWidget'
+      'monaco-editor/esm/vs/base/browser/ui/list/listWidget',
+      '@prompd/cli/providers'  // Browser-compatible: types + KNOWN_PROVIDERS (CJS→ESM pre-bundle)
     ],
     exclude: [
       '@prompd/cli'  // Exclude main export (executor requires Node.js, goes via IPC in Electron)
-      // Note: Subpath exports (@prompd/cli/parser, /types, /validator) are browser-compatible
+      // Note: Subpath exports (@prompd/cli/providers, /parser, /types, /validator) are browser-compatible
     ]
   },
   build: {
+    commonjsOptions: {
+      // Default only processes node_modules/. Since @prompd/cli is file-linked
+      // (outside node_modules), we must include it for CJS→ESM conversion.
+      include: [/node_modules/, /prompd-cli\/cli\/npm\/dist/]
+    },
     rollupOptions: {
-      external: [
-        '@prompd/cli'  // Main export external (executor uses IPC in Electron main process)
-        // Note: Browser-compatible subpaths (/parser, /types, /validator) can be bundled if needed
-      ],
+      external: (id: string) => {
+        // Externalize the main @prompd/cli entry (Node.js only, uses IPC in Electron)
+        // but NOT subpath exports like /providers, /parser, /types, /validator (browser-compatible)
+        return id === '@prompd/cli'
+      },
       output: {
         manualChunks: {
           monaco: ['monaco-editor']

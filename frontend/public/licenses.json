@@ -152,13 +152,13 @@
     "publisher": "Prompd LLC",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend"
   },
-  "@prompd/cli@0.4.10": {
+  "@prompd/cli@0.4.11": {
     "licenses": "MIT",
     "publisher": "Logikbug",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\cli\\README.md"
   },
-  "@prompd/react@0.2.0": {
+  "@prompd/react@0.0.1": {
     "licenses": "MIT",
     "publisher": "Stephen Baker",
     "path": "C:\\git\\github\\Prompd\\prompd.app\\frontend\\node_modules\\@prompd\\react",

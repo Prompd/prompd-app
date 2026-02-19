@@ -2,7 +2,7 @@
  * GuardrailNodeProperties - Property editor for Guardrail nodes
  */
 
-import { Cpu } from 'lucide-react'
+import { Cpu, Maximize2 } from 'lucide-react'
 import type { GuardrailNodeData } from '../../../services/workflowTypes'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
 import { LLMProviderConfig } from '../shared/property-components/LLMProviderConfig'
@@ -11,14 +11,46 @@ export interface GuardrailNodePropertiesProps {
   data: GuardrailNodeData
   onChange: (field: string, value: unknown) => void
   nodeId?: string
+  onExpandEditor?: (content: string, language: string, label: string, field: string) => void
 }
 
-export function GuardrailNodeProperties({ data, onChange }: GuardrailNodePropertiesProps) {
+export function GuardrailNodeProperties({ data, onChange, onExpandEditor }: GuardrailNodePropertiesProps) {
   return (
     <>
       {/* System Prompt */}
       <div>
-        <label style={labelStyle}>Validation System Prompt</label>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <label style={labelStyle}>Validation System Prompt</label>
+          {onExpandEditor && (
+            <button
+              onClick={() => onExpandEditor(
+                data.systemPrompt || '',
+                'markdown',
+                'Validation System Prompt',
+                'systemPrompt'
+              )}
+              title="Open in expanded editor"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '2px 6px',
+                background: 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                color: 'var(--text-secondary)',
+                fontSize: '10px',
+                transition: 'color 0.15s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+            >
+              <Maximize2 size={11} />
+              Expand
+            </button>
+          )}
+        </div>
         <textarea
           value={data.systemPrompt || ''}
           onChange={(e) => onChange('systemPrompt', e.target.value)}
