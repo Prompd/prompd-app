@@ -28,7 +28,8 @@ router.get('/chat-modes', async (req, res) => {
     // Unified Agent mode handles all intents: create, edit, explore, discuss
     const modeFiles = [
       { id: 'agent', file: 'agent.json' },
-      { id: 'planner', file: 'planner.json' }
+      { id: 'planner', file: 'planner.json' },
+      { id: 'help-chat', file: 'help-chat.json' }
     ]
 
     for (const { id, file } of modeFiles) {

@@ -150,6 +150,9 @@ interface UIState {
 
   // Analytics (GA4) opt-in
   analyticsEnabled: boolean
+
+  // Help chat popover
+  helpChatEnabled: boolean
 }
 
 /**
@@ -240,6 +243,9 @@ interface UIActions {
 
   // Analytics (GA4) opt-in
   setAnalyticsEnabled: (enabled: boolean) => void
+
+  // Help chat popover
+  setHelpChatEnabled: (enabled: boolean) => void
 }
 
 type UIStore = UIState & UIActions
@@ -291,6 +297,7 @@ export const useUIStore = create<UIStore>()(
           bottomPanelMinimized: false,
           autoSaveEnabled: true, // Default to enabled
           analyticsEnabled: false, // Default to disabled (opt-in)
+          helpChatEnabled: true, // Default to enabled
 
           // View mode
           setMode: (mode) => set((state) => {
@@ -487,9 +494,9 @@ export const useUIStore = create<UIStore>()(
                 hasKey: true,
                 isCustom: false,
                 models: [
-                  { model: 'claude-haiku-4-5-20251015', displayName: 'Claude Haiku 4.5', inputPrice: 0.80, outputPrice: 4.00, supportsImageGeneration: false },
+                  { model: 'claude-haiku-4-5-20251001', displayName: 'Claude Haiku 4.5', inputPrice: 1.00, outputPrice: 5.00, supportsImageGeneration: false },
                   { model: 'claude-sonnet-4-5-20250929', displayName: 'Claude Sonnet 4.5', inputPrice: 3.00, outputPrice: 15.00, supportsImageGeneration: false },
-                  { model: 'claude-opus-4-5-20251101', displayName: 'Claude Opus 4.5', inputPrice: 15.00, outputPrice: 75.00, supportsImageGeneration: false }
+                  { model: 'claude-opus-4-6', displayName: 'Claude Opus 4.6', inputPrice: 5.00, outputPrice: 25.00, supportsImageGeneration: false }
                 ]
               },
               {
@@ -952,6 +959,11 @@ export const useUIStore = create<UIStore>()(
             window.electronAPI?.analytics?.setEnabled(enabled)
           }),
 
+          // Help chat popover
+          setHelpChatEnabled: (enabled) => set((state) => {
+            state.helpChatEnabled = enabled
+          }),
+
           refreshLLMProviders: async (getToken) => {
             console.log('[uiStore] refreshLLMProviders called - resetting and re-initializing')
 
@@ -990,6 +1002,7 @@ export const useUIStore = create<UIStore>()(
             bottomPanelMinimized: state.bottomPanelMinimized,
             autoSaveEnabled: state.autoSaveEnabled,
             analyticsEnabled: state.analyticsEnabled,
+            helpChatEnabled: state.helpChatEnabled,
           }),
           // After hydration, set mode from defaultViewMode so the app opens in user's preferred view
           onRehydrateStorage: () => (state) => {
@@ -1025,3 +1038,4 @@ export const selectShowWorkflowPanel = (state: UIStore) => state.showWorkflowPan
 export const selectWorkflowPanelPinned = (state: UIStore) => state.workflowPanelPinned
 export const selectAutoSaveEnabled = (state: UIStore) => state.autoSaveEnabled
 export const selectAnalyticsEnabled = (state: UIStore) => state.analyticsEnabled
+export const selectHelpChatEnabled = (state: UIStore) => state.helpChatEnabled

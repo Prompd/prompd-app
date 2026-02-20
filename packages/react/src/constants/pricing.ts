@@ -1,5 +1,5 @@
 /**
- * LLM Model Pricing Constants - Updated November 2025
+ * LLM Model Pricing Constants - Updated February 2026
  * Prices are per million tokens (input/output)
  */
 
@@ -16,7 +16,7 @@ export interface ModelPricingEntry extends ModelPricing {
 
 /**
  * Model pricing lookup - prices in USD per million tokens
- * Updated November 2025
+ * Updated February 2026
  */
 export const MODEL_PRICING: Record<string, ModelPricingEntry> = {
   // OpenAI Models
@@ -64,7 +64,7 @@ export const MODEL_PRICING: Record<string, ModelPricingEntry> = {
   },
 
   // Anthropic Models
-  'claude-haiku-4-5-20251015': {
+  'claude-haiku-4-5-20251001': {
     name: 'Claude Haiku 4.5',
     provider: 'anthropic',
     tier: 'cheap',
@@ -78,6 +78,13 @@ export const MODEL_PRICING: Record<string, ModelPricingEntry> = {
     inputPerMillion: 3.00,
     outputPerMillion: 15.00
   },
+  'claude-opus-4-6': {
+    name: 'Claude Opus 4.6',
+    provider: 'anthropic',
+    tier: 'flagship',
+    inputPerMillion: 5.00,
+    outputPerMillion: 25.00
+  },
   'claude-sonnet-4-20250514': {
     name: 'Claude Sonnet 4',
     provider: 'anthropic',
@@ -89,15 +96,8 @@ export const MODEL_PRICING: Record<string, ModelPricingEntry> = {
     name: 'Claude Opus 4.5',
     provider: 'anthropic',
     tier: 'flagship',
-    inputPerMillion: 15.00,
-    outputPerMillion: 75.00
-  },
-  'claude-opus-4-20250514': {
-    name: 'Claude Opus 4',
-    provider: 'anthropic',
-    tier: 'flagship',
-    inputPerMillion: 15.00,
-    outputPerMillion: 75.00
+    inputPerMillion: 5.00,
+    outputPerMillion: 25.00
   }
 }
 

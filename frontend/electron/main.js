@@ -1281,14 +1281,22 @@ let rendererReadyToQuit = false
 // Handle app quitting - ask renderer to save/discard dirty files first
 app.on('before-quit', async (event) => {
   // If the renderer hasn't confirmed yet, prevent quit and ask it to handle dirty tabs
+  // But only if the renderer has finished loading — during initialization it can't respond
   if (!rendererReadyToQuit && mainWindow && !mainWindow.isDestroyed()) {
-    event.preventDefault()
-    // Show the window if hidden (so save dialogs are visible)
-    if (!mainWindow.isVisible()) {
-      mainWindow.show()
+    const webContents = mainWindow.webContents
+    if (webContents.isLoading() || webContents.getURL() === '' || webContents.getURL() === 'about:blank') {
+      // Renderer not ready — skip dirty-tab handshake and quit immediately
+      console.log('[Electron] Renderer not loaded yet, quitting immediately')
+      rendererReadyToQuit = true
+    } else {
+      event.preventDefault()
+      // Show the window if hidden (so save dialogs are visible)
+      if (!mainWindow.isVisible()) {
+        mainWindow.show()
+      }
+      mainWindow.webContents.send('app:before-quit')
+      return
     }
-    mainWindow.webContents.send('app:before-quit')
-    return
   }
 
   // Renderer confirmed — proceed with cleanup
@@ -2158,11 +2166,11 @@ ipcMain.handle('git:runCommand', async (event, args, cwd) => {
 })
 
 // Handle app protocol for deep linking
-if (process.defaultApp) {
-  if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient('prompd', process.execPath, [path.resolve(process.argv[1])])
-  }
-} else {
+// In production, the NSIS installer registers the protocol pointing to Prompd.exe.
+// We only call setAsDefaultProtocolClient in production as a fallback.
+// In dev mode, process.execPath is electron.exe which would register "Electron"
+// as the protocol handler name in Windows, causing "Open Electron?" dialogs.
+if (!process.defaultApp) {
   app.setAsDefaultProtocolClient('prompd')
 }
 
@@ -2176,12 +2184,13 @@ function handleProtocolUrl(url) {
   }
 }
 
-// Handle file opens (.prmd, .pdpkg)
+// Handle file opens (.prmd, .pdflow, .pdpkg)
 function handleFileOpen(filePath) {
   console.log('[Electron] File open requested:', filePath)
   // Validate file extension
   const ext = path.extname(filePath).toLowerCase()
-  if (ext !== '.prmd' && ext !== '.pdpkg') {
+  const supportedExtensions = ['.prmd', '.pdflow', '.pdpkg']
+  if (!supportedExtensions.includes(ext)) {
     console.log('[Electron] Ignoring non-prompd file:', filePath)
     return
   }
@@ -2218,7 +2227,7 @@ if (!gotTheLock) {
     // Check for file path in command line
     const filePath = commandLine.find(arg => {
       const ext = path.extname(arg).toLowerCase()
-      return ext === '.prmd' || ext === '.pdpkg'
+      return ext === '.prmd' || ext === '.pdflow' || ext === '.pdpkg'
     })
     if (filePath) {
       handleFileOpen(filePath)
@@ -2252,7 +2261,7 @@ function checkStartupArgs() {
   // Check for file path
   const filePath = args.find(arg => {
     const ext = path.extname(arg).toLowerCase()
-    return ext === '.prmd' || ext === '.pdpkg'
+    return ext === '.prmd' || ext === '.pdflow' || ext === '.pdpkg'
   })
   if (filePath) {
     pendingFileToOpen = filePath
@@ -3902,7 +3911,7 @@ ipcMain.handle('config:getProviders', async (_event, workspacePath) => {
 function getDefaultModelsForProvider(provider) {
   const modelMap = {
     openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-preview', 'o1-mini'],
-    anthropic: ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
+    anthropic: ['claude-haiku-4-5-20251001', 'claude-sonnet-4-5-20250929', 'claude-opus-4-6', 'claude-sonnet-4-20250514'],
     google: ['gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-1.5-flash'],
     groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
     mistral: ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest'],

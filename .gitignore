@@ -404,3 +404,9 @@ FodyWeavers.xsd
 /frontend/dist-electron
 frontend/.env*
 backend/.env*
+
+# Claude Code / AI agent files
+CLAUDE.md
+CLAUDE-ARCHITECTURE.md
+AGENTS.md
+.claude/

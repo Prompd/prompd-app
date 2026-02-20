@@ -27,7 +27,7 @@
 }
 
 .mcp-status-card {
-  padding: 16px;
+  padding: 20px;
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -37,24 +37,25 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
 }
 
 .mcp-status-indicator {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .mcp-status-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
 .mcp-status-dot.running {
   background: #10b981;
-  box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
 }
 
 .mcp-status-dot.stopped {
@@ -62,17 +63,33 @@
 }
 
 .mcp-status-text {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.mcp-status-url {
+  flex: 1;
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  color: var(--muted);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mcp-status-details {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
+}
+
+.mcp-detail-row {
+  display: flex;
+  gap: 24px;
 }
 
 .mcp-detail-item {
@@ -94,12 +111,6 @@
   font-weight: 500;
   font-family: 'Courier New', monospace;
   word-break: break-all;
-}
-
-.mcp-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 .mcp-port-input {
@@ -215,33 +226,6 @@
   font-size: 12px;
   word-break: break-all;
   user-select: all;
-}
-
-.mcp-config-tabs {
-  display: flex;
-  gap: 0;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 12px;
-}
-
-.mcp-config-tab {
-  padding: 8px 16px;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--muted);
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.mcp-config-tab:hover {
-  color: var(--text);
-}
-
-.mcp-config-tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
 }
 
 .mcp-config-block {
@@ -374,4 +358,79 @@
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* Buttons */
+.mcp-server-settings .btn-icon,
+.mcp-server-settings .btn-primary,
+.mcp-server-settings .btn-secondary,
+.mcp-server-settings .btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: 1px solid;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.mcp-server-settings .btn-icon {
+  padding: 8px;
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.mcp-server-settings .btn-icon:hover {
+  background: var(--panel-2);
+}
+
+.mcp-server-settings .btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.mcp-server-settings .btn-primary:hover {
+  opacity: 0.9;
+}
+
+.mcp-server-settings .btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mcp-server-settings .btn-secondary {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.mcp-server-settings .btn-secondary:hover {
+  background: var(--panel-2);
+}
+
+.mcp-server-settings .btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mcp-server-settings .btn-danger {
+  background: transparent;
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.mcp-server-settings .btn-danger:hover {
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+}
+
+.mcp-server-settings .btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

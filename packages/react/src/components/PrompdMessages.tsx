@@ -1365,6 +1365,47 @@ function Message({
               isUser={isUser}
             />
           ) : null}
+
+          {/* Run Info Footer - Inline within message bubble */}
+          {isAssistant && message.metadata?.provider && showRunInfo && (
+            <div
+              className="text-xs"
+              style={{
+                borderTop: '1px solid var(--prompd-border)',
+                marginTop: '8px',
+                paddingTop: '8px',
+                display: 'grid',
+                gridTemplateColumns: 'auto 1fr',
+                gap: '4px 12px',
+                alignItems: 'baseline'
+              }}
+            >
+              <span style={{ color: 'var(--prompd-muted)' }}>Provider</span>
+              <span style={{ color: 'var(--prompd-text)', fontWeight: 500, textAlign: 'right' }}>{String(message.metadata?.provider || 'N/A')}</span>
+              <span style={{ color: 'var(--prompd-muted)' }}>Model</span>
+              <span style={{ color: 'var(--prompd-text)', fontWeight: 500, textAlign: 'right' }}>{String(message.metadata?.model || 'N/A')}</span>
+              {message.metadata?.usage ? (
+                <>
+                  <span style={{ color: 'var(--prompd-muted)' }}>Tokens</span>
+                  <span style={{ color: 'var(--prompd-text)', fontWeight: 500, fontFamily: 'monospace', textAlign: 'right' }}>
+                    {(message.metadata.usage as Record<string, number>).promptTokens || 0} / {(message.metadata.usage as Record<string, number>).completionTokens || 0} / {(message.metadata.usage as Record<string, number>).totalTokens || 0}
+                  </span>
+                </>
+              ) : null}
+              {message.metadata?.duration ? (
+                <>
+                  <span style={{ color: 'var(--prompd-muted)' }}>Duration</span>
+                  <span style={{ color: 'var(--prompd-text)', fontWeight: 500, fontFamily: 'monospace', textAlign: 'right' }}>
+                    {((message.metadata.duration as number) / 1000).toFixed(2)}s
+                  </span>
+                </>
+              ) : null}
+              <span style={{ color: 'var(--prompd-muted)' }}>Time</span>
+              <span style={{ color: 'var(--prompd-text)', fontWeight: 500, fontFamily: 'monospace', textAlign: 'right' }}>
+                {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Metadata Row - Clean & Minimal */}
@@ -1376,89 +1417,19 @@ function Message({
         >
           {/* Run Info Button - For Assistant Messages */}
           {isAssistant && message.metadata?.provider ? (
-            <div className="relative">
-              <button
-                onClick={() => setShowRunInfo(!showRunInfo)}
-                className="flex items-center gap-1 px-2 py-1 rounded-md transition-all hover:scale-105 hover:bg-opacity-80"
-                style={{
-                  background: showRunInfo ? 'var(--prompd-accent)' : 'rgba(59, 130, 246, 0.15)',
-                  color: showRunInfo ? 'white' : 'var(--prompd-accent)',
-                  fontSize: '11px',
-                  border: `1px solid ${showRunInfo ? 'var(--prompd-accent)' : 'rgba(59, 130, 246, 0.3)'}`
-                }}
-                title="View run details"
-              >
-                <Info className="w-3 h-3" />
-              </button>
-
-              {/* Stats Tooltip */}
-              {showRunInfo && (
-                <div
-                  className="absolute left-0 top-full mt-1 z-50 p-3 rounded-lg shadow-xl min-w-[240px]"
-                  style={{
-                    background: 'var(--prompd-panel)',
-                    border: '1px solid var(--prompd-accent)',
-                    boxShadow: '0 8px 24px rgba(59, 130, 246, 0.25)'
-                  }}
-                >
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between gap-4">
-                      <span style={{ color: 'var(--prompd-muted)' }}>Provider:</span>
-                      <span style={{ color: 'var(--prompd-text)', fontWeight: 500 }}>{String(message.metadata?.provider || 'N/A')}</span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span style={{ color: 'var(--prompd-muted)' }}>Model:</span>
-                      <span style={{ color: 'var(--prompd-text)', fontWeight: 500 }}>{String(message.metadata?.model || 'N/A')}</span>
-                    </div>
-                    {message.metadata?.usage ? (
-                      <>
-                        <div style={{ borderTop: '1px solid var(--prompd-border)', margin: '8px 0' }} />
-                        <div className="flex justify-between gap-4">
-                          <span style={{ color: 'var(--prompd-muted)' }}>Prompt Tokens:</span>
-                          <span style={{ color: 'var(--prompd-text)', fontWeight: 500, fontFamily: 'monospace' }}>
-                            {(message.metadata.usage as any).promptTokens || 0}
-                          </span>
-                        </div>
-                        <div className="flex justify-between gap-4">
-                          <span style={{ color: 'var(--prompd-muted)' }}>Completion Tokens:</span>
-                          <span style={{ color: 'var(--prompd-text)', fontWeight: 500, fontFamily: 'monospace' }}>
-                            {(message.metadata.usage as any).completionTokens || 0}
-                          </span>
-                        </div>
-                        <div className="flex justify-between gap-4">
-                          <span style={{ color: 'var(--prompd-muted)' }}>Total Tokens:</span>
-                          <span style={{ color: 'var(--prompd-text)', fontWeight: 600, fontFamily: 'monospace' }}>
-                            {(message.metadata.usage as any).totalTokens || 0}
-                          </span>
-                        </div>
-                      </>
-                    ) : null}
-                    {message.metadata?.duration ? (
-                      <>
-                        <div style={{ borderTop: '1px solid var(--prompd-border)', margin: '8px 0' }} />
-                        <div className="flex justify-between gap-4">
-                          <span style={{ color: 'var(--prompd-muted)' }}>Duration:</span>
-                          <span style={{ color: 'var(--prompd-text)', fontWeight: 500, fontFamily: 'monospace' }}>
-                            {((message.metadata.duration as number) / 1000).toFixed(2)}s
-                          </span>
-                        </div>
-                      </>
-                    ) : null}
-                    <div style={{ borderTop: '1px solid var(--prompd-border)', margin: '8px 0' }} />
-                    <div className="flex justify-between gap-4">
-                      <span style={{ color: 'var(--prompd-muted)' }}>Timestamp:</span>
-                      <span style={{ color: 'var(--prompd-text)', fontWeight: 500, fontFamily: 'monospace' }}>
-                        {new Date(message.timestamp).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit'
-                        })}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+            <button
+              onClick={() => setShowRunInfo(!showRunInfo)}
+              className="flex items-center gap-1 px-2 py-1 rounded-md transition-all hover:scale-105 hover:bg-opacity-80"
+              style={{
+                background: showRunInfo ? 'var(--prompd-accent)' : 'rgba(59, 130, 246, 0.15)',
+                color: showRunInfo ? 'white' : 'var(--prompd-accent)',
+                fontSize: '11px',
+                border: `1px solid ${showRunInfo ? 'var(--prompd-accent)' : 'rgba(59, 130, 246, 0.3)'}`
+              }}
+              title="View run details"
+            >
+              <Info className="w-3 h-3" />
+            </button>
           ) : null}
 
           {/* Timestamp */}
