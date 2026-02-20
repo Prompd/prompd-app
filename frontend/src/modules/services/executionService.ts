@@ -15,28 +15,28 @@ import { useUIStore } from '../../stores/uiStore'
 /**
  * Approximate pricing per 1M tokens for common models
  * Prices are in USD. Format: { input: price, output: price }
- * Updated as of Jan 2025
+ * Updated as of February 2026
  */
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   // OpenAI
   'gpt-4o': { input: 2.50, output: 10.00 },
   'gpt-4o-mini': { input: 0.15, output: 0.60 },
+  'gpt-4.1': { input: 2.00, output: 8.00 },
+  'gpt-4.1-mini': { input: 0.40, output: 1.60 },
+  'gpt-4.1-nano': { input: 0.10, output: 0.40 },
   'gpt-4-turbo': { input: 10.00, output: 30.00 },
-  'gpt-4': { input: 30.00, output: 60.00 },
   'gpt-3.5-turbo': { input: 0.50, output: 1.50 },
-  'o1-preview': { input: 15.00, output: 60.00 },
-  'o1-mini': { input: 3.00, output: 12.00 },
+  'o3-mini': { input: 1.10, output: 4.40 },
   // Anthropic
-  'claude-3-5-sonnet-20241022': { input: 3.00, output: 15.00 },
-  'claude-3-5-haiku-20241022': { input: 0.80, output: 4.00 },
-  'claude-3-opus-20240229': { input: 15.00, output: 75.00 },
-  'claude-3-sonnet-20240229': { input: 3.00, output: 15.00 },
-  'claude-3-haiku-20240307': { input: 0.25, output: 1.25 },
+  'claude-opus-4-6': { input: 5.00, output: 25.00 },
+  'claude-sonnet-4-5-20250929': { input: 3.00, output: 15.00 },
+  'claude-haiku-4-5-20251001': { input: 1.00, output: 5.00 },
+  'claude-sonnet-4-20250514': { input: 3.00, output: 15.00 },
+  'claude-opus-4-5-20251101': { input: 5.00, output: 25.00 },
   // Google Gemini
+  'gemini-2.0-flash-exp': { input: 0.075, output: 0.30 },
   'gemini-1.5-pro': { input: 1.25, output: 5.00 },
   'gemini-1.5-flash': { input: 0.075, output: 0.30 },
-  'gemini-2.0-flash-exp': { input: 0.075, output: 0.30 },
-  'gemini-pro': { input: 0.50, output: 1.50 },
   // Groq (free tier, nominal pricing)
   'llama-3.3-70b-versatile': { input: 0.59, output: 0.79 },
   'llama-3.1-8b-instant': { input: 0.05, output: 0.08 },

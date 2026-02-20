@@ -21,9 +21,10 @@ export interface ChatAgentNodePropertiesProps {
   data: ChatAgentNodeData
   onChange: (field: string, value: unknown) => void
   nodeId?: string
+  onExpandEditor?: (content: string, language: string, label: string, field: string) => void
 }
 
-export function ChatAgentNodeProperties({ data, onChange }: ChatAgentNodePropertiesProps) {
+export function ChatAgentNodeProperties({ data, onChange, onExpandEditor }: ChatAgentNodePropertiesProps) {
   const [expandedSection, setExpandedSection] = useState<string | null>('agent')
   const [expandedToolIndex, setExpandedToolIndex] = useState<number | null>(null)
 
@@ -365,7 +366,38 @@ export function ChatAgentNodeProperties({ data, onChange }: ChatAgentNodePropert
           {/* Raw Text Mode - System Prompt */}
           {agentSourceType === 'raw' && (
             <div>
-              <label style={labelStyle}>System Prompt</label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label style={labelStyle}>System Prompt</label>
+                {onExpandEditor && (
+                  <button
+                    onClick={() => onExpandEditor(
+                      data.agentSystemPrompt || '',
+                      'markdown',
+                      'System Prompt',
+                      'agentSystemPrompt'
+                    )}
+                    title="Open in expanded editor"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '2px 6px',
+                      background: 'transparent',
+                      border: '1px solid var(--border)',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      color: 'var(--text-secondary)',
+                      fontSize: '10px',
+                      transition: 'color 0.15s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+                  >
+                    <Maximize2 size={11} />
+                    Expand
+                  </button>
+                )}
+              </div>
               <textarea
                 value={data.agentSystemPrompt || ''}
                 onChange={(e) => onChange('agentSystemPrompt', e.target.value)}
@@ -589,7 +621,38 @@ export function ChatAgentNodeProperties({ data, onChange }: ChatAgentNodePropert
 
           {/* User Prompt */}
           <div>
-            <label style={labelStyle}>User Prompt (Task)</label>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <label style={labelStyle}>User Prompt (Task)</label>
+              {onExpandEditor && (
+                <button
+                  onClick={() => onExpandEditor(
+                    data.agentUserPrompt || '',
+                    'markdown',
+                    'User Prompt (Task)',
+                    'agentUserPrompt'
+                  )}
+                  title="Open in expanded editor"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '2px 6px',
+                    background: 'transparent',
+                    border: '1px solid var(--border)',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    color: 'var(--text-secondary)',
+                    fontSize: '10px',
+                    transition: 'color 0.15s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+                >
+                  <Maximize2 size={11} />
+                  Expand
+                </button>
+              )}
+            </div>
             <textarea
               value={data.agentUserPrompt || ''}
               onChange={(e) => onChange('agentUserPrompt', e.target.value)}

@@ -227,6 +227,61 @@ function AutoSaveToggle({ colors }: { colors: Record<string, string> }) {
   )
 }
 
+// Help Chat Toggle Component
+function HelpChatToggle({ colors }: { colors: Record<string, string> }) {
+  const helpChatEnabled = useUIStore(state => state.helpChatEnabled)
+  const setHelpChatEnabled = useUIStore(state => state.setHelpChatEnabled)
+
+  return (
+    <div
+      style={{
+        padding: '16px',
+        background: colors.bgSecondary,
+        borderRadius: '8px',
+        border: `1px solid ${colors.border}`
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontWeight: 500, color: colors.text, marginBottom: '4px' }}>
+            Help Chat
+          </div>
+          <div style={{ fontSize: '13px', color: colors.textSecondary }}>
+            Show help chat icon in the activity bar
+          </div>
+        </div>
+        <button
+          onClick={() => setHelpChatEnabled(!helpChatEnabled)}
+          style={{
+            width: '48px',
+            height: '26px',
+            borderRadius: '13px',
+            border: 'none',
+            background: helpChatEnabled ? colors.success : colors.bgTertiary,
+            cursor: 'pointer',
+            position: 'relative',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <div
+            style={{
+              width: '22px',
+              height: '22px',
+              borderRadius: '11px',
+              background: 'white',
+              position: 'absolute',
+              top: '2px',
+              left: helpChatEnabled ? '24px' : '2px',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+            }}
+          />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, initialTab = 'profile' }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>(initialTab)
   const { getToken } = useAuthenticatedUser()
@@ -1517,6 +1572,14 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
                   Auto-Save
                 </h3>
                 <AutoSaveToggle colors={colors} />
+              </div>
+
+              {/* Help Chat Toggle */}
+              <div style={{ marginBottom: '32px' }}>
+                <h3 style={{ marginTop: 0, marginBottom: '12px', fontSize: '16px', fontWeight: 600, color: colors.text }}>
+                  Help Chat
+                </h3>
+                <HelpChatToggle colors={colors} />
               </div>
 
               {/* Note: Registry configuration moved to dedicated Registries tab */}

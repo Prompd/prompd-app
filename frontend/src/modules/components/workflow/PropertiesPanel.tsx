@@ -461,6 +461,7 @@ export function WorkflowPropertiesPanel() {
             data={selectedNode.data as PromptNodeData}
             onChange={handleDataChange}
             onOpenPrompd={handleOpenPrompd}
+            onExpandEditor={handleExpandEditor}
           />
         )}
 
@@ -557,6 +558,7 @@ export function WorkflowPropertiesPanel() {
           <AgentNodeProperties
             data={selectedNode.data as AgentNodeData}
             onChange={handleDataChange}
+            onExpandEditor={handleExpandEditor}
           />
         )}
 
@@ -564,6 +566,7 @@ export function WorkflowPropertiesPanel() {
           <ChatAgentNodeProperties
             data={selectedNode.data as ChatAgentNodeData}
             onChange={handleDataChange}
+            onExpandEditor={handleExpandEditor}
           />
         )}
 
@@ -637,6 +640,7 @@ export function WorkflowPropertiesPanel() {
           <GuardrailNodeProperties
             data={selectedNode.data as GuardrailNodeData}
             onChange={handleDataChange}
+            onExpandEditor={handleExpandEditor}
           />
         )}
 

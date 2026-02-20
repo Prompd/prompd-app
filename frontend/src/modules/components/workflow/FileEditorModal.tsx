@@ -15,7 +15,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { FileText, Save, X, Code } from 'lucide-react'
 import { Editor } from '@monaco-editor/react'
 import { useUIStore, selectTheme } from '@/stores'
-import { getMonacoTheme } from '../../lib/monacoConfig'
+import { getMonacoTheme, registerPrompdThemes } from '../../lib/monacoConfig'
 
 interface FileEditorModalBaseProps {
   isOpen: boolean
@@ -329,6 +329,7 @@ export function FileEditorModal(props: FileEditorModalProps) {
               onChange={handleChange}
               language={editorLanguage}
               theme={getMonacoTheme(theme === 'dark')}
+              beforeMount={registerPrompdThemes}
               options={{
                 minimap: { enabled: false },
                 lineNumbers: 'on',

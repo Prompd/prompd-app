@@ -1,4 +1,4 @@
-import { Files, Package, GitBranch, History, FolderOpen } from 'lucide-react'
+import { Files, Package, GitBranch, History, FolderOpen, CircleHelp } from 'lucide-react'
 import { PrompdIcon } from '../components/PrompdIcon'
 
 type SideKey = 'explorer' | 'packages' | 'ai' | 'git' | 'history' | 'resources'
@@ -8,9 +8,12 @@ type Props = {
   active: SideKey
   onSelect: (k: SideKey) => void
   onToggleSidebar: () => void
+  onHelpClick?: () => void
+  helpOpen?: boolean
+  helpEnabled?: boolean
 }
 
-export default function ActivityBar({ showSidebar, active, onSelect, onToggleSidebar }: Props) {
+export default function ActivityBar({ showSidebar, active, onSelect, onToggleSidebar, onHelpClick, helpOpen, helpEnabled }: Props) {
   const iconSize = 22
   const iconColor = 'var(--accent)'
   const inactiveIconColor = 'var(--muted)'
@@ -93,6 +96,22 @@ export default function ActivityBar({ showSidebar, active, onSelect, onToggleSid
             color={active === 'resources' && showSidebar ? iconColor : inactiveIconColor}
           />
         </button>
+
+        {helpEnabled && (
+          <>
+            <div className="ab-spacer" />
+            <button
+              className={`ab-item ${helpOpen ? 'active' : ''}`}
+              title="Help"
+              onClick={onHelpClick}
+            >
+              <CircleHelp
+                size={iconSize}
+                color={helpOpen ? iconColor : inactiveIconColor}
+              />
+            </button>
+          </>
+        )}
       </div>
     </div>
   )

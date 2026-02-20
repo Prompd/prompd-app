@@ -4,7 +4,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { FileText, AlignLeft, Package, Search, Shield, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
+import { FileText, AlignLeft, Package, Search, Shield, ChevronDown, ChevronRight, ExternalLink, Maximize2 } from 'lucide-react'
 import type { PromptNodeData } from '../../../services/workflowTypes'
 import { useEditorStore } from '../../../../stores/editorStore'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
@@ -17,9 +17,10 @@ export interface PromptNodePropertiesProps {
   onChange: (field: string, value: unknown) => void
   nodeId?: string
   onOpenPrompd?: () => void
+  onExpandEditor?: (content: string, language: string, label: string, field: string) => void
 }
 
-export function PromptNodeProperties({ data, onChange, onOpenPrompd }: PromptNodePropertiesProps) {
+export function PromptNodeProperties({ data, onChange, onOpenPrompd, onExpandEditor }: PromptNodePropertiesProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Array<{ name: string; version: string; description?: string }>>([])
   const [localFileResults, setLocalFileResults] = useState<string[]>([])
@@ -318,7 +319,38 @@ export function PromptNodeProperties({ data, onChange, onOpenPrompd }: PromptNod
       {/* Raw Text Mode */}
       {sourceType === 'raw' && (
         <div>
-          <label style={labelStyle}>Prompt Text</label>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <label style={labelStyle}>Prompt Text</label>
+            {onExpandEditor && (
+              <button
+                onClick={() => onExpandEditor(
+                  data.rawPrompt || '',
+                  'markdown',
+                  'Prompt Text',
+                  'rawPrompt'
+                )}
+                title="Open in expanded editor"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '2px 6px',
+                  background: 'transparent',
+                  border: '1px solid var(--border)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  fontSize: '10px',
+                  transition: 'color 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+              >
+                <Maximize2 size={11} />
+                Expand
+              </button>
+            )}
+          </div>
           <textarea
             value={data.rawPrompt || ''}
             onChange={(e) => onChange('rawPrompt', e.target.value)}

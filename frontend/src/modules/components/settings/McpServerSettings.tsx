@@ -58,7 +58,7 @@ export function McpServerSettings({ colors }: McpServerSettingsProps) {
   const [showApiKey, setShowApiKey] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
   const [autoStart, setAutoStart] = useState(false)
-  const [configFormat, setConfigFormat] = useState<'openclaw' | 'claude-desktop'>('openclaw')
+  const [configFormat] = useState<'openclaw' | 'claude-desktop'>('openclaw')
   const [configJson, setConfigJson] = useState<string>('')
   const [confirmRegen, setConfirmRegen] = useState(false)
 
@@ -271,7 +271,7 @@ export function McpServerSettings({ colors }: McpServerSettingsProps) {
 
   return (
     <div className="mcp-server-settings">
-      {/* Header */}
+      {/* Header + Status Card */}
       <div className="mcp-section">
         <div className="mcp-section-header">
           <h3 style={{ color: colors.text }}><Server size={18} /> MCP Server</h3>
@@ -279,18 +279,15 @@ export function McpServerSettings({ colors }: McpServerSettingsProps) {
             Expose workspace tools to external AI agents (OpenClaw, Claude Desktop, etc.) via the Model Context Protocol.
           </p>
         </div>
-      </div>
 
-      {/* Error */}
-      {error && (
-        <div className="mcp-error">
-          <AlertCircle size={16} />
-          {error}
-        </div>
-      )}
+        {/* Error */}
+        {error && (
+          <div className="mcp-error">
+            <AlertCircle size={16} />
+            {error}
+          </div>
+        )}
 
-      {/* Status Card */}
-      <div className="mcp-section">
         <div className="mcp-status-card">
           <div className="mcp-status-header">
             <div className="mcp-status-indicator">
@@ -299,63 +296,69 @@ export function McpServerSettings({ colors }: McpServerSettingsProps) {
                 {isRunning ? 'Running' : 'Stopped'}
               </span>
             </div>
-            <div className="mcp-controls">
-              <div className="mcp-port-input">
-                <label style={{ color: colors.textSecondary }}>Port</label>
-                <input
-                  type="number"
-                  value={port}
-                  onChange={(e) => setPort(parseInt(e.target.value) || 18791)}
-                  disabled={isRunning}
-                  min={1024}
-                  max={65535}
-                />
-              </div>
-              {isRunning ? (
-                <button
-                  className="btn-secondary"
-                  onClick={handleStop}
-                  disabled={actionInProgress !== null}
-                >
-                  {actionInProgress === 'stop' ? <Loader size={14} className="spinning" /> : <Square size={14} />}
-                  Stop
-                </button>
-              ) : (
-                <button
-                  className="btn-primary"
-                  onClick={handleStart}
-                  disabled={actionInProgress !== null}
-                >
-                  {actionInProgress === 'start' ? <Loader size={14} className="spinning" /> : <Play size={14} />}
-                  Start
-                </button>
-              )}
-            </div>
+            {isRunning && status?.url && (
+              <span className="mcp-status-url">{status.url}</span>
+            )}
+            {isRunning ? (
+              <button
+                className="btn-secondary"
+                onClick={handleStop}
+                disabled={actionInProgress !== null}
+              >
+                {actionInProgress === 'stop' ? <Loader size={14} className="spinning" /> : <Square size={14} />}
+                Stop
+              </button>
+            ) : (
+              <button
+                className="btn-primary"
+                onClick={handleStart}
+                disabled={actionInProgress !== null}
+              >
+                {actionInProgress === 'start' ? <Loader size={14} className="spinning" /> : <Play size={14} />}
+                Start
+              </button>
+            )}
           </div>
 
           {isRunning && status && (
             <div className="mcp-status-details">
-              <div className="mcp-detail-item">
-                <span className="mcp-detail-label">URL</span>
-                <span className="mcp-detail-value">{status.url}</span>
-              </div>
-              <div className="mcp-detail-item">
-                <span className="mcp-detail-label">Workspace</span>
-                <span className="mcp-detail-value" style={{ fontFamily: 'inherit' }}>
-                  {status.workspacePath || 'None'}
-                </span>
-              </div>
-              <div className="mcp-detail-item">
-                <span className="mcp-detail-label">Tools</span>
-                <span className="mcp-detail-value">{status.toolCount}</span>
+              <div className="mcp-detail-row">
+                <div className="mcp-detail-item" style={{ flex: 1 }}>
+                  <span className="mcp-detail-label">Workspace</span>
+                  <span className="mcp-detail-value" style={{ fontFamily: 'inherit' }}>
+                    {status.workspacePath || 'None'}
+                  </span>
+                </div>
+                <div className="mcp-detail-item">
+                  <span className="mcp-detail-label">Tools</span>
+                  <span className="mcp-detail-value">{status.toolCount}</span>
+                </div>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Auto-Start Toggle */}
+      {/* Port + Auto-Start Settings */}
       <div className="mcp-section">
+        <div className="mcp-toggle-row">
+          <div className="mcp-toggle-info">
+            <span className="mcp-toggle-label" style={{ color: colors.text }}>Port</span>
+            <span className="mcp-toggle-description">
+              {isRunning ? 'Stop the server to change the port' : 'Port the MCP server listens on'}
+            </span>
+          </div>
+          <div className="mcp-port-input">
+            <input
+              type="number"
+              value={port}
+              onChange={(e) => setPort(parseInt(e.target.value) || 18791)}
+              disabled={isRunning}
+              min={1024}
+              max={65535}
+            />
+          </div>
+        </div>
         <div className="mcp-toggle-row">
           <div className="mcp-toggle-info">
             <span className="mcp-toggle-label" style={{ color: colors.text }}>Auto-start on launch</span>
@@ -433,34 +436,18 @@ export function McpServerSettings({ colors }: McpServerSettingsProps) {
         </div>
 
         {isRunning ? (
-          <>
-            <div className="mcp-config-tabs">
+          <div className="mcp-config-block">
+            <pre className="mcp-config-pre">{configJson || 'Loading...'}</pre>
+            {configJson && (
               <button
-                className={`mcp-config-tab ${configFormat === 'openclaw' ? 'active' : ''}`}
-                onClick={() => setConfigFormat('openclaw')}
+                className="btn-icon mcp-config-copy-btn"
+                onClick={() => copyToClipboard(configJson, 'config')}
+                title="Copy config"
               >
-                OpenClaw
+                {copied === 'config' ? <Check size={14} style={{ color: colors.success }} /> : <Copy size={14} />}
               </button>
-              <button
-                className={`mcp-config-tab ${configFormat === 'claude-desktop' ? 'active' : ''}`}
-                onClick={() => setConfigFormat('claude-desktop')}
-              >
-                Claude Desktop
-              </button>
-            </div>
-            <div className="mcp-config-block">
-              <pre className="mcp-config-pre">{configJson || 'Loading...'}</pre>
-              {configJson && (
-                <button
-                  className="btn-icon mcp-config-copy-btn"
-                  onClick={() => copyToClipboard(configJson, 'config')}
-                  title="Copy config"
-                >
-                  {copied === 'config' ? <Check size={14} style={{ color: colors.success }} /> : <Copy size={14} />}
-                </button>
-              )}
-            </div>
-          </>
+            )}
+          </div>
         ) : (
           <div className="mcp-empty-state">
             Start the server to generate connection configuration.

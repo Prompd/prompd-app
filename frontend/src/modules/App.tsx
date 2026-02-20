@@ -37,6 +37,7 @@ import BottomPanelTabs from './components/BottomPanelTabs'
 import { CommandPalette } from './components/CommandPalette'
 import { FirstTimeSetupWizard, isOnboardingComplete, isWizardDismissed } from './components/FirstTimeSetupWizard'
 import { InlineHints } from './components/InlineHints'
+import { HelpChatPopover } from './components/HelpChatPopover'
 import { markHintSeen } from './services/onboardingService'
 // DISABLED: DiffDemo imports monacoDiff which breaks Monaco Code Actions
 // import { DiffDemo } from './components/DiffDemo'
@@ -341,6 +342,9 @@ export default function App() {
   // Auto-save setting
   const autoSaveEnabled = useUIStore(state => state.autoSaveEnabled)
 
+  // Help chat setting
+  const helpChatEnabled = useUIStore(state => state.helpChatEnabled)
+
   // Recent projects for welcome screen
   const addRecentProject = useUIStore(state => state.addRecentProject)
 
@@ -354,6 +358,9 @@ export default function App() {
   const [showPrompdPreview, setShowPrompdPreview] = useState(false)
   const [generatedPrompd, setGeneratedPrompd] = useState<{ content: string; filename: string; metadata?: any } | null>(null)
   const [clarificationRound, setClarificationRound] = useState(0)
+
+  // Help chat popover state
+  const [helpChatOpen, setHelpChatOpen] = useState(false)
 
   // Close workspace dialog state
   const [showCloseWorkspaceDialog, setShowCloseWorkspaceDialog] = useState(false)
@@ -3886,6 +3893,9 @@ Write your prompt here...
         active={activeSide}
         onSelect={setActiveSide}
         onToggleSidebar={toggleSidebar}
+        onHelpClick={() => setHelpChatOpen(prev => !prev)}
+        helpOpen={helpChatOpen}
+        helpEnabled={helpChatEnabled}
       />
 
       <div className="sidebar" style={{ display: showSidebar ? undefined : 'none', position: 'relative' }}>
@@ -5614,6 +5624,12 @@ Write your prompt here...
           }}
         />
       )}
+
+      {/* Help Chat Popover */}
+      <HelpChatPopover
+        isOpen={helpChatOpen && helpChatEnabled}
+        onClose={() => setHelpChatOpen(false)}
+      />
 
       {/* Toast Notifications */}
       <ToastContainer />

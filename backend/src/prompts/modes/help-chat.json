@@ -1,0 +1,13 @@
+{
+  "id": "help-chat",
+  "label": "Help",
+  "icon": "CircleHelp",
+  "description": "App usage guide for Prompd",
+  "responseFormat": "markdown",
+  "systemPromptFile": "help-chat.md",
+  "tools": [],
+  "settings": {
+    "maxIterations": 1,
+    "streamResponses": true
+  }
+}
