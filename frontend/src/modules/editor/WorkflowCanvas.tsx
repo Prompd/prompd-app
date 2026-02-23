@@ -137,6 +137,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
   const updateNodeData = useWorkflowStore(state => state.updateNodeData)
   const showContextMenu = useWorkflowStore(state => state.showContextMenu)
   const hideContextMenu = useWorkflowStore(state => state.hideContextMenu)
+  const groupNodes = useWorkflowStore(state => state.groupNodes)
 
   // Editor store for getting current tab info
   const tabs = useEditorStore(state => state.tabs)
@@ -930,6 +931,17 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
     }
     hideContextMenu()
   }, [contextMenu, hideContextMenu])
+
+  const handleContextMenuGroupSelected = useCallback(() => {
+    const selectedIds = reactFlowInstance
+      .getNodes()
+      .filter(n => n.selected)
+      .map(n => n.id)
+    if (selectedIds.length >= 2) {
+      groupNodes(selectedIds)
+    }
+    hideContextMenu()
+  }, [reactFlowInstance, groupNodes, hideContextMenu])
 
   const handleSaveTemplate = useCallback(async (name: string, description: string, scope: TemplateScope) => {
     if (!saveTemplateNodeId) return
@@ -1815,6 +1827,8 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
               onDelete={handleContextMenuDelete}
               onUndock={handleContextMenuUndock}
               onSaveAsTemplate={handleContextMenuSaveAsTemplate}
+              onGroupSelected={handleContextMenuGroupSelected}
+              selectedNodeCount={nodes.filter(n => n.selected).length}
               onAddNode={handleContextMenuAddNode}
               onInsertTemplate={handleContextMenuInsertTemplate}
               onHighlightPath={handleContextMenuHighlightPath}

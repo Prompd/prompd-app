@@ -82,6 +82,7 @@ export type WorkflowNodeType =
   | 'output'
   | 'web-search'      // Web search node: search the web via configurable provider
   | 'database-query'  // Database query execution node
+  | 'node-group'      // Visual grouping container for multi-node template export
   // --- Add new node types here ---
 
 export interface WorkflowNode {

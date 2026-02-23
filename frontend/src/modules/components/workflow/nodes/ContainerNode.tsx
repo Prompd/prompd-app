@@ -42,6 +42,7 @@ import {
   Database,
   TableProperties,
   Search,
+  Group,
 } from 'lucide-react'
 import type { NodeExecutionStatus, WorkflowNodeType } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
@@ -93,6 +94,7 @@ const NODE_TYPE_ICONS: Record<WorkflowNodeType, React.ComponentType<{ style?: Re
   output: FileOutput,
   'web-search': Search,
   'database-query': TableProperties,
+  'node-group': Group,
 }
 
 // Node type color mapping for mini previews
@@ -464,19 +466,37 @@ export const ContainerNode = memo(({
 
       // Use requestAnimationFrame to ensure DOM has updated before recalculating
       requestAnimationFrame(() => {
-        // If collapsed, measure actual DOM height and update node dimensions
+        // Measure actual DOM dimensions and sync React Flow's measured property
+        // so the selection box matches the visible node exactly
         if (isCollapsed && containerRef.current) {
-          const measuredHeight = containerRef.current.getBoundingClientRect().height
+          const rect = containerRef.current.getBoundingClientRect()
+          const measuredHeight = rect.height
+          const measuredWidth = rect.width
           if (measuredHeight > 0) {
             reactFlow.setNodes(nodes => nodes.map(node => {
               if (node.id !== id) return node
               return {
                 ...node,
+                width: measuredWidth || COLLAPSED_WIDTH,
                 height: measuredHeight,
+                measured: { width: measuredWidth || COLLAPSED_WIDTH, height: measuredHeight },
                 style: { ...node.style, height: measuredHeight },
               }
             }))
           }
+        } else if (!isCollapsed) {
+          // On expand, sync measured to match the restored dimensions
+          const restoreW = savedWidth && savedWidth >= CONTAINER_MIN_WIDTH
+            ? savedWidth : CONTAINER_MIN_WIDTH
+          const restoreH = savedHeight && savedHeight >= CONTAINER_MIN_HEIGHT
+            ? savedHeight : CONTAINER_MIN_HEIGHT
+          reactFlow.setNodes(nodes => nodes.map(node => {
+            if (node.id !== id) return node
+            return {
+              ...node,
+              measured: { width: restoreW, height: restoreH },
+            }
+          }))
         }
         updateNodeInternals(id)
         // Also update child nodes so their edges recalculate

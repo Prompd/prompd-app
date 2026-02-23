@@ -25,6 +25,7 @@ import {
   ShieldCheck, Wrench, Terminal, Search, FileCode, Globe, Plug,
   ScanSearch, Route, GitBranch, Repeat, GitFork, Combine,
   Wand2, Database, TableProperties, UserCircle, Eye, AlertTriangle, Workflow,
+  Group,
 } from 'lucide-react'
 import type { WorkflowNodeType } from './workflowTypes'
 
@@ -181,6 +182,10 @@ export const NODE_TYPE_REGISTRY: Record<WorkflowNodeType, NodeTypeEntry> = {
     type: 'workflow', label: 'Sub-Workflow', description: 'Invoke another .pdflow',
     icon: Workflow, color: 'var(--node-green)', colorVar: 'teal',
   },
+  'node-group': {
+    type: 'node-group', label: 'Group', description: 'Visual grouping for template export',
+    icon: Group, color: 'var(--node-slate)', colorVar: 'slate',
+  },
 }
 
 // ============================================================================
@@ -234,7 +239,7 @@ export const NODE_TYPE_CATEGORIES: NodeTypeCategory[] = [
     key: 'composition',
     label: 'Composition',
     paletteLabel: 'Composition',
-    types: ['workflow'],
+    types: ['workflow', 'node-group'],
   },
 ]
 

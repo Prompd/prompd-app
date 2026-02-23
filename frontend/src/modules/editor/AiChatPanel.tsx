@@ -14,7 +14,7 @@ import {
 } from '@prompd/react'
 import { LLMClientRouter } from '../services/llmClientRouter'
 import { CompactingLLMClient, SlidingWindowCompactor } from '@prompd/react'
-import { resolveContextWindowSize, formatContextWindow } from '../services/contextWindowResolver'
+import { resolveEffectiveContextWindow, formatContextWindow } from '../services/contextWindowResolver'
 
 /** Module-level singleton — SlidingWindowCompactor is stateless */
 const slidingWindowCompactor = new SlidingWindowCompactor()
@@ -675,7 +675,9 @@ export default function AiChatPanel({
     }
 
     // Wrap base client with context compaction (decorator pattern)
-    const contextWindowSize = resolveContextWindowSize(
+    // Use effective (capped) context window so compaction triggers at a practical
+    // conversation length even for models with 1M+ token windows.
+    const effectiveCtxWindow = resolveEffectiveContextWindow(
       llmProvider.provider,
       llmProvider.model,
       llmProvider.providersWithPricing
@@ -683,7 +685,7 @@ export default function AiChatPanel({
     const compactingClient = new CompactingLLMClient(
       baseClient,
       slidingWindowCompactor,
-      contextWindowSize
+      effectiveCtxWindow
     )
 
     // Use the shared agent LLM client wrapper (agent wrapper calls compactingClient.send())
@@ -691,10 +693,10 @@ export default function AiChatPanel({
   // Include activeTabId to trigger rebuild when active tab changes
   }, [llmProvider.provider, llmProvider.model, getToken, getText, getActiveTabName, agentActions, activeTabId])
 
-  // Context utilization for status bar display
+  // Context utilization for status bar display (uses effective/capped context window)
   const contextUtilization = useMemo(() => {
     if (agentState.lastPromptTokens <= 0) return null
-    const ctxWindow = resolveContextWindowSize(llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing)
+    const ctxWindow = resolveEffectiveContextWindow(llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing)
     return { pct: Math.round((agentState.lastPromptTokens / ctxWindow) * 100), formatted: formatContextWindow(ctxWindow) }
   }, [agentState.lastPromptTokens, llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing])
 

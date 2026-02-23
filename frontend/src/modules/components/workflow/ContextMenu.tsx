@@ -10,7 +10,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import {
   Copy, Scissors, Clipboard, Files, Power, PowerOff, Trash2,
-  Unlink, Plus, Zap, Settings, ChevronRight, Save,
+  Unlink, Plus, Zap, Settings, ChevronRight, Save, Group,
 } from 'lucide-react'
 import type { WorkflowNodeType } from '../../services/workflowTypes'
 import type { TemplateListItem, TemplateScope } from '../../services/nodeTemplateTypes'
@@ -44,6 +44,9 @@ export interface ContextMenuProps {
   // Templates
   templates?: TemplateListItem[]
 
+  // Multi-selection context
+  selectedNodeCount?: number
+
   // Actions
   onCopy?: () => void
   onCut?: () => void
@@ -53,6 +56,7 @@ export interface ContextMenuProps {
   onDelete?: () => void
   onUndock?: () => void
   onSaveAsTemplate?: () => void
+  onGroupSelected?: () => void
   onAddNode?: (nodeType: WorkflowNodeType) => void
   onInsertTemplate?: (fileName: string, scope: TemplateScope) => void
   onHighlightPath?: () => void
@@ -96,6 +100,7 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
     isNodeDisabled,
     isNodeDocked,
     canPaste,
+    selectedNodeCount,
     onCopy,
     onCut,
     onPaste,
@@ -104,6 +109,7 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
     onDelete,
     onUndock,
     onSaveAsTemplate,
+    onGroupSelected,
     onAddNode,
     onInsertTemplate,
     onHighlightPath,
@@ -196,6 +202,17 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
         onClick: onWorkflowSettings
       })
       menuItems.push({ id: 'sep2', label: '', separator: true })
+    }
+
+    // Group selected nodes
+    if (selectedNodeCount && selectedNodeCount > 1 && onGroupSelected) {
+      menuItems.push({
+        id: 'group-selected',
+        label: `Group ${selectedNodeCount} Nodes`,
+        icon: Group,
+        onClick: onGroupSelected,
+      })
+      menuItems.push({ id: 'sep-group', label: '', separator: true })
     }
 
     // Add node submenu

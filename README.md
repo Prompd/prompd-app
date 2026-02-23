@@ -52,7 +52,7 @@ Prompd brings software engineering practices to AI prompt development. Instead o
 
 ```bash
 # Clone the repository
-git clone https://github.com/Prompd/prompd.app.git
+git clone https://github.com/Prompd/prompd-app.git
 cd prompd.app
 
 # Build local packages (required before frontend)

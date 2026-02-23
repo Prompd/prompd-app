@@ -37,6 +37,7 @@ export { TransformNode } from './TransformNode'
 export { MemoryNode } from './MemoryNode'
 export { WebSearchNode } from './WebSearchNode'
 export { DatabaseQueryNode } from './DatabaseQueryNode'
+export { GroupNode } from './GroupNode'
 // --- Add new node exports here ---
 export { ContainerNode, MetadataRow, CONTAINER_MIN_WIDTH, CONTAINER_MIN_HEIGHT, COLLAPSED_WIDTH } from './ContainerNode'
 
@@ -66,6 +67,7 @@ import { TransformNode } from './TransformNode'
 import { MemoryNode } from './MemoryNode'
 import { WebSearchNode } from './WebSearchNode'
 import { DatabaseQueryNode } from './DatabaseQueryNode'
+import { GroupNode } from './GroupNode'
 // --- Add new node imports here ---
 
 /**
@@ -124,6 +126,7 @@ export const nodeTypes = {
   memory: withErrorBoundary(MemoryNode, 'memory'),
   'web-search': withErrorBoundary(WebSearchNode, 'web-search'),
   'database-query': withErrorBoundary(DatabaseQueryNode, 'database-query'),
+  'node-group': withErrorBoundary(GroupNode, 'node-group'),
   // --- Add new node type registrations here ---
   // Placeholder mappings (reuse existing nodes until dedicated ones are created)
   api: withErrorBoundary(ToolNode, 'api'), // HTTP API node uses Tool with http type
