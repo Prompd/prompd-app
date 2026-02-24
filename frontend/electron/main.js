@@ -4584,7 +4584,8 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath, opti
     const client = new RegistryClient()
     await client.install(packageRef, {
       workspaceRoot: workspacePath,
-      skipCache: false
+      skipCache: false,
+      type: installOptions.type || undefined
     })
 
     console.log('[Package] Installed:', packageRef)
@@ -4611,27 +4612,74 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath, opti
       }
     }
 
-    const cacheDir = path.join(workspacePath, '.prompd', 'cache')
+    // The CLI installs packages to .prompd/{typeDir}/{name}/{version}/ based on
+    // the type field in the package's internal prompd.json/manifest.json.
+    // We need to find the installed package to read its manifest for MCP deps
+    // and to determine the resolved version if not specified in the ref.
+    const TYPE_DIRS = { 'package': 'packages', 'workflow': 'workflows', 'node-template': 'templates', 'skill': 'skills' }
+    const installRoot = installOptions.global
+      ? path.join(os.homedir(), '.prompd')
+      : path.join(workspacePath, '.prompd')
 
-    // If no version in ref, find it from the installed cache directory
-    if (!pkgVersion && fs.existsSync(cacheDir)) {
+    let installedPath = null
+    let installedType = installOptions.type || 'package'
+    let installedManifest = null
+
+    // Search the CLI's install directories to find the installed package
+    // Priority: check the hinted type first, then scan all type directories
+    const typesToCheck = installOptions.type
+      ? [installOptions.type, ...Object.keys(TYPE_DIRS).filter(t => t !== installOptions.type)]
+      : Object.keys(TYPE_DIRS)
+
+    for (const type of typesToCheck) {
+      const typeDir = TYPE_DIRS[type]
+      if (!typeDir) continue
+
+      // CLI structure: .prompd/{typeDir}/{packageName}/{version}/
+      const pkgDir = path.join(installRoot, typeDir, pkgName || packageRef)
+      if (!fs.existsSync(pkgDir)) continue
+
       try {
-        if (pkgName.startsWith('@')) {
-          // Scoped: cache structure is .prompd/cache/@scope/name@version/
-          const [scope, name] = pkgName.split('/')
-          const scopeDir = path.join(cacheDir, scope)
-          if (fs.existsSync(scopeDir)) {
-            const match = fs.readdirSync(scopeDir).find(e => e.startsWith(name + '@'))
-            if (match) pkgVersion = match.substring(name.length + 1)
+        const versions = fs.readdirSync(pkgDir).filter(v => {
+          try { return fs.statSync(path.join(pkgDir, v)).isDirectory() } catch { return false }
+        })
+        if (versions.length === 0) continue
+
+        // Use specified version or the latest installed version
+        const targetVersion = pkgVersion || versions.sort().pop()
+        const versionPath = path.join(pkgDir, targetVersion)
+        if (!fs.existsSync(versionPath)) continue
+
+        installedPath = versionPath
+        installedType = type
+        if (!pkgVersion) pkgVersion = targetVersion
+
+        // Read manifest from installed location
+        const manifestPath = path.join(versionPath, 'prompd.json')
+        if (!fs.existsSync(manifestPath)) {
+          const legacyPath = path.join(versionPath, 'manifest.json')
+          if (fs.existsSync(legacyPath)) {
+            installedManifest = JSON.parse(fs.readFileSync(legacyPath, 'utf8'))
           }
         } else {
-          const match = fs.readdirSync(cacheDir).find(e => e.startsWith(pkgName + '@'))
-          if (match) pkgVersion = match.substring(pkgName.length + 1)
+          installedManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
         }
-      } catch (lookupErr) {
-        console.warn('[Package] Cache version lookup failed:', lookupErr.message)
+
+        // Determine type: manifest > frontend hint > directory found in
+        if (installedManifest && installedManifest.type) {
+          installedType = installedManifest.type
+        } else if (installOptions.type) {
+          installedType = installOptions.type
+        } else {
+          installedType = type
+        }
+        break
+      } catch (scanErr) {
+        console.warn(`[Package] Failed to scan ${typeDir}/:`, scanErr.message)
       }
     }
+
+    console.log(`[Package] Resolved: type=${installedType}, path=${installedPath || 'not found'}`)
 
     // Update prompd.json with the dependency
     if (pkgName && pkgVersion) {
@@ -4663,94 +4711,17 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath, opti
 
     // Check installed package for MCP dependencies
     let missingMcps = []
-    let matchingCachePath
-    try {
-      if (fs.existsSync(cacheDir)) {
-        // For scoped packages, build the cache path: @scope/name@version
-        if (pkgName && pkgVersion) {
-          if (pkgName.startsWith('@')) {
-            const [scope, name] = pkgName.split('/')
-            matchingCachePath = path.join(cacheDir, scope, `${name}@${pkgVersion}`)
-          } else {
-            matchingCachePath = path.join(cacheDir, `${pkgName}@${pkgVersion}`)
-          }
+    if (installedManifest && Array.isArray(installedManifest.mcps) && installedManifest.mcps.length > 0) {
+      try {
+        const mcpConfig = mcpService.loadMcpConfig()
+        const configuredNames = new Set(Object.keys(mcpConfig.mcpServers || {}))
+        missingMcps = installedManifest.mcps.filter(name => !configuredNames.has(name))
+        if (missingMcps.length > 0) {
+          console.log('[Package] Package requires MCP servers not yet configured:', missingMcps)
         }
-
-        // Fallback: scan top-level entries (original approach for non-scoped)
-        if (!matchingCachePath || !fs.existsSync(matchingCachePath)) {
-          const entries = fs.readdirSync(cacheDir)
-          const fallbackName = pkgName || packageRef
-          const matchingDir = entries.find(e => e.startsWith(fallbackName + '@') || e === fallbackName)
-          if (matchingDir) {
-            matchingCachePath = path.join(cacheDir, matchingDir)
-          }
-        }
-
-        if (matchingCachePath && fs.existsSync(matchingCachePath)) {
-          const pkgJsonPath = path.join(matchingCachePath, 'prompd.json')
-          if (fs.existsSync(pkgJsonPath)) {
-            const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'))
-            if (pkgJson.mcps && Array.isArray(pkgJson.mcps) && pkgJson.mcps.length > 0) {
-              const mcpConfig = mcpService.loadMcpConfig()
-              const configuredNames = new Set(Object.keys(mcpConfig.mcpServers || {}))
-              missingMcps = pkgJson.mcps.filter(name => !configuredNames.has(name))
-              if (missingMcps.length > 0) {
-                console.log('[Package] Package requires MCP servers not yet configured:', missingMcps)
-              }
-            }
-          }
-        }
+      } catch (mcpErr) {
+        console.warn('[Package] MCP dependency check failed (non-fatal):', mcpErr.message)
       }
-    } catch (mcpCheckErr) {
-      console.warn('[Package] MCP dependency check failed (non-fatal):', mcpCheckErr.message)
-    }
-
-    // Type-aware install routing: copy from cache to .prompd/{typeDir}/@scope/name/
-    const TYPE_DIRS = { 'package': 'packages', 'workflow': 'workflows', 'node-template': 'templates', 'skill': 'skills' }
-    let installedType = 'package'
-    let installedPath = undefined
-    try {
-      // Read type from cached package manifest
-      let cachedManifestType = null
-      if (matchingCachePath && fs.existsSync(matchingCachePath)) {
-        const cachedPkgJsonPath = path.join(matchingCachePath, 'prompd.json')
-        if (fs.existsSync(cachedPkgJsonPath)) {
-          const cachedPkgJson = JSON.parse(fs.readFileSync(cachedPkgJsonPath, 'utf8'))
-          cachedManifestType = cachedPkgJson.type || null
-        }
-      }
-
-      // Priority: explicit override > manifest type > default 'package'
-      installedType = installOptions.type || cachedManifestType || 'package'
-      const typeDir = TYPE_DIRS[installedType] || 'packages'
-
-      // Determine install root: global (~/.prompd/) or local (<workspace>/.prompd/)
-      const installRoot = installOptions.global
-        ? path.join(os.homedir(), '.prompd')
-        : path.join(workspacePath, '.prompd')
-
-      // Build install destination: .prompd/{typeDir}/@scope/name/ (without version)
-      let installDest
-      if (pkgName && pkgName.startsWith('@')) {
-        const [scope, name] = pkgName.split('/')
-        installDest = path.join(installRoot, typeDir, scope, name)
-      } else {
-        installDest = path.join(installRoot, typeDir, pkgName || packageRef)
-      }
-
-      // Copy from cache to type-specific directory
-      if (matchingCachePath && fs.existsSync(matchingCachePath)) {
-        fs.mkdirSync(path.dirname(installDest), { recursive: true })
-        // Remove existing install if present (upgrade)
-        if (fs.existsSync(installDest)) {
-          fs.rmSync(installDest, { recursive: true, force: true })
-        }
-        fs.cpSync(matchingCachePath, installDest, { recursive: true })
-        installedPath = installDest
-        console.log(`[Package] Routed ${installedType} to:`, installDest)
-      }
-    } catch (routeErr) {
-      console.warn('[Package] Type-aware routing failed (non-fatal):', routeErr.message)
     }
 
     return {

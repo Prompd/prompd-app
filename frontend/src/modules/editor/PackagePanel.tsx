@@ -4,7 +4,7 @@ import { registryApi, type RegistryPackage } from '../services/registryApi'
 import PackageDetailsModal from './PackageDetailsModal'
 import { useAuthenticatedUser } from '../auth/ClerkWrapper'
 import { SidebarPanelHeader } from '../components/SidebarPanelHeader'
-import { RESOURCE_TYPE_ICONS, RESOURCE_TYPE_COLORS, RESOURCE_TYPE_LABELS, type ResourceType } from '../services/resourceTypes'
+import { RESOURCE_TYPE_ICONS, RESOURCE_TYPE_COLORS, RESOURCE_TYPE_LABELS, RESOURCE_TYPES, type ResourceType } from '../services/resourceTypes'
 
 type TabKey = 'search' | 'my-packages'
 
@@ -26,6 +26,7 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
   // Search tab state
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '')
   const [hasSearched, setHasSearched] = useState(false) // Track if user has initiated a search
+  const [typeFilter, setTypeFilter] = useState<ResourceType | null>(null)
 
   // When initialSearchQuery changes, update the search and switch to search tab
   useEffect(() => {
@@ -50,6 +51,7 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
   const [myPackagesError, setMyPackagesError] = useState<string | null>(null)
   const [myPackagesLoaded, setMyPackagesLoaded] = useState(false)
   const [myPackagesFilter, setMyPackagesFilter] = useState('')
+  const [myTypeFilter, setMyTypeFilter] = useState<ResourceType | null>(null)
 
   // Modal state
   const [selectedPackage, setSelectedPackage] = useState<RegistryPackage | null>(null)
@@ -58,6 +60,12 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
     { key: 'search', label: 'Search', icon: <Search size={14} /> },
     { key: 'my-packages', label: 'My Packages', icon: <Package size={14} /> }
   ]
+
+  // Filter packages by resource type
+  const filterByType = (pkgs: RegistryPackage[], filter: ResourceType | null) => {
+    if (!filter) return pkgs
+    return pkgs.filter(p => (p.type || 'package') === filter)
+  }
 
   // Debounced package search - only when user has initiated
   useEffect(() => {
@@ -144,7 +152,7 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
     }
     const ref = `${pkg.name}@${pkg.version}`
     try {
-      const result = await window.electronAPI.package.install(ref, workspacePath)
+      const result = await window.electronAPI.package.install(ref, workspacePath, { type: pkg.type as ResourceType })
       if (result.success) {
         onShowNotification?.(`Installed ${ref}`, 'info')
       } else {
@@ -215,15 +223,15 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
       <div style={{
         flex: 1,
         overflow: 'auto',
-        padding: '16px'
+        padding: '12px'
       }}>
         {activeTab === 'search' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', height: '100%' }}>
             {/* Search input */}
             <div style={{ position: 'relative' }}>
-              <Search size={16} style={{
+              <Search size={14} style={{
                 position: 'absolute',
-                left: '12px',
+                left: '10px',
                 top: '50%',
                 transform: 'translateY(-50%)',
                 color: 'var(--text-secondary)',
@@ -237,15 +245,16 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
                 placeholder="Search packages..."
                 style={{
                   width: '100%',
-                  padding: '10px 12px 10px 38px',
-                  fontSize: '13px',
+                  padding: '8px 10px 8px 32px',
+                  fontSize: '12px',
                   background: highlightSearch ? 'rgba(59, 130, 246, 0.15)' : 'var(--panel-2)',
-                  border: `2px solid ${highlightSearch ? 'var(--accent)' : 'var(--border)'}`,
+                  border: `1px solid ${highlightSearch ? 'var(--accent)' : 'var(--border)'}`,
                   borderRadius: '6px',
                   color: 'var(--text)',
                   outline: 'none',
                   transition: 'all 0.3s ease',
-                  boxShadow: highlightSearch ? '0 0 0 3px rgba(59, 130, 246, 0.2)' : 'none'
+                  boxSizing: 'border-box',
+                  boxShadow: highlightSearch ? '0 0 0 2px rgba(59, 130, 246, 0.2)' : 'none'
                 }}
                 onFocus={(e) => {
                   if (!highlightSearch) e.currentTarget.style.borderColor = 'var(--accent)'
@@ -256,8 +265,8 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
               />
               {searchQuery.length > 0 && searchQuery.length < 2 && (
                 <div style={{
-                  marginTop: '8px',
-                  fontSize: '11px',
+                  marginTop: '4px',
+                  fontSize: '10px',
                   color: 'var(--text-secondary)',
                   fontStyle: 'italic'
                 }}>
@@ -266,17 +275,20 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
               )}
             </div>
 
+            {/* Type filter chips */}
+            <TypeFilterChips activeFilter={typeFilter} onFilterChange={setTypeFilter} />
+
             {/* Loading state */}
             {loading && (
               <div style={{
-                padding: '40px 20px',
+                padding: '32px 16px',
                 textAlign: 'center',
                 color: 'var(--text-secondary)',
-                fontSize: '13px'
+                fontSize: '12px'
               }}>
-                <Search size={24} style={{
+                <Search size={20} style={{
                   animation: 'spin 1s linear infinite',
-                  marginBottom: '12px'
+                  marginBottom: '8px'
                 }} />
                 <div>Searching registry...</div>
               </div>
@@ -285,48 +297,63 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
             {/* Error state */}
             {error && !loading && (
               <div style={{
-                padding: '16px',
+                padding: '12px',
                 background: 'rgba(220, 38, 38, 0.1)',
                 border: '1px solid rgba(220, 38, 38, 0.3)',
                 borderRadius: '6px',
                 color: 'var(--error)',
-                fontSize: '12px'
+                fontSize: '11px'
               }}>
                 <strong>Error:</strong> {error}
               </div>
             )}
 
-            {/* Package grid */}
-            {!loading && !error && packages.length > 0 && (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                gap: '12px',
-                overflow: 'auto',
-                paddingTop: '8px'
-              }}>
-                {packages.map((pkg) => (
-                  <PackageCard
-                    key={`${pkg.name}@${pkg.version}`}
-                    package={pkg}
-                    onClick={() => handlePackageClick(pkg)}
-                    onInstall={handleInstallPackage}
-                  />
-                ))}
-              </div>
-            )}
+            {/* Package list */}
+            {!loading && !error && packages.length > 0 && (() => {
+              const filtered = filterByType(packages, typeFilter)
+              return filtered.length > 0 ? (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  overflow: 'auto',
+                }}>
+                  {filtered.map((pkg) => (
+                    <PackageCard
+                      key={`${pkg.name}@${pkg.version}`}
+                      package={pkg}
+                      onClick={() => handlePackageClick(pkg)}
+                      onInstall={handleInstallPackage}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div style={{
+                  padding: '24px 16px',
+                  textAlign: 'center',
+                  color: 'var(--text-secondary)',
+                  fontSize: '12px'
+                }}>
+                  <Package size={24} style={{ opacity: 0.5, marginBottom: '8px' }} />
+                  <div>No {RESOURCE_TYPE_LABELS[typeFilter!].toLowerCase()}s found</div>
+                  <div style={{ fontSize: '11px', marginTop: '4px' }}>
+                    Try removing the type filter
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Empty state */}
             {!loading && !error && packages.length === 0 && searchQuery.length >= 2 && (
               <div style={{
-                padding: '40px 20px',
+                padding: '32px 16px',
                 textAlign: 'center',
                 color: 'var(--text-secondary)',
-                fontSize: '13px'
+                fontSize: '12px'
               }}>
-                <Package size={32} style={{ opacity: 0.5, marginBottom: '12px' }} />
+                <Package size={24} style={{ opacity: 0.5, marginBottom: '8px' }} />
                 <div>No packages found for "{searchQuery}"</div>
-                <div style={{ fontSize: '11px', marginTop: '8px' }}>
+                <div style={{ fontSize: '11px', marginTop: '4px' }}>
                   Try a different search term
                 </div>
               </div>
@@ -335,14 +362,14 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
             {/* Initial empty state */}
             {!loading && !error && packages.length === 0 && searchQuery.length === 0 && (
               <div style={{
-                padding: '40px 20px',
+                padding: '32px 16px',
                 textAlign: 'center',
                 color: 'var(--text-secondary)',
-                fontSize: '13px'
+                fontSize: '12px'
               }}>
-                <Search size={32} style={{ opacity: 0.5, marginBottom: '12px' }} />
+                <Search size={24} style={{ opacity: 0.5, marginBottom: '8px' }} />
                 <div>Search for packages from the registry</div>
-                <div style={{ fontSize: '11px', marginTop: '8px' }}>
+                <div style={{ fontSize: '11px', marginTop: '4px' }}>
                   Start typing to discover packages
                 </div>
               </div>
@@ -351,10 +378,10 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
         )}
 
         {activeTab === 'my-packages' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', height: '100%' }}>
             {/* Header with refresh button */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 600 }}>
+              <h4 style={{ margin: 0, fontSize: '12px', fontWeight: 600 }}>
                 My Published Packages
               </h4>
               {isSignedIn && (
@@ -365,7 +392,7 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
                   }}
                   disabled={myPackagesLoading}
                   style={{
-                    padding: '6px 10px',
+                    padding: '4px 8px',
                     fontSize: '11px',
                     background: 'var(--panel-2)',
                     border: '1px solid var(--border)',
@@ -378,7 +405,7 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
                     opacity: myPackagesLoading ? 0.6 : 1
                   }}
                 >
-                  <RefreshCw size={12} style={{ animation: myPackagesLoading ? 'spin 1s linear infinite' : 'none' }} />
+                  <RefreshCw size={11} style={{ animation: myPackagesLoading ? 'spin 1s linear infinite' : 'none' }} />
                   Refresh
                 </button>
               )}
@@ -387,9 +414,9 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
             {/* Filter input */}
             {isSignedIn && myPackages.length > 0 && (
               <div style={{ position: 'relative' }}>
-                <Search size={16} style={{
+                <Search size={14} style={{
                   position: 'absolute',
-                  left: '12px',
+                  left: '10px',
                   top: '50%',
                   transform: 'translateY(-50%)',
                   color: 'var(--text-secondary)',
@@ -402,13 +429,14 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
                   placeholder="Filter packages..."
                   style={{
                     width: '100%',
-                    padding: '10px 12px 10px 38px',
-                    fontSize: '13px',
+                    padding: '8px 10px 8px 32px',
+                    fontSize: '12px',
                     background: 'var(--panel-2)',
-                    border: '2px solid var(--border)',
+                    border: '1px solid var(--border)',
                     borderRadius: '6px',
                     color: 'var(--text)',
                     outline: 'none',
+                    boxSizing: 'border-box',
                     transition: 'border-color 0.2s'
                   }}
                   onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
@@ -417,17 +445,22 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
               </div>
             )}
 
+            {/* Type filter chips */}
+            {isSignedIn && myPackages.length > 0 && (
+              <TypeFilterChips activeFilter={myTypeFilter} onFilterChange={setMyTypeFilter} />
+            )}
+
             {/* Not signed in state */}
             {!isSignedIn && (
               <div style={{
-                padding: '40px 20px',
+                padding: '32px 16px',
                 textAlign: 'center',
                 color: 'var(--text-secondary)',
-                fontSize: '13px'
+                fontSize: '12px'
               }}>
-                <Package size={32} style={{ opacity: 0.5, marginBottom: '12px' }} />
+                <Package size={24} style={{ opacity: 0.5, marginBottom: '8px' }} />
                 <div>Sign in to view your packages</div>
-                <div style={{ fontSize: '11px', marginTop: '8px' }}>
+                <div style={{ fontSize: '11px', marginTop: '4px' }}>
                   Your published packages will appear here
                 </div>
               </div>
@@ -436,14 +469,14 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
             {/* Loading state */}
             {isSignedIn && myPackagesLoading && (
               <div style={{
-                padding: '40px 20px',
+                padding: '32px 16px',
                 textAlign: 'center',
                 color: 'var(--text-secondary)',
-                fontSize: '13px'
+                fontSize: '12px'
               }}>
-                <RefreshCw size={24} style={{
+                <RefreshCw size={20} style={{
                   animation: 'spin 1s linear infinite',
-                  marginBottom: '12px'
+                  marginBottom: '8px'
                 }} />
                 <div>Loading your packages...</div>
               </div>
@@ -452,34 +485,34 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
             {/* Error state */}
             {isSignedIn && myPackagesError && !myPackagesLoading && (
               <div style={{
-                padding: '16px',
+                padding: '12px',
                 background: 'rgba(220, 38, 38, 0.1)',
                 border: '1px solid rgba(220, 38, 38, 0.3)',
                 borderRadius: '6px',
                 color: 'var(--error)',
-                fontSize: '12px'
+                fontSize: '11px'
               }}>
                 <strong>Error:</strong> {myPackagesError}
               </div>
             )}
 
-            {/* Package grid */}
+            {/* Package list */}
             {isSignedIn && !myPackagesLoading && !myPackagesError && myPackages.length > 0 && (() => {
-              const filteredPackages = myPackagesFilter
+              let filteredPackages = myPackagesFilter
                 ? myPackages.filter(pkg =>
                     pkg.name.toLowerCase().includes(myPackagesFilter.toLowerCase()) ||
                     pkg.description?.toLowerCase().includes(myPackagesFilter.toLowerCase()) ||
                     pkg.keywords?.some(k => k.toLowerCase().includes(myPackagesFilter.toLowerCase()))
                   )
                 : myPackages
+              filteredPackages = filterByType(filteredPackages, myTypeFilter)
 
               return filteredPackages.length > 0 ? (
                 <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                  gap: '12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
                   overflow: 'auto',
-                  paddingTop: '8px'
                 }}>
                   {filteredPackages.map((pkg) => (
                     <PackageCard
@@ -491,15 +524,15 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
                 </div>
               ) : (
                 <div style={{
-                  padding: '40px 20px',
+                  padding: '24px 16px',
                   textAlign: 'center',
                   color: 'var(--text-secondary)',
-                  fontSize: '13px'
+                  fontSize: '12px'
                 }}>
-                  <Package size={32} style={{ opacity: 0.5, marginBottom: '12px' }} />
-                  <div>No packages match "{myPackagesFilter}"</div>
-                  <div style={{ fontSize: '11px', marginTop: '8px' }}>
-                    Try a different search term
+                  <Package size={24} style={{ opacity: 0.5, marginBottom: '8px' }} />
+                  <div>No packages match your filters</div>
+                  <div style={{ fontSize: '11px', marginTop: '4px' }}>
+                    Try a different search term or type filter
                   </div>
                 </div>
               )
@@ -508,14 +541,14 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
             {/* Empty state */}
             {isSignedIn && !myPackagesLoading && !myPackagesError && myPackages.length === 0 && myPackagesLoaded && (
               <div style={{
-                padding: '40px 20px',
+                padding: '32px 16px',
                 textAlign: 'center',
                 color: 'var(--text-secondary)',
-                fontSize: '13px'
+                fontSize: '12px'
               }}>
-                <Package size={32} style={{ opacity: 0.5, marginBottom: '12px' }} />
+                <Package size={24} style={{ opacity: 0.5, marginBottom: '8px' }} />
                 <div>No packages published yet</div>
-                <div style={{ fontSize: '11px', marginTop: '8px' }}>
+                <div style={{ fontSize: '11px', marginTop: '4px' }}>
                   Publish a package to see it here
                 </div>
               </div>
@@ -537,7 +570,64 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
   )
 }
 
-// PackageCard component
+// Type filter chips component
+interface TypeFilterChipsProps {
+  activeFilter: ResourceType | null
+  onFilterChange: (filter: ResourceType | null) => void
+}
+
+function TypeFilterChips({ activeFilter, onFilterChange }: TypeFilterChipsProps) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+      <button
+        onClick={() => onFilterChange(null)}
+        style={{
+          padding: '3px 8px',
+          fontSize: '10px',
+          fontWeight: activeFilter === null ? 600 : 400,
+          background: activeFilter === null ? 'var(--accent)' : 'var(--panel-2)',
+          color: activeFilter === null ? 'white' : 'var(--text-secondary)',
+          border: activeFilter === null ? '1px solid var(--accent)' : '1px solid var(--border)',
+          borderRadius: '10px',
+          cursor: 'pointer',
+          transition: 'all 0.15s',
+        }}
+      >
+        All
+      </button>
+      {RESOURCE_TYPES.map(rt => {
+        const Icon = RESOURCE_TYPE_ICONS[rt]
+        const color = RESOURCE_TYPE_COLORS[rt]
+        const isActive = activeFilter === rt
+        return (
+          <button
+            key={rt}
+            onClick={() => onFilterChange(isActive ? null : rt)}
+            style={{
+              padding: '3px 8px',
+              fontSize: '10px',
+              fontWeight: isActive ? 600 : 400,
+              background: isActive ? `${color}25` : 'var(--panel-2)',
+              color: isActive ? color : 'var(--text-secondary)',
+              border: `1px solid ${isActive ? `${color}60` : 'var(--border)'}`,
+              borderRadius: '10px',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '3px',
+              transition: 'all 0.15s',
+            }}
+          >
+            <Icon size={10} />
+            {RESOURCE_TYPE_LABELS[rt]}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// PackageCard component — compact sidebar-friendly layout
 interface PackageCardProps {
   package: RegistryPackage
   onClick: () => void
@@ -548,24 +638,9 @@ function PackageCard({ package: pkg, onClick, onInstall }: PackageCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [installing, setInstalling] = useState(false)
 
-  // Resolve type-specific icon and color
   const pkgType = (pkg.type || 'package') as ResourceType
   const TypeIcon = RESOURCE_TYPE_ICONS[pkgType] || Package
   const typeColor = RESOURCE_TYPE_COLORS[pkgType] || '#3b82f6'
-
-  // Format publish date
-  const publishedDate = pkg.publishedAt ? new Date(pkg.publishedAt).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  }) : null
-
-  // Format updated date
-  const updatedDate = pkg.updatedAt ? new Date(pkg.updatedAt).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  }) : null
 
   return (
     <div
@@ -573,284 +648,150 @@ function PackageCard({ package: pkg, onClick, onInstall }: PackageCardProps) {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={{
-        position: 'relative',
-        padding: '20px',
-        background: 'var(--panel)',
-        borderWidth: '2px',
-        borderStyle: 'solid',
-        borderColor: isHovered ? 'var(--accent)' : 'var(--border)',
-        borderRadius: '12px',
+        padding: '10px 12px',
+        background: isHovered ? 'var(--panel-2)' : 'var(--panel)',
+        border: `1px solid ${isHovered ? typeColor + '60' : 'var(--border)'}`,
+        borderRadius: '8px',
         cursor: 'pointer',
-        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+        transition: 'all 0.15s',
         display: 'flex',
         flexDirection: 'column',
-        gap: '16px',
-        minHeight: '240px',
-        boxShadow: isHovered
-          ? '0 8px 24px rgba(0, 0, 0, 0.12)'
-          : '0 2px 8px rgba(0, 0, 0, 0.04)',
-        transform: isHovered ? 'translateY(-2px)' : 'translateY(0)'
+        gap: '8px',
       }}
     >
-      {/* Package header with icon */}
-      <div style={{ display: 'flex', alignItems: 'start', gap: '14px' }}>
+      {/* Row 1: Icon + Name + Version + Install */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <div style={{
           flexShrink: 0,
-          width: '52px',
-          height: '52px',
-          background: `linear-gradient(135deg, ${typeColor}, ${typeColor}cc)`,
-          borderRadius: '10px',
+          width: '28px',
+          height: '28px',
+          background: `${typeColor}20`,
+          borderRadius: '6px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          boxShadow: `0 4px 16px ${typeColor}4d`,
-          transform: isHovered ? 'scale(1.05)' : 'scale(1)',
-          transition: 'transform 0.2s'
         }}>
-          <TypeIcon size={28} color="white" strokeWidth={2.5} />
+          <TypeIcon size={15} color={typeColor} strokeWidth={2} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
-            fontSize: '16px',
-            fontWeight: 700,
+            fontSize: '12px',
+            fontWeight: 600,
             color: 'var(--text)',
             fontFamily: 'monospace',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            marginBottom: '6px',
-            letterSpacing: '-0.02em'
+            lineHeight: '1.3',
           }}>
             {pkg.name}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px',
-              padding: '4px 10px',
-              fontSize: '12px',
-              fontWeight: 600,
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+            <span style={{
+              fontSize: '10px',
+              fontWeight: 500,
               color: typeColor,
-              background: `${typeColor}1a`,
-              borderRadius: '6px',
               fontFamily: 'monospace',
-              borderWidth: '1px',
-              borderStyle: 'solid',
-              borderColor: `${typeColor}40`
             }}>
-              <Tag size={11} />
               v{pkg.version}
-            </div>
-            <div style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                padding: '3px 8px',
-                fontSize: '11px',
-                fontWeight: 500,
-                color: typeColor,
-                background: `${typeColor}20`,
-                borderRadius: '4px',
-              }}>
-                {RESOURCE_TYPE_LABELS[pkgType]}
-              </div>
+            </span>
+            <span style={{
+              fontSize: '9px',
+              fontWeight: 500,
+              color: typeColor,
+              background: `${typeColor}15`,
+              padding: '1px 5px',
+              borderRadius: '3px',
+            }}>
+              {RESOURCE_TYPE_LABELS[pkgType]}
+            </span>
           </div>
         </div>
-        {/* Install button + hover indicator */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          opacity: isHovered ? 1 : 0,
-          transform: isHovered ? 'translateX(0)' : 'translateX(4px)',
-          transition: 'all 0.2s'
-        }}>
-          {onInstall && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                if (installing) return
-                setInstalling(true)
-                onInstall(pkg).finally(() => setInstalling(false))
-              }}
-              title={`Install ${pkg.name}@${pkg.version}`}
-              style={{
-                padding: '4px 8px',
-                borderRadius: '6px',
-                border: '1px solid var(--accent)',
-                background: 'color-mix(in srgb, var(--accent) 15%, transparent)',
-                color: 'var(--accent)',
-                cursor: installing ? 'default' : 'pointer',
-                fontSize: '11px',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                opacity: installing ? 0.7 : 1,
-              }}
-            >
-              {installing
-                ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
-                : <Download size={12} />
-              }
-              {installing ? 'Installing' : 'Install'}
-            </button>
-          )}
-          <ExternalLink size={18} color="var(--accent)" />
-        </div>
+        {/* Install button (visible on hover) */}
+        {onInstall && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              if (installing) return
+              setInstalling(true)
+              onInstall(pkg).finally(() => setInstalling(false))
+            }}
+            title={`Install ${pkg.name}@${pkg.version}`}
+            style={{
+              flexShrink: 0,
+              padding: '3px 7px',
+              borderRadius: '4px',
+              border: '1px solid var(--accent)',
+              background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+              color: 'var(--accent)',
+              cursor: installing ? 'default' : 'pointer',
+              fontSize: '10px',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '3px',
+              opacity: isHovered ? (installing ? 0.7 : 1) : 0,
+              transition: 'opacity 0.15s',
+            }}
+          >
+            {installing
+              ? <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} />
+              : <Download size={10} />
+            }
+            {installing ? '...' : 'Install'}
+          </button>
+        )}
+        {!onInstall && (
+          <ExternalLink
+            size={14}
+            color="var(--accent)"
+            style={{ flexShrink: 0, opacity: isHovered ? 0.8 : 0, transition: 'opacity 0.15s' }}
+          />
+        )}
       </div>
 
-      {/* Description */}
+      {/* Row 2: Description */}
+      {pkg.description && (
+        <div style={{
+          fontSize: '11px',
+          color: 'var(--text-secondary)',
+          lineHeight: '1.4',
+          overflow: 'hidden',
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+        }}>
+          {pkg.description}
+        </div>
+      )}
+
+      {/* Row 3: Compact metadata */}
       <div style={{
-        fontSize: '13px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        fontSize: '10px',
         color: 'var(--text-secondary)',
-        lineHeight: '1.6',
-        overflow: 'hidden',
-        display: '-webkit-box',
-        WebkitLineClamp: 3,
-        WebkitBoxOrient: 'vertical',
-        minHeight: '4em',
-        flex: 1
+        flexWrap: 'wrap',
       }}>
-        {pkg.description || 'No description available'}
-      </div>
-
-      {/* Metadata sections */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {/* Primary metadata - 2 column grid */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(2, 1fr)',
-          gap: '10px',
-          paddingTop: '12px',
-          borderTop: '1px solid var(--border)'
-        }}>
-          {/* Author */}
-          {pkg.author && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '7px',
-              fontSize: '12px',
-              color: 'var(--text-secondary)'
-            }}>
-              <User size={14} style={{ flexShrink: 0, opacity: 0.7 }} />
-              <span style={{
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                fontWeight: 500
-              }}>
-                {pkg.author}
-              </span>
-            </div>
-          )}
-
-          {/* Downloads */}
-          {pkg.downloads !== undefined && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '7px',
-              fontSize: '12px',
-              color: 'var(--text-secondary)',
-              fontWeight: 500
-            }}>
-              <Download size={14} style={{ flexShrink: 0, opacity: 0.7 }} />
-              <span>{formatDownloads(pkg.downloads)} downloads</span>
-            </div>
-          )}
-
-          {/* Published date */}
-          {publishedDate && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '7px',
-              fontSize: '12px',
-              color: 'var(--text-secondary)'
-            }}>
-              <Calendar size={14} style={{ flexShrink: 0, opacity: 0.7 }} />
-              <span>Published {publishedDate}</span>
-            </div>
-          )}
-
-          {/* Updated date */}
-          {updatedDate && publishedDate !== updatedDate && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '7px',
-              fontSize: '12px',
-              color: 'var(--text-secondary)'
-            }}>
-              <RefreshCw size={14} style={{ flexShrink: 0, opacity: 0.7 }} />
-              <span>Updated {updatedDate}</span>
-            </div>
-          )}
-
-          {/* License */}
-          {pkg.license && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '7px',
-              fontSize: '12px',
-              color: 'var(--text-secondary)',
-              gridColumn: (!updatedDate || publishedDate === updatedDate) ? 'span 2' : 'auto'
-            }}>
-              <Star size={14} style={{ flexShrink: 0, opacity: 0.7 }} />
-              <span>{pkg.license}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Keywords/Tags */}
+        {pkg.author && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+            <User size={10} style={{ opacity: 0.6 }} />
+            {pkg.author}
+          </span>
+        )}
+        {pkg.downloads !== undefined && pkg.downloads > 0 && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+            <Download size={10} style={{ opacity: 0.6 }} />
+            {formatDownloads(pkg.downloads)}
+          </span>
+        )}
         {pkg.keywords && pkg.keywords.length > 0 && (
-          <div style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '7px',
-            paddingTop: '10px',
-            borderTop: '1px solid var(--border)'
-          }}>
-            {pkg.keywords.slice(0, 5).map((keyword, idx) => (
-              <span
-                key={idx}
-                style={{
-                  padding: '4px 12px',
-                  fontSize: '11px',
-                  fontWeight: 500,
-                  background: isHovered ? 'rgba(99, 102, 241, 0.1)' : 'var(--panel-2)',
-                  borderWidth: '1px',
-                  borderStyle: 'solid',
-                  borderColor: isHovered ? 'rgba(99, 102, 241, 0.3)' : 'var(--border)',
-                  borderRadius: '14px',
-                  color: isHovered ? 'var(--accent)' : 'var(--text-secondary)',
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.2s'
-                }}
-              >
-                {keyword}
-              </span>
-            ))}
-            {pkg.keywords.length > 5 && (
-              <span
-                style={{
-                  padding: '4px 12px',
-                  fontSize: '11px',
-                  fontWeight: 500,
-                  color: 'var(--text-secondary)',
-                  fontStyle: 'italic',
-                  display: 'flex',
-                  alignItems: 'center'
-                }}
-              >
-                +{pkg.keywords.length - 5} more
-              </span>
-            )}
-          </div>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+            <Tag size={10} style={{ opacity: 0.6 }} />
+            {pkg.keywords.slice(0, 2).join(', ')}
+            {pkg.keywords.length > 2 && ` +${pkg.keywords.length - 2}`}
+          </span>
         )}
       </div>
     </div>
