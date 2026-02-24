@@ -1546,8 +1546,9 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
     // Add a node from a saved template. If onEdgeId is provided, insert on that edge
     // (remove original edge, wire source -> template root -> target) in a single atomic operation.
     addNodeFromTemplate: (templateData, position, onEdgeId?) => {
-      // Support both nested (node: {}) and legacy flat structure
-      const nodeInfo = (templateData.node || templateData) as Record<string, unknown>
+      // Read node info from the type-specific 'node-template' section
+      const ntSection = templateData['node-template'] as Record<string, unknown> | undefined
+      const nodeInfo = ntSection?.node as Record<string, unknown> | undefined
       if (!nodeInfo?.nodeType) return null
 
       // If inserting on an edge, resolve midpoint and validate

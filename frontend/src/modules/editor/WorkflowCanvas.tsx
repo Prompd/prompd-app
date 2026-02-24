@@ -1118,10 +1118,11 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
           return
         }
 
-        // Validate template has node data (supports both nested and legacy flat format)
+        // Validate template has node data in the 'node-template' section
         const tpl = result.template as Record<string, unknown>
-        const nodeInfo = (tpl.node || tpl) as Record<string, unknown>
-        if (!nodeInfo.nodeType || !nodeInfo.nodeData) {
+        const ntSec = tpl['node-template'] as Record<string, unknown> | undefined
+        const nodeInfo = ntSec?.node as Record<string, unknown> | undefined
+        if (!nodeInfo?.nodeType || !nodeInfo?.nodeData) {
           useUIStore.getState().addToast('Invalid template format', 'error')
           return
         }

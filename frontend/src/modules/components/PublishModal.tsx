@@ -152,6 +152,11 @@ export function PublishModal({
   const [isLoadingNamespaces, setIsLoadingNamespaces] = useState(false)
   const [updateWorkspaceManifest, setUpdateWorkspaceManifest] = useState(true)
   const [tagInput, setTagInput] = useState('')
+  const [packageType, setPackageType] = useState<'package' | 'workflow' | 'node-template' | 'skill'>(
+    (initialManifest?.type as 'package' | 'workflow' | 'node-template' | 'skill') || 'package'
+  )
+  const [packageTools, setPackageTools] = useState<string[]>(initialManifest?.tools || [])
+  const [toolInput, setToolInput] = useState('')
   const [registryApiKeyInput, setRegistryApiKeyInput] = useState('')
   const [needsRegistryLogin, setNeedsRegistryLogin] = useState(false)
 
@@ -315,6 +320,18 @@ export function PublishModal({
       repository: parsedManifest.repository || '',
       ignore: parsedManifest.ignore || [],
     }))
+
+    // Pre-fill package type
+    if (parsedManifest.type) {
+      setPackageType(parsedManifest.type)
+      log(`Pre-selected type: ${parsedManifest.type}`)
+    }
+
+    // Pre-fill tools (skill type)
+    if (Array.isArray(parsedManifest.tools) && parsedManifest.tools.length > 0) {
+      setPackageTools(parsedManifest.tools)
+      log(`Pre-selected ${parsedManifest.tools.length} tools from manifest.`)
+    }
 
     // Pre-select files (filter out prompd.json/manifest.json if it was incorrectly included)
     if (Array.isArray(parsedManifest.files) && parsedManifest.files.length > 0) {
@@ -676,20 +693,35 @@ export function PublishModal({
         filesToInclude.push(manifest.readme);
       }
 
+      // Skill validation
+      if (packageType === 'skill') {
+        if (!mainFile) {
+          setError('Skills require an entry point file (main). Select a .prmd or .pdflow file as the main file.')
+          return
+        }
+        if (packageTools.length === 0) {
+          setError('Skills require at least one tool declaration. Add tools in the Tools section.')
+          return
+        }
+      }
+
       const fullManifest: PackageManifest = {
         ...manifest,
         name: getFullPackageName(),
+        type: packageType,
         main: mainFile,
         files: filesToInclude,
+        ...(packageType === 'skill' && packageTools.length > 0 ? { tools: packageTools } : {}),
+        ...(packageType === 'skill' ? { skill: { allowedTools: packageTools } } : {}),
       };
 
-      const packageBlob = await packageService.createPackage(
+      const { blob: packageBlob } = await packageService.createPackage(
         workspaceHandle,
         fullManifest,
         getToken
       )
 
-      log(`✅ Package created: ${packageBlob.size} bytes`)
+      log(`Package created: ${packageBlob.size} bytes`)
 
       // Download for inspection
       const url = URL.createObjectURL(packageBlob)
@@ -699,7 +731,7 @@ export function PublishModal({
       a.click()
       URL.revokeObjectURL(url)
 
-      log('📥 Downloaded .pdpkg for inspection')
+      log('Downloaded .pdpkg for inspection')
 
       return packageBlob
     } catch (err) {
@@ -729,16 +761,31 @@ export function PublishModal({
         filesToInclude.push(manifest.readme);
       }
 
+      // Skill validation
+      if (packageType === 'skill') {
+        if (!mainFile) {
+          setError('Skills require an entry point file (main). Select a .prmd or .pdflow file as the main file.')
+          return
+        }
+        if (packageTools.length === 0) {
+          setError('Skills require at least one tool declaration. Add tools in the Tools section.')
+          return
+        }
+      }
+
       // Create package
       log('Creating package...')
       const fullManifest: PackageManifest = {
         ...manifest,
         name: getFullPackageName(),
+        type: packageType,
         main: mainFile,
         files: filesToInclude,
+        ...(packageType === 'skill' && packageTools.length > 0 ? { tools: packageTools } : {}),
+        ...(packageType === 'skill' ? { skill: { allowedTools: packageTools } } : {}),
       };
 
-      const packageBlob = await packageService.createPackage(
+      const { outputPath } = await packageService.createPackage(
         workspaceHandle,
         fullManifest,
         getToken
@@ -749,7 +796,7 @@ export function PublishModal({
       const regConfig = getSelectedRegistryConfig()
       const regName = selectedRegistryName || 'default'
       log(`Publishing to registry: ${regName}...`)
-      await packageService.publish(packageBlob, fullManifest, getToken, setProgress, regConfig)
+      await packageService.publish(outputPath, fullManifest, getToken, setProgress, regConfig)
 
       setPublishStatus('success')
       log('Publish complete!')
@@ -805,6 +852,7 @@ export function PublishModal({
       name: manifestToSave.name,
       version: manifestToSave.version,
       description: manifestToSave.description,
+      type: manifestToSave.type || undefined,
       author: manifestToSave.author,
       license: manifestToSave.license,
       keywords: manifestToSave.keywords,
@@ -813,6 +861,8 @@ export function PublishModal({
       main: manifestToSave.main,
       files: filteredFiles,
       ignore: manifestToSave.ignore?.length ? manifestToSave.ignore : undefined,
+      tools: manifestToSave.tools?.length ? manifestToSave.tools : undefined,
+      mcps: manifestToSave.mcps?.length ? manifestToSave.mcps : undefined,
     };
 
     // remove undefined properties
@@ -876,8 +926,11 @@ export function PublishModal({
       const fullManifest: PackageManifest = {
         ...manifest,
         name: getFullPackageName(),
+        type: packageType,
         main: mainFile,
         files: mergedFiles,
+        ...(packageType === 'skill' && packageTools.length > 0 ? { tools: packageTools } : {}),
+        ...(packageType === 'skill' ? { skill: { allowedTools: packageTools } } : {}),
       };
 
       await saveManifestFile(fullManifest);
@@ -973,15 +1026,16 @@ export function PublishModal({
         setSelectedFiles(packagableFiles)
         log(`Auto-selected ${packagableFiles.length} packagable files.`)
 
-        // Auto-select main file if there's exactly one .prmd file
-        const prmdFiles = packagableFiles.filter(f => f.endsWith('.prmd'))
-        if (prmdFiles.length === 1 && !mainFile) {
-          setMainFile(prmdFiles[0])
-          log(`Auto-selected main file: ${prmdFiles[0]}`)
+        // Auto-select main file based on package type
+        const mainExt = packageType === 'workflow' ? '.pdflow' : '.prmd'
+        const mainCandidates = packagableFiles.filter(f => f.endsWith(mainExt))
+        if (mainCandidates.length === 1 && !mainFile) {
+          setMainFile(mainCandidates[0])
+          log(`Auto-selected main file: ${mainCandidates[0]}`)
         }
       }
     }
-  }, [isOpen, originalManifestFiles.length, selectedFiles.length, selectableFiles, mainFile])
+  }, [isOpen, originalManifestFiles.length, selectedFiles.length, selectableFiles, mainFile, packageType])
 
   // Step 3 is now Package Details - validate both file selection AND manifest
   const isStep3Valid = validationErrors.length === 0
@@ -1226,12 +1280,15 @@ export function PublishModal({
                 padding: 12,
                 background: colors.input
               }}>
-                {selectedFiles.filter(f => f.endsWith('.prmd')).length === 0 ? (
+                {(() => {
+                  const mainExt = packageType === 'workflow' ? '.pdflow' : '.prmd'
+                  const mainCandidates = selectedFiles.filter(f => f.endsWith(mainExt))
+                  return mainCandidates.length === 0 ? (
                   <div style={{ padding: 12, textAlign: 'center', color: colors.textMuted, fontSize: '13px' }}>
-                    Select at least one <code style={{ background: colors.bgTertiary, padding: '2px 4px', borderRadius: 4 }}>.prmd</code> file to choose an entry point.
+                    Select at least one <code style={{ background: colors.bgTertiary, padding: '2px 4px', borderRadius: 4 }}>{mainExt}</code> file to choose an entry point.
                   </div>
                 ) : (
-                  selectedFiles.filter(f => f.endsWith('.prmd')).map(file => (
+                  mainCandidates.map(file => (
                     <label
                       key={file}
                       style={{
@@ -1262,7 +1319,8 @@ export function PublishModal({
                       <span>{file}</span>
                     </label>
                   ))
-                )}
+                )
+                })()}
               </div>
             </div>
 
@@ -1436,6 +1494,156 @@ export function PublishModal({
                       </button>
                     </div>
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* Package Type */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{
+                display: 'block',
+                marginBottom: 8,
+                fontWeight: 600,
+                fontSize: '14px',
+                color: colors.text
+              }}>
+                <Package size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+                Package Type
+              </label>
+              <select
+                value={packageType}
+                onChange={(e) => setPackageType(e.target.value as typeof packageType)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  background: colors.input,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 8,
+                  color: colors.text,
+                  fontSize: '14px',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="package">Package - Standard prompt package</option>
+                <option value="workflow">Workflow - Deployable workflow package</option>
+                <option value="node-template">Node Template - Reusable node configuration</option>
+                <option value="skill">Skill - AI agent skill with tool declarations</option>
+              </select>
+            </div>
+
+            {/* Tools (skill type only) */}
+            {packageType === 'skill' && (
+              <div style={{ marginBottom: 20 }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: 8,
+                  fontWeight: 600,
+                  fontSize: '14px',
+                  color: colors.text
+                }}>
+                  Required Tools
+                  <span style={{
+                    marginLeft: 8,
+                    fontSize: '11px',
+                    fontWeight: 500,
+                    color: colors.primary,
+                    background: theme === 'dark' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.1)',
+                    padding: '2px 8px',
+                    borderRadius: '10px'
+                  }}>
+                    Required for Skills
+                  </span>
+                </label>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <input
+                    type="text"
+                    value={toolInput}
+                    onChange={(e) => setToolInput(e.target.value)}
+                    placeholder="Tool name (e.g., Read, Write, Bash)"
+                    onKeyDown={(e) => {
+                      if ((e.key === 'Enter' || e.key === ',') && toolInput.trim()) {
+                        e.preventDefault()
+                        const trimmed = toolInput.trim().replace(/,$/, '')
+                        if (trimmed && !packageTools.includes(trimmed)) {
+                          setPackageTools(prev => [...prev, trimmed])
+                        }
+                        setToolInput('')
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '10px 12px',
+                      background: colors.input,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: 8,
+                      color: colors.text,
+                      fontSize: '14px'
+                    }}
+                    onFocus={(e) => e.currentTarget.style.borderColor = colors.primary}
+                    onBlur={(e) => e.currentTarget.style.borderColor = colors.border}
+                  />
+                  <button
+                    onClick={() => {
+                      const trimmed = toolInput.trim()
+                      if (trimmed && !packageTools.includes(trimmed)) {
+                        setPackageTools(prev => [...prev, trimmed])
+                      }
+                      setToolInput('')
+                    }}
+                    disabled={!toolInput.trim()}
+                    style={{
+                      padding: '10px 14px',
+                      background: toolInput.trim() ? colors.primary : colors.bgTertiary,
+                      border: 'none',
+                      borderRadius: 8,
+                      color: toolInput.trim() ? '#ffffff' : colors.textMuted,
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      cursor: toolInput.trim() ? 'pointer' : 'not-allowed'
+                    }}
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+                {packageTools.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {packageTools.map(tool => (
+                      <span
+                        key={tool}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          padding: '4px 10px',
+                          background: theme === 'dark' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.1)',
+                          border: `1px solid ${theme === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.2)'}`,
+                          borderRadius: 6,
+                          fontSize: '13px',
+                          color: colors.primary
+                        }}
+                      >
+                        {tool}
+                        <X
+                          size={12}
+                          style={{ cursor: 'pointer', opacity: 0.7 }}
+                          onClick={() => setPackageTools(prev => prev.filter(t => t !== tool))}
+                        />
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {packageTools.length === 0 && (
+                  <p style={{
+                    margin: '4px 0 0 0',
+                    fontSize: '12px',
+                    color: colors.errorText || '#dc2626',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4
+                  }}>
+                    <AlertTriangle size={12} />
+                    Skills should declare at least one required tool
+                  </p>
                 )}
               </div>
             )}

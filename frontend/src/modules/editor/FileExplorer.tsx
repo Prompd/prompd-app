@@ -26,19 +26,7 @@ import {
 } from 'lucide-react'
 import { SidebarPanelHeader } from '../components/SidebarPanelHeader'
 import { useConfirmDialog } from '../components/ConfirmDialog'
-
-type FileTypeKey = 'prmd' | 'pdflow' | 'prompdjson' | 'custom'
-
-const FILE_TYPES: Array<{ key: FileTypeKey; label: string; ext: string; description: string; icon: React.ReactNode }> = [
-  { key: 'prmd', label: 'Prompt', ext: '.prmd', description: 'Prompd prompt file',
-    icon: <img src="./icons/prmd-color.svg" alt="prmd" style={{ width: 20, height: 20 }} /> },
-  { key: 'pdflow', label: 'Workflow', ext: '.pdflow', description: 'Visual workflow',
-    icon: <img src="./icons/prompdflow-color.svg" alt="pdflow" style={{ width: 20, height: 20 }} /> },
-  { key: 'prompdjson', label: 'Project Config', ext: 'prompd.json', description: 'Project configuration',
-    icon: <FileJson size={20} color="#CBCB41" /> },
-  { key: 'custom', label: 'Other', ext: '', description: 'Any file type',
-    icon: <FileText size={20} color="#8B949E" /> },
-]
+import { NewFileDialog, getDefaultContent } from '../components/NewFileDialog'
 
 type FileEntry = { name: string; handle?: any; kind: 'file' | 'folder'; path: string; fileObj?: File }
 
@@ -106,12 +94,13 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
   const [inputDialog, setInputDialog] = useState<{
     title: string
     defaultValue: string
-    showFileTypeSelector?: boolean
     onSubmit: (value: string) => void
   } | null>(null)
   const [inputDialogValue, setInputDialogValue] = useState('')
-  const [fileType, setFileType] = useState<FileTypeKey>('prmd')
-  const [showAdvancedNewFile, setShowAdvancedNewFile] = useState(false)
+
+  // New file dialog state (extracted component with file type selector)
+  const [showNewFileDialog, setShowNewFileDialog] = useState(false)
+  const [newFileTargetFolder, setNewFileTargetFolder] = useState('')
 
   // Confirmation dialog hook (replacement for confirm() which doesn't work in Electron)
   const { showConfirm, ConfirmDialogComponent } = useConfirmDialog()
@@ -833,42 +822,27 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
     }
   }, [clipboardData, dirHandle, entries, refresh])
 
-  const createFileInFolder = useCallback(async (folderPath: string) => {
+  const createFileInFolder = useCallback((folderPath: string) => {
     if (!dirHandle) return
+    setNewFileTargetFolder(folderPath)
+    setShowNewFileDialog(true)
+  }, [dirHandle])
+
+  const handleNewFileSubmit = useCallback(async (fileName: string, content: string) => {
+    if (!dirHandle) return
+    setShowNewFileDialog(false)
     try {
-      setFileType('prmd')
-      setShowAdvancedNewFile(false)
-
-      const fileName = await new Promise<string | null>((resolve) => {
-        setInputDialogValue('untitled.prmd')
-        setInputDialog({
-          title: 'New file:',
-          defaultValue: 'untitled.prmd',
-          showFileTypeSelector: true,
-          onSubmit: (value: string) => {
-            setInputDialog(null)
-            resolve(value || null)
-          }
-        })
-      })
-      if (!fileName) return
-
-      const content = getDefaultContent(fileName)
-
-      // Check if this is an Electron pseudo-handle
       const electronPath = (dirHandle as any)?._electronPath
       if (electronPath && (window as any).electronAPI?.writeFile) {
-        // Electron mode - use IPC to write the file
-        const fullPath = folderPath
-          ? `${electronPath}/${folderPath}/${fileName}`.replace(/\\/g, '/')
+        const fullPath = newFileTargetFolder
+          ? `${electronPath}/${newFileTargetFolder}/${fileName}`.replace(/\\/g, '/')
           : `${electronPath}/${fileName}`.replace(/\\/g, '/')
         const result = await (window as any).electronAPI.writeFile(fullPath, content)
         if (!result.success) {
           throw new Error(result.error || 'Failed to create file')
         }
       } else {
-        // File System Access API mode
-        const targetDir = await getDirectoryHandleForPath(dirHandle, folderPath)
+        const targetDir = await getDirectoryHandleForPath(dirHandle, newFileTargetFolder)
         const newFileHandle = await targetDir.getFileHandle(fileName, { create: true })
         const writable = await newFileHandle.createWritable()
         await writable.write(content)
@@ -879,7 +853,7 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
       console.error('Create file failed:', err)
       setError('Failed to create file')
     }
-  }, [dirHandle, refresh])
+  }, [dirHandle, newFileTargetFolder, refresh])
 
   const createFolderInFolder = useCallback(async (folderPath: string) => {
     console.log('[FileExplorer] createFolderInFolder called with path:', folderPath)
@@ -1673,7 +1647,7 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
         </div>
       ) : null}
 
-      {/* Input Dialog (replacement for prompt()) */}
+      {/* Input Dialog for rename/new folder (simple text input) */}
       {inputDialog && (
         <div
           style={{
@@ -1700,86 +1674,13 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 0 16px 0' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', color: 'var(--foreground)' }}>
-                {inputDialog.title}
-              </h3>
-              {inputDialog.showFileTypeSelector && (
-                <button
-                  onClick={() => setShowAdvancedNewFile(!showAdvancedNewFile)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--accent)',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    padding: '2px 4px',
-                  }}
-                >
-                  {showAdvancedNewFile ? 'Show file types' : 'Advanced'}
-                </button>
-              )}
-            </div>
-
-            {/* File type selector cards */}
-            {inputDialog.showFileTypeSelector && !showAdvancedNewFile && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                {FILE_TYPES.map(ft => (
-                  <button
-                    key={ft.key}
-                    onClick={() => {
-                      setFileType(ft.key)
-                      if (ft.key === 'custom') return
-                      if (ft.key === 'prompdjson') {
-                        setInputDialogValue('prompd.json')
-                        return
-                      }
-                      const dotIdx = inputDialogValue.lastIndexOf('.')
-                      const baseName = dotIdx > 0 ? inputDialogValue.substring(0, dotIdx) : inputDialogValue
-                      setInputDialogValue(baseName + ft.ext)
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '10px 12px',
-                      background: fileType === ft.key
-                        ? 'color-mix(in srgb, var(--accent) 15%, transparent)'
-                        : 'var(--input-bg)',
-                      border: fileType === ft.key
-                        ? '1.5px solid var(--accent)'
-                        : '1px solid var(--border)',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      color: 'var(--foreground)',
-                      transition: 'border-color 0.15s, background 0.15s',
-                    }}
-                  >
-                    <div style={{ flexShrink: 0 }}>{ft.icon}</div>
-                    <div>
-                      <div style={{ fontWeight: 500, fontSize: '13px' }}>{ft.label}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>{ft.description}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', color: 'var(--foreground)' }}>
+              {inputDialog.title}
+            </h3>
             <input
               type="text"
               value={inputDialogValue}
-              onChange={(e) => {
-                setInputDialogValue(e.target.value)
-                // Sync file type from typed extension
-                if (inputDialog.showFileTypeSelector) {
-                  const val = e.target.value
-                  if (val.endsWith('.prmd')) setFileType('prmd')
-                  else if (val.endsWith('.pdflow')) setFileType('pdflow')
-                  else if (val === 'prompd.json') setFileType('prompdjson')
-                  else setFileType('custom')
-                }
-              }}
+              onChange={(e) => setInputDialogValue(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   inputDialog.onSubmit(inputDialogValue)
@@ -1831,6 +1732,13 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
           </div>
         </div>
       )}
+
+      {/* New File Dialog (with file type selector) */}
+      <NewFileDialog
+        isOpen={showNewFileDialog}
+        onClose={() => setShowNewFileDialog(false)}
+        onSubmit={handleNewFileSubmit}
+      />
 
       {/* Confirmation Dialog (using reusable component) */}
       <ConfirmDialogComponent />
@@ -1912,63 +1820,6 @@ function iconFor(name: string, isIgnored = false) {
   return <FileText size={16} color={isIgnored ? ignoredColor : "#8B949E"} />
 }
 
-function formatFileName(fileName: string): { id: string; name: string } {
-  // Strip extension
-  const dotIdx = fileName.lastIndexOf('.')
-  const baseName = dotIdx > 0 ? fileName.substring(0, dotIdx) : fileName
-  // id: kebab-case, lowercase, replace underscores/spaces with hyphens
-  const id = baseName.toLowerCase().replace(/[\s_]+/g, '-').replace(/[^a-z0-9-]/g, '')
-  // name: Title case, split on hyphens/underscores/spaces
-  const name = baseName
-    .replace(/[-_]+/g, ' ')
-    .replace(/\b\w/g, c => c.toUpperCase())
-    .trim()
-  return { id: id || 'untitled', name: name || 'Untitled' }
-}
-
-function defaultPrompd(fileName?: string) {
-  const { id, name } = formatFileName(fileName || 'untitled.prmd')
-  return `---
-id: ${id}
-name: ${name}
-description: ""
-version: 1.0.0
----
-
-# User
-
-`
-}
-
-function defaultWorkflow(fileName?: string) {
-  const { id, name } = formatFileName(fileName || 'new-workflow.pdflow')
-  return JSON.stringify({
-    version: '1.0.0',
-    metadata: {
-      id,
-      name,
-      description: ''
-    },
-    parameters: [],
-    nodes: [],
-    edges: []
-  }, null, 2) + '\n'
-}
-
-function defaultPrompdJson() {
-  return JSON.stringify({
-    name: 'untitled',
-    version: '1.0.0',
-    description: ''
-  }, null, 2) + '\n'
-}
-
-function getDefaultContent(fileName: string): string {
-  if (fileName.endsWith('.prmd')) return defaultPrompd(fileName)
-  if (fileName.endsWith('.pdflow')) return defaultWorkflow(fileName)
-  if (fileName === 'prompd.json') return defaultPrompdJson()
-  return ''
-}
 
 type ProjectRec = { mode: 'fs' | 'upload'; name: string; top: string; snapshot?: FileEntry[]; ts?: number }
 function getProjects(): ProjectRec[] { try { return JSON.parse(localStorage.getItem('prompd.projects') || '[]') } catch { return [] } }

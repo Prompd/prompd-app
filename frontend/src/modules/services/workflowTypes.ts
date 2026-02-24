@@ -82,6 +82,7 @@ export type WorkflowNodeType =
   | 'output'
   | 'web-search'      // Web search node: search the web via configurable provider
   | 'database-query'  // Database query execution node
+  | 'skill'           // Installed skill package execution
   | 'node-group'      // Visual grouping container for multi-node template export
   // --- Add new node types here ---
 
@@ -89,7 +90,7 @@ export interface WorkflowNode {
   id: string
   type: WorkflowNodeType
   position: { x: number; y: number }
-  data: TriggerNodeData | PromptNodeData | ProviderNodeData | ConditionNodeData | LoopNodeData | ParallelNodeData | MergeNodeData | TransformerNodeData | ApiNodeData | ToolNodeData | ToolCallParserNodeData | ToolCallRouterNodeData | AgentNodeData | ChatAgentNodeData | GuardrailNodeData | CallbackNodeData | UserInputNodeData | ErrorHandlerNodeData | CommandNodeData | ClaudeCodeNodeData | WorkflowNodeData | McpToolNodeData | CodeNodeData | MemoryNodeData | OutputNodeData | WebSearchNodeData
+  data: TriggerNodeData | PromptNodeData | ProviderNodeData | ConditionNodeData | LoopNodeData | ParallelNodeData | MergeNodeData | TransformerNodeData | ApiNodeData | ToolNodeData | ToolCallParserNodeData | ToolCallRouterNodeData | AgentNodeData | ChatAgentNodeData | GuardrailNodeData | CallbackNodeData | UserInputNodeData | ErrorHandlerNodeData | CommandNodeData | ClaudeCodeNodeData | WorkflowNodeData | McpToolNodeData | CodeNodeData | MemoryNodeData | OutputNodeData | WebSearchNodeData | SkillNodeData
   /** Parent node ID for compound nodes (loop/parallel containers) */
   parentId?: string
   /** Extent for child nodes - 'parent' constrains to parent bounds */
@@ -1117,6 +1118,32 @@ export interface McpToolNodeData extends BaseNodeData {
 
   /** Whether to include tool result in conversation context */
   includeInContext?: boolean
+}
+
+/**
+ * SkillNodeData - Execute an installed skill package
+ *
+ * Skills are AI agent tasks: a .prmd prompt that orchestrates tool usage,
+ * optionally bundled with executable scripts. Installed to .prompd/skills/.
+ */
+export interface SkillNodeData extends BaseNodeData {
+  /** Installed skill package name (e.g. "@prompd/code-review") */
+  skillName: string
+
+  /** Installed skill version */
+  skillVersion?: string
+
+  /** Resolved path to the skill's directory on disk */
+  skillPath?: string
+
+  /** Scope of the installed skill */
+  skillScope?: 'workspace' | 'user'
+
+  /** Parameter values mapping (keys match the skill's parameter schema) */
+  parameters: Record<string, string>
+
+  /** Timeout for skill execution (ms) */
+  timeoutMs?: number
 }
 
 /**

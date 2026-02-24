@@ -25,7 +25,7 @@ import {
   ShieldCheck, Wrench, Terminal, Search, FileCode, Globe, Plug,
   ScanSearch, Route, GitBranch, Repeat, GitFork, Combine,
   Wand2, Database, TableProperties, UserCircle, Eye, AlertTriangle, Workflow,
-  Group,
+  Group, Sparkles,
 } from 'lucide-react'
 import type { WorkflowNodeType } from './workflowTypes'
 
@@ -119,6 +119,10 @@ export const NODE_TYPE_REGISTRY: Record<WorkflowNodeType, NodeTypeEntry> = {
     type: 'database-query', label: 'DB Query', description: 'Query a database connection',
     icon: TableProperties, color: 'var(--node-teal)', colorVar: 'teal',
   },
+  'skill': {
+    type: 'skill', label: 'Skill', description: 'Execute an installed skill package',
+    icon: Sparkles, color: 'var(--node-violet)', colorVar: 'violet',
+  },
   // --- Add new tool/execution node types here ---
 
   // Tool Routing
@@ -209,7 +213,7 @@ export const NODE_TYPE_CATEGORIES: NodeTypeCategory[] = [
     key: 'tools-execution',
     label: 'Tools & Execution',
     paletteLabel: 'Tools & Execution',
-    types: ['tool', 'command', 'web-search', 'code', 'api', 'mcp-tool', 'database-query'],
+    types: ['tool', 'command', 'web-search', 'code', 'api', 'mcp-tool', 'database-query', 'skill'],
   },
   {
     key: 'tool-routing',

@@ -6,6 +6,7 @@ import Editor from '@monaco-editor/react'
 import { useUIStore, selectTheme } from '../../stores/uiStore'
 import { getMonacoTheme, registerPrompdThemes } from '../lib/monacoConfig'
 import { stripContentFrontmatter } from '../lib/prompdParser'
+import { RESOURCE_TYPE_ICONS, RESOURCE_TYPE_COLORS, RESOURCE_TYPE_LABELS, type ResourceType } from '../services/resourceTypes'
 
 interface Props {
   package: RegistryPackage
@@ -228,34 +229,58 @@ export default function PackageDetailsModal({ package: pkg, onClose, onOpenInEdi
           justifyContent: 'space-between'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              background: 'var(--accent)',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <Package size={24} color="white" />
-            </div>
-            <div>
-              <div style={{
-                fontSize: '18px',
-                fontWeight: 600,
-                color: 'var(--text)',
-                fontFamily: 'monospace'
-              }}>
-                {pkg.name}
-              </div>
-              <div style={{
-                fontSize: '13px',
-                color: 'var(--text-secondary)',
-                fontFamily: 'monospace'
-              }}>
-                v{pkg.version}
-              </div>
-            </div>
+            {(() => {
+              const headerType = (pkg.type || 'package') as ResourceType
+              const HeaderIcon = RESOURCE_TYPE_ICONS[headerType] || Package
+              const headerColor = RESOURCE_TYPE_COLORS[headerType] || '#3b82f6'
+              return (
+                <>
+                  <div style={{
+                    width: '40px',
+                    height: '40px',
+                    background: headerColor,
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <HeaderIcon size={24} color="white" />
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{
+                        fontSize: '18px',
+                        fontWeight: 600,
+                        color: 'var(--text)',
+                        fontFamily: 'monospace'
+                      }}>
+                        {pkg.name}
+                      </div>
+                      <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '2px 8px',
+                        fontSize: '11px',
+                        fontWeight: 500,
+                        color: headerColor,
+                        background: `${headerColor}20`,
+                        borderRadius: '4px',
+                      }}>
+                        {RESOURCE_TYPE_LABELS[headerType] || headerType}
+                      </div>
+                    </div>
+                    <div style={{
+                      fontSize: '13px',
+                      color: 'var(--text-secondary)',
+                      fontFamily: 'monospace'
+                    }}>
+                      v{pkg.version}
+                    </div>
+                  </div>
+                </>
+              )
+            })()}
           </div>
           <button
             onClick={onClose}
@@ -1030,13 +1055,27 @@ function OverviewTab({ pkg, onUseAsTemplate, onOpenFiles }: OverviewTabProps) {
                 <span style={{ color: 'var(--text)', fontWeight: 500 }}>@{pkg.owner.handle}</span>
               </div>
             )}
-            {pkg.type && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                <Package size={14} />
-                <span>Type:</span>
-                <span style={{ color: 'var(--text)', fontWeight: 500, textTransform: 'capitalize' }}>{pkg.type}</span>
-              </div>
-            )}
+            {(() => {
+              const detailType = (pkg.type || 'package') as ResourceType
+              const DetailTypeIcon = RESOURCE_TYPE_ICONS[detailType] || Package
+              const detailTypeColor = RESOURCE_TYPE_COLORS[detailType] || '#3b82f6'
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
+                  <DetailTypeIcon size={14} style={{ color: detailTypeColor }} />
+                  <span>Type:</span>
+                  <span style={{
+                    color: detailTypeColor,
+                    fontWeight: 500,
+                    padding: '1px 8px',
+                    background: `${detailTypeColor}15`,
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                  }}>
+                    {RESOURCE_TYPE_LABELS[detailType] || pkg.type}
+                  </span>
+                </div>
+              )
+            })()}
             {formatDate(pkg.publishedAt) && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
                 <Calendar size={14} />

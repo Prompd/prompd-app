@@ -4,6 +4,7 @@ import { registryApi, type RegistryPackage } from '../services/registryApi'
 import PackageDetailsModal from './PackageDetailsModal'
 import { useAuthenticatedUser } from '../auth/ClerkWrapper'
 import { SidebarPanelHeader } from '../components/SidebarPanelHeader'
+import { RESOURCE_TYPE_ICONS, RESOURCE_TYPE_COLORS, RESOURCE_TYPE_LABELS, type ResourceType } from '../services/resourceTypes'
 
 type TabKey = 'search' | 'my-packages'
 
@@ -547,6 +548,11 @@ function PackageCard({ package: pkg, onClick, onInstall }: PackageCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [installing, setInstalling] = useState(false)
 
+  // Resolve type-specific icon and color
+  const pkgType = (pkg.type || 'package') as ResourceType
+  const TypeIcon = RESOURCE_TYPE_ICONS[pkgType] || Package
+  const typeColor = RESOURCE_TYPE_COLORS[pkgType] || '#3b82f6'
+
   // Format publish date
   const publishedDate = pkg.publishedAt ? new Date(pkg.publishedAt).toLocaleDateString('en-US', {
     month: 'short',
@@ -592,16 +598,16 @@ function PackageCard({ package: pkg, onClick, onInstall }: PackageCardProps) {
           flexShrink: 0,
           width: '52px',
           height: '52px',
-          background: `linear-gradient(135deg, var(--accent), #8b5cf6)`,
+          background: `linear-gradient(135deg, ${typeColor}, ${typeColor}cc)`,
           borderRadius: '10px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          boxShadow: '0 4px 16px rgba(99, 102, 241, 0.3)',
+          boxShadow: `0 4px 16px ${typeColor}4d`,
           transform: isHovered ? 'scale(1.05)' : 'scale(1)',
           transition: 'transform 0.2s'
         }}>
-          <Package size={28} color="white" strokeWidth={2.5} />
+          <TypeIcon size={28} color="white" strokeWidth={2.5} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
@@ -617,23 +623,38 @@ function PackageCard({ package: pkg, onClick, onInstall }: PackageCardProps) {
           }}>
             {pkg.name}
           </div>
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '5px',
-            padding: '4px 10px',
-            fontSize: '12px',
-            fontWeight: 600,
-            color: 'var(--accent)',
-            background: 'rgba(99, 102, 241, 0.1)',
-            borderRadius: '6px',
-            fontFamily: 'monospace',
-            borderWidth: '1px',
-            borderStyle: 'solid',
-            borderColor: 'rgba(99, 102, 241, 0.25)'
-          }}>
-            <Tag size={11} />
-            v{pkg.version}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '4px 10px',
+              fontSize: '12px',
+              fontWeight: 600,
+              color: typeColor,
+              background: `${typeColor}1a`,
+              borderRadius: '6px',
+              fontFamily: 'monospace',
+              borderWidth: '1px',
+              borderStyle: 'solid',
+              borderColor: `${typeColor}40`
+            }}>
+              <Tag size={11} />
+              v{pkg.version}
+            </div>
+            <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '3px 8px',
+                fontSize: '11px',
+                fontWeight: 500,
+                color: typeColor,
+                background: `${typeColor}20`,
+                borderRadius: '4px',
+              }}>
+                {RESOURCE_TYPE_LABELS[pkgType]}
+              </div>
           </div>
         </div>
         {/* Install button + hover indicator */}

@@ -137,6 +137,8 @@ export interface ElectronAPI {
   onMenuSchedulerService: (callback: () => void) => () => void
   // Project menu
   onMenuNewFile: (callback: () => void) => () => void
+  onMenuNewProject: (callback: () => void) => () => void
+  selectDirectory: (title?: string) => Promise<string | null>
   onMenuOpenFile: (callback: (filePath: string) => void) => () => void
   onMenuOpenFolder: (callback: (folderPath: string) => void) => () => void
   onMenuCloseFolder: (callback: () => void) => () => void
@@ -316,7 +318,17 @@ export interface ElectronAPI {
     ) => Promise<CreatePackageResult>
 
     // Install a single package by reference (e.g. "@prompd/core@0.0.1")
-    install: (packageRef: string, workspacePath: string) => Promise<{ success: boolean; name?: string; error?: string; missingMcps?: string[] }>
+    install: (packageRef: string, workspacePath: string, options?: {
+      global?: boolean
+      type?: 'package' | 'workflow' | 'node-template' | 'skill'
+    }) => Promise<{
+      success: boolean
+      name?: string
+      type?: string
+      installedPath?: string
+      error?: string
+      missingMcps?: string[]
+    }>
 
     // Install all dependencies from prompd.json
     installAll: (workspacePath: string) => Promise<InstallAllResult>
@@ -363,6 +375,59 @@ export interface ElectronAPI {
       skippedFiles?: string[]
       error?: string
     }>
+  }
+
+  // Resource management - scan/manage installed resources across type directories
+  resource?: {
+    listInstalled: (workspacePath: string) => Promise<{
+      success: boolean
+      resources: Array<{
+        name: string
+        version: string
+        type: string
+        scope: 'workspace' | 'user'
+        path: string
+        description?: string
+        tools?: string[]
+        mcps?: string[]
+        main?: string
+      }>
+      error?: string
+    }>
+    delete: (resourcePath: string) => Promise<{ success: boolean; error?: string }>
+    getManifest: (resourcePath: string) => Promise<{
+      success: boolean
+      manifest?: Record<string, unknown>
+      error?: string
+    }>
+  }
+
+  // Skill discovery - scan installed skills for workflow SkillNode usage
+  skill?: {
+    list: (workspacePath: string) => Promise<{
+      success: boolean
+      skills: Array<{
+        name: string
+        version: string
+        description?: string
+        tools?: string[]
+        main?: string
+        path: string
+        scope: 'workspace' | 'user'
+        parameters?: Record<string, unknown>
+        allowedTools?: string[]
+      }>
+      error?: string
+    }>
+  }
+
+  // Package operations - direct registry publish
+  package?: {
+    publish: (options: {
+      filePath: string
+      registryUrl: string
+      authToken: string
+    }) => Promise<{ success: boolean; data?: unknown; error?: string }>
   }
 
   // Workflow trigger management (schedule, webhook, file-watch)

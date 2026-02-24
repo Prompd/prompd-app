@@ -40,11 +40,14 @@ export interface NodeTemplate {
   type: 'node-template'
   name: string
   description?: string
-  nodeTypeLabel: string
   createdAt: string
   files?: string[]     // workspace-relative file paths bundled in the .pdpkg
   packages?: string[]  // package references (@ns/package@version) that need to be installed
-  node: NodeTemplateNodeData
+  'node-template': {
+    nodeTypeLabel: string
+    node: NodeTemplateNodeData
+    pathsConverted?: boolean
+  }
 }
 
 /** List item returned by template:list IPC */

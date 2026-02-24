@@ -144,7 +144,7 @@ class RegistryDiscoveryService {
     searchParams: {
       search: 'search query text',
       tags: 'comma-separated tags',
-      type: 'package type (prompt, workflow, etc.)',
+      type: 'package type (package, node-template, workflow, skill)',
       scope: 'package scope',
       author: 'package author',
       limit: 'results per page (default: 20, max: 100)',

@@ -38,6 +38,7 @@ export { MemoryNode } from './MemoryNode'
 export { WebSearchNode } from './WebSearchNode'
 export { DatabaseQueryNode } from './DatabaseQueryNode'
 export { GroupNode } from './GroupNode'
+export { SkillNode } from './SkillNode'
 // --- Add new node exports here ---
 export { ContainerNode, MetadataRow, CONTAINER_MIN_WIDTH, CONTAINER_MIN_HEIGHT, COLLAPSED_WIDTH } from './ContainerNode'
 
@@ -68,6 +69,7 @@ import { MemoryNode } from './MemoryNode'
 import { WebSearchNode } from './WebSearchNode'
 import { DatabaseQueryNode } from './DatabaseQueryNode'
 import { GroupNode } from './GroupNode'
+import { SkillNode } from './SkillNode'
 // --- Add new node imports here ---
 
 /**
@@ -127,6 +129,7 @@ export const nodeTypes = {
   'web-search': withErrorBoundary(WebSearchNode, 'web-search'),
   'database-query': withErrorBoundary(DatabaseQueryNode, 'database-query'),
   'node-group': withErrorBoundary(GroupNode, 'node-group'),
+  skill: withErrorBoundary(SkillNode, 'skill'),
   // --- Add new node type registrations here ---
   // Placeholder mappings (reuse existing nodes until dedicated ones are created)
   api: withErrorBoundary(ToolNode, 'api'), // HTTP API node uses Tool with http type

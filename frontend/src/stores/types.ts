@@ -64,7 +64,7 @@ export interface FileSystemEntry {
 /**
  * UI State for sidebar
  */
-export type SidebarPanel = 'explorer' | 'packages' | 'ai' | 'git' | 'history' | 'resources'
+export type SidebarPanel = 'explorer' | 'packages' | 'ai' | 'git' | 'history' | 'resources' | 'library'
 
 /**
  * Modal types
@@ -79,6 +79,7 @@ export type ModalType =
   | 'fileChanges'
   | 'deployment'
   | 'deploy-workflow'
+  | 'newProject'
   | null
 
 /**

@@ -627,6 +627,21 @@ export function createWorkflowNode(
           collapsed: false,
         },
       }
+    case 'skill':
+      return {
+        id: nodeId,
+        type,
+        position,
+        data: {
+          ...baseData,
+          skillName: '',
+          skillVersion: '',
+          skillPath: '',
+          skillScope: undefined,
+          parameters: {},
+          timeoutMs: 60000,
+        },
+      }
     // --- Add new node type cases here ---
     default:
       // IMPORTANT: If you see this error, add a new case to createWorkflowNode() in workflowParser.ts
@@ -685,6 +700,7 @@ function getDefaultLabel(type: WorkflowNodeType): string {
     'web-search': 'Web Search',
     'database-query': 'DB Query',
     'node-group': 'Group',
+    skill: 'Skill',
     // --- Add new node type labels here ---
   }
   return labels[type] || 'Node'

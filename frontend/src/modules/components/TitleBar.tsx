@@ -57,6 +57,7 @@ function buildMenus(ms: MenuState): MenuDef[] {
       label: 'File',
       items: [
         { label: 'New File', accelerator: 'Ctrl+N', action: () => api.triggerMenuAction('menu-new-file') },
+        { label: 'New Project...', action: () => api.triggerMenuAction('menu-new-project') },
         { label: 'Open File...', accelerator: 'Ctrl+O', action: () => api.openFileDialog() },
         { label: 'Open Folder...', accelerator: 'Ctrl+Shift+O', action: () => api.openFolderDialog() },
         { label: 'Close Folder', enabled: ms.hasWorkspace, action: () => api.closeFolder() },

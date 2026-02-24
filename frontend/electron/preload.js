@@ -141,6 +141,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu-new-file', handler)
     return () => ipcRenderer.removeListener('menu-new-file', handler)
   },
+  onMenuNewProject: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-new-project', handler)
+    return () => ipcRenderer.removeListener('menu-new-project', handler)
+  },
+  selectDirectory: (title) => ipcRenderer.invoke('dialog:selectDirectory', title),
   onMenuOpenFile: (callback) => {
     const handler = (event, filePath) => callback(filePath)
     ipcRenderer.on('menu-open-file', handler)
@@ -402,13 +408,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('package:createLocal', workspacePath, outputDir),
 
     // Install a single package by reference (e.g. "@prompd/core@0.0.1")
-    install: (packageRef, workspacePath) =>
-      ipcRenderer.invoke('package:install', packageRef, workspacePath),
+    // options: { global?: boolean, type?: 'package'|'workflow'|'node-template'|'skill' }
+    install: (packageRef, workspacePath, options) =>
+      ipcRenderer.invoke('package:install', packageRef, workspacePath, options),
 
     // Install all dependencies from prompd.json
     // Returns: { success, message, installed: [{name, version, status}], failed?: [{name, version, error}] }
     installAll: (workspacePath) =>
-      ipcRenderer.invoke('package:installAll', workspacePath)
+      ipcRenderer.invoke('package:installAll', workspacePath),
+
+    // Publish package directly to registry (bypasses backend proxy)
+    publish: (options) =>
+      ipcRenderer.invoke('package:publish', options),
   },
 
   // Node template management - save/restore workflow node configurations
@@ -421,6 +432,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('template:delete', workspacePath, fileName, scope),
     insert: (workspacePath, fileName, scope, workflowFilePath) =>
       ipcRenderer.invoke('template:insert', workspacePath, fileName, scope, workflowFilePath),
+  },
+
+  // Resource management - scan/manage installed resources across type directories
+  resource: {
+    listInstalled: (workspacePath) =>
+      ipcRenderer.invoke('resource:listInstalled', workspacePath),
+    delete: (resourcePath) =>
+      ipcRenderer.invoke('resource:delete', resourcePath),
+    getManifest: (resourcePath) =>
+      ipcRenderer.invoke('resource:getManifest', resourcePath),
+  },
+
+  // Skill discovery - scan installed skills for workflow SkillNode usage
+  skill: {
+    list: (workspacePath) =>
+      ipcRenderer.invoke('skill:list', workspacePath),
   },
 
   // Trigger service - background workflow execution management

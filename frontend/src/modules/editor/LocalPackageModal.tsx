@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react'
-import { X, Package, FileText, FolderOpen, Folder, ChevronRight, ChevronDown, HardDrive, BookOpen } from 'lucide-react'
+import { X, Package, FileText, FolderOpen, Folder, ChevronRight, ChevronDown, BookOpen } from 'lucide-react'
 import { packageCache, type FileNode } from '../services/packageCache'
 import Editor from '@monaco-editor/react'
 import { useUIStore, selectTheme } from '../../stores/uiStore'
 import { getMonacoTheme } from '../lib/monacoConfig'
 import MarkdownPreview from '../components/MarkdownPreview'
 import { stripContentFrontmatter } from '../lib/prompdParser'
+import { RESOURCE_TYPE_ICONS, RESOURCE_TYPE_COLORS, RESOURCE_TYPE_LABELS, type ResourceType } from '../services/resourceTypes'
 
 interface LocalPackageInfo {
   manifest: {
     name: string
     version: string
+    type?: string
     description?: string
     author?: string
     main?: string
@@ -184,26 +186,45 @@ export default function LocalPackageModal({ packageInfo, onClose, onOpenInEditor
           alignItems: 'center',
           justifyContent: 'space-between'
         }}>
+          {(() => {
+            const localType = (manifest?.type || 'package') as ResourceType
+            const LocalTypeIcon = RESOURCE_TYPE_ICONS[localType] || Package
+            const localTypeColor = RESOURCE_TYPE_COLORS[localType] || '#3b82f6'
+            return (
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{
               width: '40px',
               height: '40px',
-              background: 'var(--accent)',
+              background: localTypeColor,
               borderRadius: '8px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
             }}>
-              <HardDrive size={24} color="white" />
+              <LocalTypeIcon size={24} color="white" />
             </div>
             <div>
-              <div style={{
-                fontSize: '18px',
-                fontWeight: 600,
-                color: 'var(--text)',
-                fontFamily: 'monospace'
-              }}>
-                {displayName}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{
+                  fontSize: '18px',
+                  fontWeight: 600,
+                  color: 'var(--text)',
+                  fontFamily: 'monospace'
+                }}>
+                  {displayName}
+                </div>
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '2px 8px',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  color: localTypeColor,
+                  background: `${localTypeColor}20`,
+                  borderRadius: '4px',
+                }}>
+                  {RESOURCE_TYPE_LABELS[localType] || localType}
+                </div>
               </div>
               <div style={{
                 fontSize: '13px',
@@ -227,6 +248,8 @@ export default function LocalPackageModal({ packageInfo, onClose, onOpenInEditor
               </div>
             </div>
           </div>
+            )
+          })()}
           <button
             onClick={onClose}
             style={{
@@ -327,6 +350,24 @@ export default function LocalPackageModal({ packageInfo, onClose, onOpenInEditor
 
                 {/* Metadata */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                  {(() => {
+                    const metaType = (manifest?.type || 'package') as ResourceType
+                    const MetaTypeIcon = RESOURCE_TYPE_ICONS[metaType] || Package
+                    const metaTypeColor = RESOURCE_TYPE_COLORS[metaType] || '#3b82f6'
+                    return (
+                      <div>
+                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                          Type
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
+                          <MetaTypeIcon size={14} style={{ color: metaTypeColor }} />
+                          <span style={{ color: metaTypeColor, fontWeight: 500 }}>
+                            {RESOURCE_TYPE_LABELS[metaType] || metaType}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })()}
                   {manifest?.author && (
                     <div>
                       <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>

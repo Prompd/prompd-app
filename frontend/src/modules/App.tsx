@@ -16,8 +16,12 @@ import { ChatTab } from './editor/ChatTab'
 import GitPanel from './editor/GitPanel'
 import { ExecutionHistoryPanel } from './components/ExecutionHistoryPanel'
 import { ResourcePanel } from './components/ResourcePanel'
+import InstalledResourcesPanel from './editor/InstalledResourcesPanel'
+import type { PackageManifest } from './services/packageService'
 import { LocalStorageModal } from './components/LocalStorageModal'
 import { PublishModal } from './components/PublishModal'
+import { NewFileDialog, getDefaultContent } from './components/NewFileDialog'
+import { NewProjectModal } from './components/NewProjectModal'
 import { SettingsModal } from './components/SettingsModal'
 import { AboutModal } from './components/AboutModal'
 import { DeploymentModal } from './components/deployment/DeploymentModal'
@@ -325,8 +329,14 @@ export default function App() {
   const closeModal = useUIStore(state => state.closeModal)
   const selectedEnvFile = useUIStore(state => state.selectedEnvFile)
 
+  // Publish modal initial manifest (set from InstalledResourcesPanel)
+  const [publishInitialManifest, setPublishInitialManifest] = useState<PackageManifest | undefined>(undefined)
+
   // Settings modal initial tab state
   const [settingsInitialTab, setSettingsInitialTab] = useState<'profile' | 'api-keys' | 'usage' | 'shortcuts'>('profile')
+
+  // New File dialog state (shared across all entry points)
+  const [showNewFileDialog, setShowNewFileDialog] = useState(false)
 
   // Helper to open settings modal with a specific tab
   const openSettingsModal = useCallback((tab: 'profile' | 'api-keys' | 'usage' | 'shortcuts' = 'profile') => {
@@ -364,6 +374,7 @@ export default function App() {
 
   // Close workspace dialog state
   const [showCloseWorkspaceDialog, setShowCloseWorkspaceDialog] = useState(false)
+  const pendingProjectPathRef = useRef<string | null>(null)
   const [retryGeneration, setRetryGeneration] = useState(0) // Increment to trigger retry in chat
 
   // Command palette state
@@ -2980,6 +2991,30 @@ version: 1.0.0
     console.log('[App] Workspace closed')
   }, [explorerDirPath, saveWorkspaceState, tabs, removeTab, setExplorerDirHandle, setExplorerDirPath, setExplorerEntries])
 
+  // Open a directory as workspace (shared by close-workspace flow and new project)
+  const openProjectAsWorkspace = useCallback((projectPath: string) => {
+    const pseudoHandle = {
+      kind: 'directory',
+      name: projectPath.replace(/\\/g, '/').split('/').pop() || 'project',
+      _electronPath: projectPath
+    }
+    setExplorerDirHandle(pseudoHandle as unknown as FileSystemDirectoryHandle)
+    setExplorerDirPath(projectPath)
+    window.electronAPI?.setWorkspacePath?.(projectPath)
+    window.electronAPI?.updateMenuState?.({ hasWorkspace: true })
+    // Load persisted connections for this workspace
+    useWorkflowStore.getState().loadConnections()
+  }, [setExplorerDirHandle, setExplorerDirPath])
+
+  // After close-workspace completes, open pending project if any
+  const openPendingProjectIfAny = useCallback(() => {
+    const pending = pendingProjectPathRef.current
+    if (pending) {
+      pendingProjectPathRef.current = null
+      openProjectAsWorkspace(pending)
+    }
+  }, [openProjectAsWorkspace])
+
   // Handle save all and close for CloseWorkspaceDialog
   const handleSaveAllAndClose = useCallback(async () => {
     const dirtyTabs = tabs.filter(t => t.dirty && t.type !== 'chat' && t.type !== 'execution')
@@ -2997,13 +3032,15 @@ version: 1.0.0
 
     setShowCloseWorkspaceDialog(false)
     closeWorkspace()
-  }, [tabs, saveTabById, closeWorkspace])
+    openPendingProjectIfAny()
+  }, [tabs, saveTabById, closeWorkspace, openPendingProjectIfAny])
 
   // Handle discard all and close for CloseWorkspaceDialog
   const handleDiscardAndClose = useCallback(() => {
     setShowCloseWorkspaceDialog(false)
     closeWorkspace()
-  }, [closeWorkspace])
+    openPendingProjectIfAny()
+  }, [closeWorkspace, openPendingProjectIfAny])
 
   // File change detection - check if open files have been modified externally
   const checkForModifiedFiles = useCallback(async () => {
@@ -3148,26 +3185,16 @@ version: 1.0.0
     // Menu: New File (Ctrl+N)
     const unsubNewFile = electronAPI.onMenuNewFile?.(() => {
       console.log('[App.tsx] Menu new file')
-      const newTab: Tab = {
-        id: 'new-' + Date.now(),
-        name: 'untitled.prmd',
-        text: `---
-name: New Prompt
-version: 1.0.0
-description: ""
-parameters: []
----
-
-# Prompt Content
-
-Write your prompt here...
-`,
-        dirty: false,
-        viewMode: 'design' as const
-      }
-      addTab(newTab)
+      setShowNewFileDialog(true)
     })
     if (unsubNewFile) cleanups.push(unsubNewFile)
+
+    // Menu: New Project
+    const unsubNewProject = electronAPI.onMenuNewProject?.(() => {
+      console.log('[App.tsx] Menu new project')
+      openModal('newProject')
+    })
+    if (unsubNewProject) cleanups.push(unsubNewProject)
 
     // Menu: Save (Ctrl+S)
     const unsubSave = electronAPI.onMenuSave?.(() => {
@@ -3913,15 +3940,7 @@ Write your prompt here...
             currentFileName={getActiveTab()?.name}
             onOpenFile={onOpenFile}
             onCreateNewPrompd={() => {
-              const newTab: Tab = {
-                id: 'wizard-' + Date.now(),
-                name: 'untitled.prmd',
-                text: '',
-                dirty: false,
-                viewMode: 'wizard'
-              }
-              addTab(newTab)
-              setMode('wizard')
+              setShowNewFileDialog(true)
             }}
             onAddToContentField={(filePath, field) => {
               const activeTab = getActiveTab()
@@ -4177,6 +4196,26 @@ Write your prompt here...
         }}>
           <ResourcePanel
             onCollapse={() => setShowSidebar(false)}
+          />
+        </div>
+        <div style={{
+          visibility: activeSide === 'library' ? 'visible' : 'hidden',
+          position: activeSide === 'library' ? 'relative' : 'absolute',
+          height: '100%',
+          width: '100%',
+          top: 0,
+          left: 0,
+          pointerEvents: activeSide === 'library' ? 'auto' : 'none',
+          overflow: 'hidden'
+        }}>
+          <InstalledResourcesPanel
+            theme={theme}
+            workspacePath={explorerDirPath}
+            onCollapse={() => setShowSidebar(false)}
+            onPublish={(manifest) => {
+              setPublishInitialManifest(manifest)
+              openModal('publish')
+            }}
           />
         </div>
         <div className="sidebar-resizer" onMouseDown={beginResize} />
@@ -5432,7 +5471,10 @@ Write your prompt here...
         }
         onSaveAll={handleSaveAllAndClose}
         onDiscardAll={handleDiscardAndClose}
-        onCancel={() => setShowCloseWorkspaceDialog(false)}
+        onCancel={() => {
+          setShowCloseWorkspaceDialog(false)
+          pendingProjectPathRef.current = null
+        }}
         theme={theme}
       />
 
@@ -5456,12 +5498,66 @@ Write your prompt here...
 
       <PublishModal
         isOpen={activeModal === 'publish'}
-        onClose={closeModal}
+        onClose={() => {
+          closeModal()
+          setPublishInitialManifest(undefined)
+        }}
         workspaceHandle={explorerDirHandle}
         workspaceFiles={explorerEntries}
         getToken={getToken}
         theme={theme}
+        initialManifest={publishInitialManifest}
         onFilesSaved={checkForModifiedFiles}
+      />
+
+      <NewFileDialog
+        isOpen={showNewFileDialog}
+        onClose={() => setShowNewFileDialog(false)}
+        onSubmit={async (fileName, content) => {
+          setShowNewFileDialog(false)
+          const electronPath = (explorerDirHandle as unknown as Record<string, unknown>)?._electronPath as string | undefined
+          const electronAPI = (window as unknown as Record<string, unknown>).electronAPI as Record<string, unknown> | undefined
+          if (electronPath && electronAPI?.writeFile) {
+            // Workspace is open — write to disk and open
+            const fullPath = `${electronPath}/${fileName}`.replace(/\\/g, '/')
+            const writeFile = electronAPI.writeFile as (path: string, content: string) => Promise<{ success: boolean; error?: string }>
+            const result = await writeFile(fullPath, content)
+            if (result.success) {
+              onOpenFile({ name: fileName, text: content, electronPath: fullPath })
+            }
+          } else {
+            // No workspace — create unsaved tab
+            const viewMode = fileName.endsWith('.prmd') || fileName.endsWith('.pdflow') || fileName === 'prompd.json'
+              ? 'design' as const
+              : 'code' as const
+            addTab({
+              id: 'new-' + Date.now(),
+              name: fileName,
+              text: content,
+              dirty: true,
+              viewMode
+            })
+          }
+        }}
+      />
+
+      <NewProjectModal
+        isOpen={activeModal === 'newProject'}
+        onClose={closeModal}
+        onProjectCreated={(projectPath) => {
+          closeModal()
+          // Check for unsaved files in current workspace
+          const dirtyTabs = tabs.filter(t => t.dirty && t.type !== 'chat' && t.type !== 'execution')
+          if (explorerDirPath && dirtyTabs.length > 0) {
+            // Defer opening until save/discard dialog completes
+            pendingProjectPathRef.current = projectPath
+            setShowCloseWorkspaceDialog(true)
+          } else {
+            // No unsaved files or no workspace — close and open immediately
+            if (explorerDirPath) closeWorkspace()
+            openProjectAsWorkspace(projectPath)
+          }
+        }}
       />
 
       <SettingsModal

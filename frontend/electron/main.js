@@ -28,12 +28,16 @@ function getAutoUpdater() {
 const { McpIpcRegistration } = require('./ipc/McpIpcRegistration')
 const { McpServerIpcRegistration } = require('./ipc/McpServerIpcRegistration')
 const { TemplateIpcRegistration } = require('./ipc/TemplateIpcRegistration')
+const { ResourceIpcRegistration } = require('./ipc/ResourceIpcRegistration')
+const { SkillIpcRegistration } = require('./ipc/SkillIpcRegistration')
 const mcpService = require('./services/mcpService')
 const { mcpServerService } = require('./services/mcpServerService')
 const ipcModules = [
   new McpIpcRegistration(),
   new McpServerIpcRegistration(),
   new TemplateIpcRegistration(),
+  new ResourceIpcRegistration(),
+  new SkillIpcRegistration(),
 ]
 
 // Tray and trigger services for background workflow execution
@@ -371,6 +375,15 @@ function createMenu() {
             }
           }
         },
+        {
+          label: 'New Project...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-new-project')
+            }
+          }
+        },
+        { type: 'separator' },
         {
           label: 'Open File...',
           accelerator: 'CmdOrCtrl+O',
@@ -1376,6 +1389,15 @@ ipcMain.handle('dialog:openFolder', async () => {
   return filePaths[0]
 })
 
+ipcMain.handle('dialog:selectDirectory', async (event, title) => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: title || 'Select Directory',
+    properties: ['openDirectory', 'createDirectory']
+  })
+  if (canceled) return null
+  return filePaths[0]
+})
+
 ipcMain.handle('dialog:saveFile', async (event, defaultPath) => {
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
     defaultPath,
@@ -1845,6 +1867,82 @@ ipcMain.handle('api:request', async (_event, url, options) => {
       success: false,
       error: error.message
     }
+  }
+})
+
+// ============================================================================
+// Direct Registry Publish Handler
+// ============================================================================
+
+/**
+ * Publish a .pdpkg file to the registry via @prompd/cli RegistryClient
+ */
+ipcMain.handle('package:publish', async (_event, options) => {
+  const { filePath, registryUrl, authToken } = options
+
+  try {
+    console.log('[Electron] Publishing package:', filePath)
+
+    if (!filePath || !registryUrl || !authToken) {
+      return { success: false, error: 'Missing required parameters (filePath, registryUrl, authToken)' }
+    }
+
+    if (!fs.existsSync(filePath)) {
+      return { success: false, error: `Package file not found: ${filePath}` }
+    }
+
+    // Find registry name from config matching the URL
+    const globalPath = getGlobalConfigPath()
+    const config = await readConfigFile(globalPath) || {}
+    const registries = config.registry?.registries || {}
+    const normalizedUrl = registryUrl.replace(/\/$/, '')
+
+    let registryName = null
+    for (const [name, reg] of Object.entries(registries)) {
+      if (reg.url && reg.url.replace(/\/$/, '') === normalizedUrl) {
+        registryName = name
+        break
+      }
+    }
+
+    if (!registryName) {
+      return { success: false, error: `No registry configured for URL: ${registryUrl}. Check ~/.prompd/config.yaml` }
+    }
+
+    console.log(`[Electron] Using registry: ${registryName} (${normalizedUrl})`)
+
+    // Read the .pdpkg and extract metadata
+    const fileBuffer = fs.readFileSync(filePath)
+    console.log(`[Electron] Package file read: ${fileBuffer.length} bytes`)
+
+    const AdmZip = require('adm-zip')
+    const zip = new AdmZip(fileBuffer)
+
+    const manifestEntry = zip.getEntry('prompd.json') || zip.getEntry('manifest.json')
+    if (!manifestEntry) {
+      return { success: false, error: 'Package missing prompd.json' }
+    }
+
+    const metadata = JSON.parse(manifestEntry.getData().toString('utf8'))
+    if (!metadata.name) {
+      return { success: false, error: 'Package name missing from prompd.json' }
+    }
+
+    // Publish via CLI RegistryClient
+    const { RegistryClient } = await import('@prompd/cli')
+    const client = new RegistryClient({ registryName })
+
+    await client.uploadPackageBuffer(fileBuffer, metadata, {
+      access: 'public',
+      tag: 'latest',
+      authToken
+    })
+
+    console.log(`[Electron] Published: ${metadata.name}@${metadata.version}`)
+    return { success: true, data: { name: metadata.name, version: metadata.version } }
+  } catch (error) {
+    console.error('[Electron] Publish error:', error.message)
+    return { success: false, error: error.message }
   }
 })
 
@@ -4470,8 +4568,9 @@ ipcMain.handle('package:installAll', async (_event, workspacePath) => {
 })
 
 // Install a single package by reference (e.g. "@prompd/core@0.0.1" or "@prompd/core")
-ipcMain.handle('package:install', async (_event, packageRef, workspacePath) => {
-  console.log('[Package] Installing single package:', packageRef, 'to:', workspacePath)
+ipcMain.handle('package:install', async (_event, packageRef, workspacePath, options) => {
+  const installOptions = options || {}
+  console.log('[Package] Installing single package:', packageRef, 'to:', workspacePath, installOptions.global ? '(global)' : '')
 
   if (!packageRef || typeof packageRef !== 'string') {
     return { success: false, error: 'No package reference provided' }
@@ -4564,10 +4663,10 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath) => {
 
     // Check installed package for MCP dependencies
     let missingMcps = []
+    let matchingCachePath
     try {
       if (fs.existsSync(cacheDir)) {
         // For scoped packages, build the cache path: @scope/name@version
-        let matchingCachePath
         if (pkgName && pkgVersion) {
           if (pkgName.startsWith('@')) {
             const [scope, name] = pkgName.split('/')
@@ -4606,9 +4705,59 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath) => {
       console.warn('[Package] MCP dependency check failed (non-fatal):', mcpCheckErr.message)
     }
 
+    // Type-aware install routing: copy from cache to .prompd/{typeDir}/@scope/name/
+    const TYPE_DIRS = { 'package': 'packages', 'workflow': 'workflows', 'node-template': 'templates', 'skill': 'skills' }
+    let installedType = 'package'
+    let installedPath = undefined
+    try {
+      // Read type from cached package manifest
+      let cachedManifestType = null
+      if (matchingCachePath && fs.existsSync(matchingCachePath)) {
+        const cachedPkgJsonPath = path.join(matchingCachePath, 'prompd.json')
+        if (fs.existsSync(cachedPkgJsonPath)) {
+          const cachedPkgJson = JSON.parse(fs.readFileSync(cachedPkgJsonPath, 'utf8'))
+          cachedManifestType = cachedPkgJson.type || null
+        }
+      }
+
+      // Priority: explicit override > manifest type > default 'package'
+      installedType = installOptions.type || cachedManifestType || 'package'
+      const typeDir = TYPE_DIRS[installedType] || 'packages'
+
+      // Determine install root: global (~/.prompd/) or local (<workspace>/.prompd/)
+      const installRoot = installOptions.global
+        ? path.join(os.homedir(), '.prompd')
+        : path.join(workspacePath, '.prompd')
+
+      // Build install destination: .prompd/{typeDir}/@scope/name/ (without version)
+      let installDest
+      if (pkgName && pkgName.startsWith('@')) {
+        const [scope, name] = pkgName.split('/')
+        installDest = path.join(installRoot, typeDir, scope, name)
+      } else {
+        installDest = path.join(installRoot, typeDir, pkgName || packageRef)
+      }
+
+      // Copy from cache to type-specific directory
+      if (matchingCachePath && fs.existsSync(matchingCachePath)) {
+        fs.mkdirSync(path.dirname(installDest), { recursive: true })
+        // Remove existing install if present (upgrade)
+        if (fs.existsSync(installDest)) {
+          fs.rmSync(installDest, { recursive: true, force: true })
+        }
+        fs.cpSync(matchingCachePath, installDest, { recursive: true })
+        installedPath = installDest
+        console.log(`[Package] Routed ${installedType} to:`, installDest)
+      }
+    } catch (routeErr) {
+      console.warn('[Package] Type-aware routing failed (non-fatal):', routeErr.message)
+    }
+
     return {
       success: true,
       name: packageRef,
+      type: installedType,
+      installedPath,
       missingMcps: missingMcps.length > 0 ? missingMcps : undefined
     }
   } catch (error) {
