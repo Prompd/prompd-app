@@ -237,10 +237,18 @@ export class PackageService {
 
     if (onProgress) onProgress(10)
 
+    // Pass manifest fields as metadata overrides so the IPC handler
+    // can merge them into the archive's prompd.json metadata (e.g., scoped name)
+    const metadataOverrides: Record<string, unknown> = {}
+    if (manifest.name) metadataOverrides.name = manifest.name
+    if (manifest.version) metadataOverrides.version = manifest.version
+    if (manifest.description) metadataOverrides.description = manifest.description
+
     const result = await electronAPI.package.publish({
       filePath,
       registryUrl,
       authToken,
+      metadataOverrides: Object.keys(metadataOverrides).length > 0 ? metadataOverrides : undefined,
     })
 
     if (onProgress) onProgress(100)

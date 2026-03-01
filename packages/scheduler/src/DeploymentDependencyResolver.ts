@@ -33,6 +33,19 @@ export class DeploymentDependencyResolver {
   }
 
   /**
+   * Return true if resolvedPath is strictly inside workspaceRoot.
+   * Prevents path traversal attacks from malicious frontmatter references.
+   */
+  private isWithinWorkspace(resolvedPath: string, workspaceRoot: string): boolean {
+    const normalizedRoot = path.resolve(workspaceRoot)
+    const normalizedPath = path.resolve(resolvedPath)
+    return (
+      normalizedPath.startsWith(normalizedRoot + path.sep) ||
+      normalizedPath === normalizedRoot
+    )
+  }
+
+  /**
    * Resolve all dependencies for a .prmd file
    */
   async resolveDependencies(
@@ -95,6 +108,10 @@ export class DeploymentDependencyResolver {
         if (typeof contextRef !== 'string') continue
         const contextPath = path.resolve(path.dirname(absolutePath), contextRef)
 
+        if (!this.isWithinWorkspace(contextPath, workspaceRoot)) {
+          console.warn(`[DependencyResolver] Context path escapes workspace, skipping: ${contextPath}`)
+          continue
+        }
         if (fs.existsSync(contextPath)) {
           result.dependencies.push({
             type: 'context',
@@ -123,6 +140,10 @@ export class DeploymentDependencyResolver {
         if (!ref.startsWith('./') && !ref.startsWith('../') && !ref.match(/\.\w+$/)) continue
 
         const sectionPath = path.resolve(path.dirname(absolutePath), ref)
+        if (!this.isWithinWorkspace(sectionPath, workspaceRoot)) {
+          console.warn(`[DependencyResolver] Section path escapes workspace, skipping: ${sectionPath}`)
+          continue
+        }
         if (fs.existsSync(sectionPath)) {
           result.contextFiles.push(sectionPath)
         } else {
@@ -137,6 +158,10 @@ export class DeploymentDependencyResolver {
         if (typeof overrideValue !== 'string') continue
         const overridePath = path.resolve(path.dirname(absolutePath), overrideValue as string)
 
+        if (!this.isWithinWorkspace(overridePath, workspaceRoot)) {
+          console.warn(`[DependencyResolver] Override path escapes workspace, skipping: ${overridePath}`)
+          continue
+        }
         if (fs.existsSync(overridePath)) {
           result.contextFiles.push(overridePath)
         } else {
@@ -171,7 +196,9 @@ export class DeploymentDependencyResolver {
         // Local file inherits (e.g., ../templates/base.prmd) - resolve relative to this file
         const inheritsPath = path.resolve(path.dirname(absolutePath), inheritsSpec)
 
-        if (fs.existsSync(inheritsPath)) {
+        if (!this.isWithinWorkspace(inheritsPath, workspaceRoot)) {
+          console.warn(`[DependencyResolver] Inherits path escapes workspace, skipping: ${inheritsPath}`)
+        } else if (fs.existsSync(inheritsPath)) {
           result.dependencies.push({
             type: 'inherits',
             source: inheritsSpec,
@@ -191,6 +218,10 @@ export class DeploymentDependencyResolver {
       for (const fileRef of parsed.frontmatter.files) {
         const refPath = path.resolve(path.dirname(absolutePath), fileRef)
 
+        if (!this.isWithinWorkspace(refPath, workspaceRoot)) {
+          console.warn(`[DependencyResolver] Files path escapes workspace, skipping: ${refPath}`)
+          continue
+        }
         if (fs.existsSync(refPath)) {
           result.contextFiles.push(refPath)
         } else {
@@ -207,6 +238,10 @@ export class DeploymentDependencyResolver {
       const includePath = includeMatch[1]
       const resolvedInclude = path.resolve(path.dirname(absolutePath), includePath)
 
+      if (!this.isWithinWorkspace(resolvedInclude, workspaceRoot)) {
+        console.warn(`[DependencyResolver] Include path escapes workspace, skipping: ${resolvedInclude}`)
+        continue
+      }
       if (fs.existsSync(resolvedInclude)) {
         result.contextFiles.push(resolvedInclude)
       } else {

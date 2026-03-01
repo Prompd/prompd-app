@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Search, Package, Download, ExternalLink, RefreshCw, Calendar, User, Tag, Star, Loader2 } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Search, Package, Download, ExternalLink, RefreshCw, Calendar, User, Tag, Star, Loader2, Globe, HardDrive, ChevronDown } from 'lucide-react'
 import { registryApi, type RegistryPackage } from '../services/registryApi'
 import PackageDetailsModal from './PackageDetailsModal'
 import { useAuthenticatedUser } from '../auth/ClerkWrapper'
@@ -141,7 +141,7 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
     setSelectedPackage(pkg)
   }
 
-  const handleInstallPackage = useCallback(async (pkg: RegistryPackage) => {
+  const handleInstallPackage = useCallback(async (pkg: RegistryPackage, global?: boolean) => {
     if (!workspacePath) {
       onShowNotification?.('No workspace open. Open a folder first.', 'warning')
       return
@@ -151,10 +151,15 @@ export default function PackagePanel({ theme = 'dark', onOpenInEditor, onUseAsTe
       return
     }
     const ref = `${pkg.name}@${pkg.version}`
+    const scope = global ? 'global' : 'project'
     try {
-      const result = await window.electronAPI.package.install(ref, workspacePath, { type: pkg.type as ResourceType })
+      const result = await window.electronAPI.package.install(ref, workspacePath, {
+        type: pkg.type as ResourceType,
+        global: global || false,
+      })
       if (result.success) {
-        onShowNotification?.(`Installed ${ref}`, 'info')
+        onShowNotification?.(`Installed ${ref} (${scope})`, 'info')
+        window.dispatchEvent(new Event('prompd:resources-changed'))
       } else {
         onShowNotification?.(result.error || 'Install failed', 'error')
       }
@@ -631,12 +636,26 @@ function TypeFilterChips({ activeFilter, onFilterChange }: TypeFilterChipsProps)
 interface PackageCardProps {
   package: RegistryPackage
   onClick: () => void
-  onInstall?: (pkg: RegistryPackage) => Promise<void>
+  onInstall?: (pkg: RegistryPackage, global?: boolean) => Promise<void>
 }
 
 function PackageCard({ package: pkg, onClick, onInstall }: PackageCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [installing, setInstalling] = useState(false)
+  const [showScopeMenu, setShowScopeMenu] = useState(false)
+  const scopeMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close scope menu on click outside
+  useEffect(() => {
+    if (!showScopeMenu) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (scopeMenuRef.current && !scopeMenuRef.current.contains(e.target as Node)) {
+        setShowScopeMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showScopeMenu])
 
   const pkgType = (pkg.type || 'package') as ResourceType
   const TypeIcon = RESOURCE_TYPE_ICONS[pkgType] || Package
@@ -707,39 +726,141 @@ function PackageCard({ package: pkg, onClick, onInstall }: PackageCardProps) {
             </span>
           </div>
         </div>
-        {/* Install button (visible on hover) */}
+        {/* Install button with scope dropdown */}
         {onInstall && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              if (installing) return
-              setInstalling(true)
-              onInstall(pkg).finally(() => setInstalling(false))
-            }}
-            title={`Install ${pkg.name}@${pkg.version}`}
-            style={{
-              flexShrink: 0,
-              padding: '3px 7px',
+          <div style={{ flexShrink: 0, position: 'relative' }} ref={scopeMenuRef}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
               borderRadius: '4px',
               border: '1px solid var(--accent)',
               background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
-              color: 'var(--accent)',
-              cursor: installing ? 'default' : 'pointer',
-              fontSize: '10px',
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '3px',
               opacity: isHovered ? (installing ? 0.7 : 1) : 0,
               transition: 'opacity 0.15s',
-            }}
-          >
-            {installing
-              ? <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} />
-              : <Download size={10} />
-            }
-            {installing ? '...' : 'Install'}
-          </button>
+              overflow: 'hidden',
+            }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (installing) return
+                  setInstalling(true)
+                  onInstall(pkg, false).finally(() => setInstalling(false))
+                }}
+                title={`Install ${pkg.name}@${pkg.version} to project`}
+                style={{
+                  padding: '3px 7px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--accent)',
+                  cursor: installing ? 'default' : 'pointer',
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                }}
+              >
+                {installing
+                  ? <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} />
+                  : <Download size={10} />
+                }
+                {installing ? '...' : 'Install'}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (installing) return
+                  setShowScopeMenu(prev => !prev)
+                }}
+                title="Install scope options"
+                style={{
+                  padding: '3px 3px',
+                  background: 'transparent',
+                  borderLeft: '1px solid var(--accent)',
+                  border: 'none',
+                  borderLeftWidth: '1px',
+                  borderLeftStyle: 'solid',
+                  borderLeftColor: 'color-mix(in srgb, var(--accent) 40%, transparent)',
+                  color: 'var(--accent)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <ChevronDown size={10} />
+              </button>
+            </div>
+            {/* Scope dropdown */}
+            {showScopeMenu && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: '100%',
+                  marginTop: 4,
+                  background: 'var(--panel)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                  zIndex: 100,
+                  minWidth: 140,
+                  overflow: 'hidden',
+                }}
+              >
+                <button
+                  onClick={() => {
+                    setShowScopeMenu(false)
+                    setInstalling(true)
+                    onInstall(pkg, false).finally(() => setInstalling(false))
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text)',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel-2)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  <HardDrive size={12} />
+                  Project
+                </button>
+                <button
+                  onClick={() => {
+                    setShowScopeMenu(false)
+                    setInstalling(true)
+                    onInstall(pkg, true).finally(() => setInstalling(false))
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text)',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--panel-2)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  <Globe size={12} />
+                  Global
+                </button>
+              </div>
+            )}
+          </div>
         )}
         {!onInstall && (
           <ExternalLink

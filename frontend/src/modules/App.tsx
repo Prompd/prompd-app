@@ -20,6 +20,7 @@ import InstalledResourcesPanel from './editor/InstalledResourcesPanel'
 import type { PackageManifest } from './services/packageService'
 import { LocalStorageModal } from './components/LocalStorageModal'
 import { PublishModal } from './components/PublishModal'
+import { PublishResourceModal, type PublishResourceInfo } from './components/PublishResourceModal'
 import { NewFileDialog, getDefaultContent } from './components/NewFileDialog'
 import { NewProjectModal } from './components/NewProjectModal'
 import { SettingsModal } from './components/SettingsModal'
@@ -332,14 +333,17 @@ export default function App() {
   // Publish modal initial manifest (set from InstalledResourcesPanel)
   const [publishInitialManifest, setPublishInitialManifest] = useState<PackageManifest | undefined>(undefined)
 
+  // Publish resource modal state (set from InstalledResourcesPanel)
+  const [publishResource, setPublishResource] = useState<{ resource: PublishResourceInfo; manifest: Record<string, unknown> } | null>(null)
+
   // Settings modal initial tab state
-  const [settingsInitialTab, setSettingsInitialTab] = useState<'profile' | 'api-keys' | 'usage' | 'shortcuts'>('profile')
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'profile' | 'api-keys' | 'usage' | 'shortcuts' | 'registries'>('profile')
 
   // New File dialog state (shared across all entry points)
   const [showNewFileDialog, setShowNewFileDialog] = useState(false)
 
   // Helper to open settings modal with a specific tab
-  const openSettingsModal = useCallback((tab: 'profile' | 'api-keys' | 'usage' | 'shortcuts' = 'profile') => {
+  const openSettingsModal = useCallback((tab: 'profile' | 'api-keys' | 'usage' | 'shortcuts' | 'registries' = 'profile') => {
     setSettingsInitialTab(tab)
     openModal('settings')
   }, [openModal])
@@ -3378,6 +3382,7 @@ version: 1.0.0
             details: installedList || undefined,
             timestamp: Date.now()
           })
+          window.dispatchEvent(new Event('prompd:resources-changed'))
         } else {
           // Build structured errors from failed packages
           const errors: { file: string; message: string; line?: number }[] = []
@@ -4045,6 +4050,7 @@ version: 1.0.0
                     details: installedList || undefined,
                     timestamp: Date.now()
                   })
+                  window.dispatchEvent(new Event('prompd:resources-changed'))
                 } else {
                   // Build structured errors from failed packages
                   const errors: { file: string; message: string; line?: number }[] = []
@@ -4212,9 +4218,9 @@ version: 1.0.0
             theme={theme}
             workspacePath={explorerDirPath}
             onCollapse={() => setShowSidebar(false)}
-            onPublish={(manifest) => {
-              setPublishInitialManifest(manifest)
-              openModal('publish')
+            onPublish={(resource, manifest) => {
+              setPublishResource({ resource, manifest })
+              openModal('publish-resource')
             }}
           />
         </div>
@@ -5508,6 +5514,23 @@ version: 1.0.0
         theme={theme}
         initialManifest={publishInitialManifest}
         onFilesSaved={checkForModifiedFiles}
+      />
+
+      <PublishResourceModal
+        isOpen={activeModal === 'publish-resource'}
+        onClose={() => {
+          closeModal()
+          setPublishResource(null)
+        }}
+        resource={publishResource?.resource ?? null}
+        manifest={publishResource?.manifest ?? null}
+        getToken={getToken}
+        theme={theme}
+        onOpenSettings={() => {
+          closeModal()
+          setPublishResource(null)
+          openSettingsModal('registries')
+        }}
       />
 
       <NewFileDialog

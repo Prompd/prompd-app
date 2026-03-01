@@ -5,7 +5,7 @@
  * - Finds referenced prompts (.prmd files)
  * - Identifies dependencies
  * - Packages everything
- * - Deploys to ~/.prompd/workflows
+ * - Deploys to ~/.prompd/deployments
  */
 
 import { useState, useEffect } from 'react'
@@ -668,7 +668,7 @@ export function DeployWorkflowModal({ open, onClose, workflow, workflowPath }: D
                   </div>
                   <div className="deploy-info-item">
                     <label>Deployment Path</label>
-                    <div className="deploy-info-value">~/.prompd/workflows/</div>
+                    <div className="deploy-info-value">~/.prompd/deployments/</div>
                   </div>
                 </div>
               </section>

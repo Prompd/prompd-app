@@ -150,6 +150,10 @@ export function PublishModal({
   const [registries, setRegistries] = useState<RegistryOption[]>([])
   const [selectedRegistryName, setSelectedRegistryName] = useState<string>('')
   const [isLoadingNamespaces, setIsLoadingNamespaces] = useState(false)
+  // Tracks a namespace extracted from prompd.json that isn't in the user's registry list
+  const [customNs, setCustomNs] = useState('')
+  // Ref holds the namespace value pre-populated from the manifest so loadNamespacesForRegistry can compare
+  const presetNsRef = useRef('')
   const [updateWorkspaceManifest, setUpdateWorkspaceManifest] = useState(true)
   const [tagInput, setTagInput] = useState('')
   const [packageType, setPackageType] = useState<'package' | 'workflow' | 'node-template' | 'skill'>(
@@ -235,14 +239,19 @@ export function PublishModal({
 
         setNamespaces(publishable)
         log(`Loaded ${publishable.length} namespaces`)
-        if (publishable.length > 0) {
-          setNamespace(prev => {
-            if (prev && publishable.some(n => n.name === prev)) {
-              return prev
-            }
-            return publishable[0].name
-          })
-        }
+
+        // Determine if the namespace pre-populated from the manifest is in the list
+        const presetNs = presetNsRef.current
+        const isPresetInList = presetNs ? publishable.some(n => n.name === presetNs) : false
+        setCustomNs(presetNs && !isPresetInList ? presetNs : '')
+
+        setNamespace(prev => {
+          if (prev && publishable.some(n => n.name === prev)) return prev
+          // Preset from manifest is not in the registry list — keep it anyway
+          if (prev && prev === presetNs && !isPresetInList) return prev
+          if (!prev && presetNs && !isPresetInList) return presetNs
+          return publishable.length > 0 ? publishable[0].name : prev
+        })
       } else if (response.status === 401) {
         log('Authentication required for this registry')
         setNeedsRegistryLogin(true)
@@ -304,6 +313,7 @@ export function PublishModal({
     if (parsedManifest.name && parsedManifest.name.includes('/')) {
       const extractedNamespace = parsedManifest.name.split('/')[0].replace('@', '')
       setNamespace(extractedNamespace)
+      presetNsRef.current = extractedNamespace
       log(`Pre-selected namespace: ${extractedNamespace}`)
     }
 
@@ -390,6 +400,8 @@ export function PublishModal({
       setTagInput('')
       setRegistryApiKeyInput('')
       setNeedsRegistryLogin(false)
+      setCustomNs('')
+      presetNsRef.current = ''
       return
     }
 
@@ -1667,7 +1679,7 @@ export function PublishModal({
                     <select
                       value={namespace}
                       onChange={(e) => setNamespace(e.target.value)}
-                      disabled={isLoadingNamespaces || namespaces.length === 0}
+                      disabled={isLoadingNamespaces || (namespaces.length === 0 && !customNs)}
                       style={{
                         padding: '10px 8px',
                         background: colors.input,
@@ -1677,21 +1689,28 @@ export function PublishModal({
                         color: colors.text,
                         fontSize: '14px',
                         fontWeight: 500,
-                        cursor: namespaces.length > 0 ? 'pointer' : 'default',
+                        cursor: (namespaces.length > 0 || !!customNs) ? 'pointer' : 'default',
                         minWidth: 80,
                         opacity: isLoadingNamespaces ? 0.6 : 1
                       }}
                     >
                       {isLoadingNamespaces ? (
                         <option value="">loading...</option>
-                      ) : namespaces.length === 0 ? (
+                      ) : (namespaces.length === 0 && !customNs) ? (
                         <option value="">no namespaces</option>
                       ) : (
-                        namespaces.map(ns => (
-                          <option key={ns.name} value={ns.name}>
-                            {ns.name}
-                          </option>
-                        ))
+                        <>
+                          {customNs && (
+                            <option key={`custom-${customNs}`} value={customNs}>
+                              @{customNs} (custom)
+                            </option>
+                          )}
+                          {namespaces.map(ns => (
+                            <option key={ns.name} value={ns.name}>
+                              {ns.name}
+                            </option>
+                          ))}
+                        </>
                       )}
                     </select>
                     <span style={{

@@ -18,6 +18,33 @@ const { app } = require('electron')
 const yaml = require('yaml')
 
 /**
+ * Return a workspace-relative path for the given reference, or null if
+ * the reference would escape the workspace root.
+ *
+ * @param {string} workspaceRoot - Absolute workspace root
+ * @param {string} currentRelative - Current file's workspace-relative path
+ * @param {string} ref - The reference value from frontmatter (may be absolute or relative)
+ * @returns {string|null} Workspace-relative path, or null if outside workspace
+ */
+function resolveWorkspaceRef(workspaceRoot, currentRelative, ref) {
+  let resolved
+  if (path.isAbsolute(ref)) {
+    // Absolute paths are not allowed in .prmd files — reject them
+    console.warn('[PackageWorkflow] Absolute path reference rejected:', ref)
+    return null
+  }
+  resolved = path.join(path.dirname(currentRelative), ref).replace(/\\/g, '/')
+  // After normalization, check if it escapes the workspace
+  const absolute = path.resolve(workspaceRoot, resolved)
+  const root = path.resolve(workspaceRoot)
+  if (!absolute.startsWith(root + path.sep) && absolute !== root) {
+    console.warn('[PackageWorkflow] Path escapes workspace, skipping:', ref)
+    return null
+  }
+  return resolved
+}
+
+/**
  * Recursively trace a .prmd file and all its dependencies.
  *
  * Standalone export — used by both workflow packaging (traceDependencyTree)
@@ -75,21 +102,18 @@ async function tracePromptFileDeps(workspaceRoot, relativePath, state = null) {
           console.log('[PackageWorkflow] Found package dependency:', packageName, '@', version)
         }
       } else if (frontmatter.inherits.endsWith('.prmd')) {
-        const inheritPath = path.isAbsolute(frontmatter.inherits)
-          ? path.relative(workspaceRoot, frontmatter.inherits)
-          : path.join(path.dirname(relativePath), frontmatter.inherits).replace(/\\/g, '/')
-        await tracePromptFileDeps(workspaceRoot, inheritPath, sharedState)
+        const inheritPath = resolveWorkspaceRef(workspaceRoot, relativePath, frontmatter.inherits)
+        if (inheritPath) {
+          await tracePromptFileDeps(workspaceRoot, inheritPath, sharedState)
+        }
       }
     }
 
     // 2. Check for attached files (files: [file1.txt, file2.json])
     if (frontmatter.files && Array.isArray(frontmatter.files)) {
       for (const fileRef of frontmatter.files) {
-        const filePath = path.isAbsolute(fileRef)
-          ? path.relative(workspaceRoot, fileRef)
-          : path.join(path.dirname(relativePath), fileRef).replace(/\\/g, '/')
-
-        if (await fs.pathExists(path.join(workspaceRoot, filePath))) {
+        const filePath = resolveWorkspaceRef(workspaceRoot, relativePath, fileRef)
+        if (filePath && await fs.pathExists(path.join(workspaceRoot, filePath))) {
           referencedFiles.add(filePath)
         }
       }
@@ -101,10 +125,8 @@ async function tracePromptFileDeps(workspaceRoot, relativePath, state = null) {
     if (contextArray) {
       for (const contextRef of contextArray) {
         if (typeof contextRef !== 'string') continue
-        const filePath = path.isAbsolute(contextRef)
-          ? path.relative(workspaceRoot, contextRef)
-          : path.join(path.dirname(relativePath), contextRef).replace(/\\/g, '/')
-
+        const filePath = resolveWorkspaceRef(workspaceRoot, relativePath, contextRef)
+        if (!filePath) continue
         if (await fs.pathExists(path.join(workspaceRoot, filePath))) {
           referencedFiles.add(filePath)
           console.log('[PackageWorkflow] Found context file:', filePath)
@@ -118,10 +140,8 @@ async function tracePromptFileDeps(workspaceRoot, relativePath, state = null) {
     if (frontmatter.override && typeof frontmatter.override === 'object') {
       for (const overrideValue of Object.values(frontmatter.override)) {
         if (typeof overrideValue !== 'string') continue
-        const filePath = path.isAbsolute(overrideValue)
-          ? path.relative(workspaceRoot, overrideValue)
-          : path.join(path.dirname(relativePath), overrideValue).replace(/\\/g, '/')
-
+        const filePath = resolveWorkspaceRef(workspaceRoot, relativePath, overrideValue)
+        if (!filePath) continue
         if (await fs.pathExists(path.join(workspaceRoot, filePath))) {
           referencedFiles.add(filePath)
           console.log('[PackageWorkflow] Found override file:', filePath)
@@ -144,10 +164,8 @@ async function tracePromptFileDeps(workspaceRoot, relativePath, state = null) {
         // Only resolve relative paths (starts with ./ or ../ or has a file extension)
         if (!ref.startsWith('./') && !ref.startsWith('../') && !ref.match(/\.\w+$/)) continue
 
-        const filePath = path.isAbsolute(ref)
-          ? path.relative(workspaceRoot, ref)
-          : path.join(path.dirname(relativePath), ref).replace(/\\/g, '/')
-
+        const filePath = resolveWorkspaceRef(workspaceRoot, relativePath, ref)
+        if (!filePath) continue
         if (await fs.pathExists(path.join(workspaceRoot, filePath))) {
           referencedFiles.add(filePath)
           console.log(`[PackageWorkflow] Found ${field} file:`, filePath)
@@ -161,9 +179,8 @@ async function tracePromptFileDeps(workspaceRoot, relativePath, state = null) {
     const includePattern = /{%[-~]?\s*include\s*=?\s*["']([^"']+)["']\s*[-~]?%}/g
     let includeMatch
     while ((includeMatch = includePattern.exec(content)) !== null) {
-      const includePath = path.isAbsolute(includeMatch[1])
-        ? path.relative(workspaceRoot, includeMatch[1])
-        : path.join(path.dirname(relativePath), includeMatch[1]).replace(/\\/g, '/')
+      const includePath = resolveWorkspaceRef(workspaceRoot, relativePath, includeMatch[1])
+      if (!includePath) continue
 
       if (includePath.endsWith('.prmd')) {
         await tracePromptFileDeps(workspaceRoot, includePath, sharedState)

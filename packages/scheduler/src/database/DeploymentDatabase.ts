@@ -270,6 +270,17 @@ export class DeploymentDB {
   }
 
   /**
+   * Update the packagePath for a deployment (used during migration only)
+   */
+  updatePackagePath(id: string, newPath: string): boolean {
+    const stmt = this.db.prepare(`
+      UPDATE deployments SET packagePath = ?, updatedAt = ? WHERE id = ?
+    `)
+    const result = stmt.run(newPath, Date.now(), id)
+    return result.changes > 0
+  }
+
+  /**
    * Delete deployment
    */
   delete(id: string): boolean {

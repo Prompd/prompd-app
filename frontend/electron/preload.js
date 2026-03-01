@@ -417,6 +417,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     installAll: (workspacePath) =>
       ipcRenderer.invoke('package:installAll', workspacePath),
 
+    // Uninstall a package by name, removing files and prompd.json dependency
+    uninstall: (packageName, workspacePath, options) =>
+      ipcRenderer.invoke('package:uninstall', packageName, workspacePath, options),
+
     // Publish package directly to registry (bypasses backend proxy)
     publish: (options) =>
       ipcRenderer.invoke('package:publish', options),
@@ -532,7 +536,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // Deployment service - package-based workflow deployment with multi-trigger support
-  // Deploys .pdpkg packages to ~/.prompd/workflows/{id}/ and extracts triggers from workflow files
+  // Deploys .pdpkg packages to ~/.prompd/deployments/{id}/ and extracts triggers from workflow files
   deployment: {
     // Deploy a package
     // packagePath: Path to .pdpkg file or workflow directory

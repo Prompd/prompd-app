@@ -341,6 +341,7 @@ async function executeInstall(args: string, workspacePath?: string): Promise<Sla
         }
       }
 
+      window.dispatchEvent(new Event('prompd:resources-changed'))
       return {
         success: true,
         output,
@@ -367,6 +368,7 @@ async function executeInstall(args: string, workspacePath?: string): Promise<Sla
   try {
     const result = await window.electronAPI.package.install(packageRef, workspacePath!)
     if (result.success) {
+      window.dispatchEvent(new Event('prompd:resources-changed'))
       return {
         success: true,
         output: `Installed **${packageRef}** successfully.`,

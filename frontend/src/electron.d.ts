@@ -332,6 +332,15 @@ export interface ElectronAPI {
 
     // Install all dependencies from prompd.json
     installAll: (workspacePath: string) => Promise<InstallAllResult>
+
+    // Uninstall a package by name, removing files and prompd.json dependency
+    uninstall: (packageName: string, workspacePath: string, options?: {
+      global?: boolean
+    }) => Promise<{
+      success: boolean
+      name?: string
+      error?: string
+    }>
   }
 
   // Node template management - save/restore workflow node configurations

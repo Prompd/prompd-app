@@ -888,7 +888,7 @@ app.whenReady().then(() => {
   // Initialize deployment service (package-based workflow deployment)
   try {
     const dbPath = path.join(app.getPath('userData'), 'scheduler', 'schedules.db')
-    const deploymentsPath = path.join(app.getPath('home'), '.prompd', 'workflows')
+    const deploymentsPath = path.join(app.getPath('home'), '.prompd', 'deployments')
 
     // Create deployment executor wrapper
     const executeDeployedWorkflow = async (deployment, trigger, context) => {
@@ -1462,6 +1462,33 @@ ipcMain.handle('dialog:selectFileFromWorkspace', async (event, workspacePath, ti
   }
 })
 
+/**
+ * Check whether a filesystem path is within an allowed root for mutating operations
+ * (write, delete, rename). Allowed roots are:
+ *   - The currently open workspace (currentWorkspacePath)
+ *   - The user-level Prompd data directory (~/.prompd/)
+ *
+ * Read-only operations (readFile, readBinaryFile) are not restricted here because
+ * the editor must be able to open any user-selected file.
+ *
+ * @param {string} targetPath - The path to validate (may be absolute or relative)
+ * @returns {boolean}
+ */
+function isAllowedMutablePath(targetPath) {
+  const resolved = path.resolve(targetPath)
+  const prompdHome = path.resolve(os.homedir(), '.prompd')
+  if (resolved.startsWith(prompdHome + path.sep) || resolved === prompdHome) {
+    return true
+  }
+  if (currentWorkspacePath) {
+    const resolvedWs = path.resolve(currentWorkspacePath)
+    if (resolved.startsWith(resolvedWs + path.sep) || resolved === resolvedWs) {
+      return true
+    }
+  }
+  return false
+}
+
 ipcMain.handle('fs:readFile', async (event, filePath) => {
   try {
     const content = await fs.promises.readFile(filePath, 'utf-8')
@@ -1484,6 +1511,9 @@ ipcMain.handle('fs:readBinaryFile', async (event, filePath) => {
 
 ipcMain.handle('fs:writeFile', async (event, filePath, content) => {
   try {
+    if (!isAllowedMutablePath(filePath)) {
+      return { success: false, error: 'Path is outside the allowed workspace or .prompd directory' }
+    }
     await fs.promises.writeFile(filePath, content, 'utf-8')
     return { success: true }
   } catch (error) {
@@ -1533,8 +1563,9 @@ ipcMain.handle('generated:saveImage', async (_event, base64Data, mimeType) => {
       return { success: false, error: 'Invalid base64 data' }
     }
 
-    // Determine file extension from mime type
-    const ext = (mimeType || 'image/png').split('/')[1]?.replace(/\+.*/, '') || 'png'
+    // Determine file extension from mime type and sanitize to alphanumeric only
+    const rawExt = (mimeType || 'image/png').split('/')[1]?.replace(/\+.*/, '') || 'png'
+    const ext = rawExt.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10) || 'bin'
 
     // Compute truncated SHA256 hash for content-addressable filename
     const crypto = require('crypto')
@@ -1637,7 +1668,8 @@ ipcMain.handle('generated:saveText', async (_event, content, ext) => {
       return { success: false, error: 'Invalid content' }
     }
 
-    const fileExt = ext || 'md'
+    // Sanitize extension to alphanumeric characters only
+    const fileExt = (ext || 'md').replace(/[^a-zA-Z0-9]/g, '').substring(0, 10) || 'md'
     const crypto = require('crypto')
     const hash = crypto.createHash('sha256').update(content).digest('hex').substring(0, 16)
 
@@ -1666,9 +1698,8 @@ ipcMain.handle('generated:saveText', async (_event, content, ext) => {
 
 ipcMain.handle('fs:rename', async (event, oldPath, newPath) => {
   try {
-    // Security: Prevent path traversal attacks
-    if (oldPath.includes('..') || newPath.includes('..')) {
-      return { success: false, error: 'Invalid path: parent directory references not allowed' }
+    if (!isAllowedMutablePath(oldPath) || !isAllowedMutablePath(newPath)) {
+      return { success: false, error: 'Path is outside the allowed workspace or .prompd directory' }
     }
     await fs.promises.rename(oldPath, newPath)
     return { success: true }
@@ -1679,9 +1710,8 @@ ipcMain.handle('fs:rename', async (event, oldPath, newPath) => {
 
 ipcMain.handle('fs:delete', async (event, targetPath, options = {}) => {
   try {
-    // Security: Prevent path traversal attacks
-    if (targetPath.includes('..')) {
-      return { success: false, error: 'Invalid path: parent directory references not allowed' }
+    if (!isAllowedMutablePath(targetPath)) {
+      return { success: false, error: 'Path is outside the allowed workspace or .prompd directory' }
     }
 
     // Check if deleting a workflow file - if so, remove associated deployments
@@ -1878,10 +1908,10 @@ ipcMain.handle('api:request', async (_event, url, options) => {
  * Publish a .pdpkg file to the registry via @prompd/cli RegistryClient
  */
 ipcMain.handle('package:publish', async (_event, options) => {
-  const { filePath, registryUrl, authToken } = options
+  const { filePath, registryUrl, authToken, metadataOverrides } = options
 
   try {
-    console.log('[Electron] Publishing package:', filePath)
+    console.log('[Electron] Publishing package:', filePath, 'metadataOverrides:', metadataOverrides)
 
     if (!filePath || !registryUrl || !authToken) {
       return { success: false, error: 'Missing required parameters (filePath, registryUrl, authToken)' }
@@ -1924,6 +1954,41 @@ ipcMain.handle('package:publish', async (_event, options) => {
     }
 
     const metadata = JSON.parse(manifestEntry.getData().toString('utf8'))
+
+    // Apply metadata overrides from the UI (e.g., scoped name, version)
+    // The registry server re-extracts metadata from the archive's prompd.json,
+    // so we must rebuild the archive with updated prompd.json inside it.
+    let uploadBuffer = fileBuffer
+    if (metadataOverrides && typeof metadataOverrides === 'object') {
+      const scopedName = metadataOverrides.name // e.g., "@pikles/loop"
+
+      // Registry extracts metadata from the archive's prompd.json and uses
+      // `id || name` as the package identifier. Set id to the scoped name
+      // so the registry sees it. Keep name as the friendly display name.
+      if (scopedName) metadata.id = scopedName
+      if (metadataOverrides.version) metadata.version = metadataOverrides.version
+      if (metadataOverrides.description) metadata.description = metadataOverrides.description
+
+      // Rebuild the ZIP with updated prompd.json
+      const manifestName = manifestEntry.entryName
+      const newZip = new AdmZip()
+      for (const entry of zip.getEntries()) {
+        if (entry.entryName === manifestName) {
+          newZip.addFile(manifestName, Buffer.from(JSON.stringify(metadata, null, 2), 'utf8'))
+        } else {
+          newZip.addFile(entry.entryName, entry.getData(), entry.comment, entry.attr)
+        }
+      }
+      uploadBuffer = newZip.toBuffer()
+      console.log('[Electron] Rebuilt archive with overrides, new size:', uploadBuffer.length, 'bytes')
+
+      // For RegistryClient.uploadPackageBuffer: name must be the scoped identifier
+      // because it's used in the URL path (/packages/@scope/name)
+      if (scopedName) metadata.name = scopedName
+    }
+
+    console.log('[Electron] Final metadata name:', metadata.name, 'version:', metadata.version)
+
     if (!metadata.name) {
       return { success: false, error: 'Package name missing from prompd.json' }
     }
@@ -1932,7 +1997,7 @@ ipcMain.handle('package:publish', async (_event, options) => {
     const { RegistryClient } = await import('@prompd/cli')
     const client = new RegistryClient({ registryName })
 
-    await client.uploadPackageBuffer(fileBuffer, metadata, {
+    await client.uploadPackageBuffer(uploadBuffer, metadata, {
       access: 'public',
       tag: 'latest',
       authToken
@@ -4583,7 +4648,7 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath, opti
     const { RegistryClient } = await import('@prompd/cli')
     const client = new RegistryClient()
     await client.install(packageRef, {
-      workspaceRoot: workspacePath,
+      workspaceRoot: installOptions.global ? os.homedir() : workspacePath,
       skipCache: false,
       type: installOptions.type || undefined
     })
@@ -4681,33 +4746,7 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath, opti
 
     console.log(`[Package] Resolved: type=${installedType}, path=${installedPath || 'not found'}`)
 
-    // Update prompd.json with the dependency
-    if (pkgName && pkgVersion) {
-      try {
-        const prompdJsonPath = path.join(workspacePath, 'prompd.json')
-        let prompdJson = { dependencies: {} }
-
-        if (fs.existsSync(prompdJsonPath)) {
-          const content = fs.readFileSync(prompdJsonPath, 'utf8')
-          if (content && content.trim() !== '') {
-            prompdJson = JSON.parse(content)
-          }
-        }
-
-        if (!prompdJson.dependencies) {
-          prompdJson.dependencies = {}
-        }
-
-        prompdJson.dependencies[pkgName] = pkgVersion
-
-        fs.writeFileSync(prompdJsonPath, JSON.stringify(prompdJson, null, 2) + '\n')
-        console.log('[Package] Updated prompd.json with dependency:', pkgName, '@', pkgVersion)
-      } catch (depErr) {
-        console.warn('[Package] Failed to update prompd.json (non-fatal):', depErr.message)
-      }
-    } else {
-      console.warn('[Package] Could not determine package name/version for prompd.json update')
-    }
+    // prompd.json dependency tracking is handled by the CLI's RegistryClient.install()
 
     // Check installed package for MCP dependencies
     let missingMcps = []
@@ -4734,6 +4773,34 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath, opti
   } catch (error) {
     console.error('[Package] Install failed:', packageRef, error.message)
     return { success: false, error: error.message || 'Installation failed' }
+  }
+})
+
+// Uninstall a package by name, removing installed files and prompd.json dependency
+ipcMain.handle('package:uninstall', async (_event, packageName, workspacePath, options) => {
+  const uninstallOptions = options || {}
+  console.log('[Package] Uninstalling:', packageName, 'from:', workspacePath, uninstallOptions.global ? '(global)' : '')
+
+  if (!packageName || typeof packageName !== 'string') {
+    return { success: false, error: 'No package name provided' }
+  }
+  if (!workspacePath || typeof workspacePath !== 'string') {
+    return { success: false, error: 'No workspace folder open' }
+  }
+
+  try {
+    const { RegistryClient } = await import('@prompd/cli')
+    const client = new RegistryClient()
+    await client.uninstall(packageName, {
+      workspaceRoot: uninstallOptions.global ? os.homedir() : workspacePath,
+      global: uninstallOptions.global || false
+    })
+
+    console.log('[Package] Uninstalled:', packageName)
+    return { success: true, name: packageName }
+  } catch (error) {
+    console.error('[Package] Uninstall failed:', packageName, error.message)
+    return { success: false, error: error.message || 'Uninstall failed' }
   }
 })
 
@@ -6557,8 +6624,22 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               'curl', 'wget',
             ]
 
-            // Merge with workflow-specific custom commands passed from renderer
-            const workflowCustomCommands = (options?.customCommands || []).map(c => c.toLowerCase())
+            // Executables that must never appear in custom command lists from the renderer
+            const blockedExecutables = [
+              'powershell', 'powershell.exe', 'pwsh', 'pwsh.exe',
+              'bash', 'sh', 'zsh', 'fish', 'dash',
+              'cmd', 'cmd.exe', 'command.com',
+              'wscript', 'cscript', 'mshta', 'msiexec',
+              'reg', 'regedit', 'regedt32',
+              'sc', 'net', 'netsh', 'ipconfig',
+              'taskkill', 'tasklist', 'schtasks',
+              'certutil', 'bitsadmin', 'rundll32', 'regsvr32',
+            ]
+
+            // Custom commands from the renderer — strip any that are blocked or overlap with builtins
+            const workflowCustomCommands = (options?.customCommands || [])
+              .map(c => c.toLowerCase().trim())
+              .filter(c => c.length > 0 && !blockedExecutables.includes(c))
             const allowedExecutables = [...new Set([...builtinExecutables, ...workflowCustomCommands])]
 
             if (!allowedExecutables.includes(executable)) {
@@ -6582,6 +6663,15 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               for (const char of dangerousChars) {
                 if (arg.includes(char)) {
                   return { success: false, result: `Shell metacharacter '${char}' not allowed in arguments`, error: `Shell metacharacter '${char}' not allowed` }
+                }
+              }
+              // Block eval/exec flags for interpreter executables — these allow arbitrary code
+              // execution without any shell metacharacters (e.g. node -e "require('child_process')...")
+              const interpreters = ['node', 'python', 'python3', 'perl', 'ruby']
+              if (interpreters.includes(executable)) {
+                const evalFlags = ['-e', '-c', '--eval', '--exec', '--interactive', '-i']
+                if (evalFlags.includes(arg.toLowerCase())) {
+                  return { success: false, result: `Flag '${arg}' not allowed for interpreter '${executable}'`, error: `Eval flag not allowed` }
                 }
               }
             }

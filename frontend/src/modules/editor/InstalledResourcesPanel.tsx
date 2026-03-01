@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Package, RefreshCw, Trash2, Upload, ChevronRight, Globe, HardDrive, Loader2, AlertCircle } from 'lucide-react'
+import { Package, RefreshCw, Trash2, Upload, ChevronRight, Globe, HardDrive, Loader2, AlertCircle, Play } from 'lucide-react'
 import { SidebarPanelHeader } from '../components/SidebarPanelHeader'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import { RESOURCE_TYPE_LABELS, RESOURCE_TYPE_ICONS, RESOURCE_TYPE_COLORS, type ResourceType } from '../services/resourceTypes'
-import type { PackageManifest } from '../services/packageService'
+import type { PublishResourceInfo } from '../components/PublishResourceModal'
 
 type FilterTab = 'all' | ResourceType
 
@@ -16,22 +17,27 @@ interface InstalledResource {
   tools?: string[]
   mcps?: string[]
   main?: string
+  isArchive?: boolean
+  origin?: 'local' | 'registry'
 }
 
 interface Props {
   theme?: 'light' | 'dark'
   workspacePath?: string | null
   onCollapse?: () => void
-  onPublish?: (manifest: PackageManifest) => void
+  onPublish?: (resource: PublishResourceInfo, manifest: Record<string, unknown>) => void
+  onShowNotification?: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void
 }
 
-export default function InstalledResourcesPanel({ theme = 'dark', workspacePath, onCollapse, onPublish }: Props) {
+export default function InstalledResourcesPanel({ theme = 'dark', workspacePath, onCollapse, onPublish, onShowNotification }: Props) {
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all')
   const [resources, setResources] = useState<InstalledResource[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expandedResource, setExpandedResource] = useState<string | null>(null)
   const [deletingPath, setDeletingPath] = useState<string | null>(null)
+  const [deployingPath, setDeployingPath] = useState<string | null>(null)
+  const { showConfirm, ConfirmDialogComponent } = useConfirmDialog(theme)
 
   const electronAPI = (window as unknown as Record<string, unknown>).electronAPI as {
     isElectron?: boolean
@@ -47,6 +53,11 @@ export default function InstalledResourcesPanel({ theme = 'dark', workspacePath,
         manifest?: Record<string, unknown>
         error?: string
       }>
+    }
+    package?: {
+      uninstall: (packageName: string, workspacePath: string, options?: {
+        global?: boolean
+      }) => Promise<{ success: boolean; name?: string; error?: string }>
     }
   } | undefined
 
@@ -73,24 +84,53 @@ export default function InstalledResourcesPanel({ theme = 'dark', workspacePath,
     loadResources()
   }, [loadResources])
 
-  const handleDelete = useCallback(async (resourcePath: string) => {
-    if (!electronAPI?.resource) return
-    if (!confirm('Delete this installed resource? This cannot be undone.')) return
+  // Auto-refresh when resources change (e.g. after package install)
+  useEffect(() => {
+    const handler = () => loadResources()
+    window.addEventListener('prompd:resources-changed', handler)
+    return () => window.removeEventListener('prompd:resources-changed', handler)
+  }, [loadResources])
 
-    setDeletingPath(resourcePath)
+  const handleDelete = useCallback(async (resource: InstalledResource) => {
+    if (!electronAPI?.resource) return
+    const confirmed = await showConfirm({
+      title: 'Delete Resource',
+      message: 'Delete this installed resource? This cannot be undone.',
+      confirmLabel: 'Delete',
+      confirmVariant: 'danger'
+    })
+    if (!confirmed) return
+
+    setDeletingPath(resource.path)
     try {
-      const result = await electronAPI.resource.delete(resourcePath)
-      if (result.success) {
-        setResources(prev => prev.filter(r => r.path !== resourcePath))
+      // Use CLI uninstall for registry packages (handles prompd.json cleanup)
+      if (resource.origin !== 'local' && electronAPI.package?.uninstall && workspacePath) {
+        const nameWithVersion = `${resource.name}@${resource.version}`
+        const result = await electronAPI.package.uninstall(nameWithVersion, workspacePath, {
+          global: resource.scope === 'user'
+        })
+        if (result.success) {
+          setResources(prev => prev.filter(r => r.path !== resource.path))
+          window.dispatchEvent(new Event('prompd:resources-changed'))
+        } else {
+          setError(result.error || 'Failed to uninstall resource')
+        }
       } else {
-        setError(result.error || 'Failed to delete resource')
+        // Fallback: direct file deletion for local exports or when CLI unavailable
+        const result = await electronAPI.resource.delete(resource.path)
+        if (result.success) {
+          setResources(prev => prev.filter(r => r.path !== resource.path))
+          window.dispatchEvent(new Event('prompd:resources-changed'))
+        } else {
+          setError(result.error || 'Failed to delete resource')
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete')
     } finally {
       setDeletingPath(null)
     }
-  }, [electronAPI?.resource])
+  }, [electronAPI?.resource, electronAPI?.package, workspacePath, showConfirm])
 
   const handlePublish = useCallback(async (resource: InstalledResource) => {
     if (!electronAPI?.resource || !onPublish) return
@@ -98,7 +138,7 @@ export default function InstalledResourcesPanel({ theme = 'dark', workspacePath,
     try {
       const result = await electronAPI.resource.getManifest(resource.path)
       if (result.success && result.manifest) {
-        onPublish(result.manifest as unknown as PackageManifest)
+        onPublish(resource as PublishResourceInfo, result.manifest as Record<string, unknown>)
       } else {
         setError(result.error || 'Failed to read manifest')
       }
@@ -106,6 +146,41 @@ export default function InstalledResourcesPanel({ theme = 'dark', workspacePath,
       setError(err instanceof Error ? err.message : 'Failed to read manifest')
     }
   }, [electronAPI?.resource, onPublish])
+
+  const handleDeploy = useCallback(async (resource: InstalledResource) => {
+    if (!resource.path) return
+
+    setDeployingPath(resource.path)
+    setError(null)
+    try {
+      const deployAPI = (window as unknown as Record<string, unknown>).electronAPI as {
+        deployment?: {
+          deploy: (path: string, options: Record<string, unknown>) => Promise<{ success: boolean; deploymentId?: string; error?: string }>
+        }
+      } | undefined
+
+      if (!deployAPI?.deployment?.deploy) {
+        setError('Deployment requires Electron environment')
+        return
+      }
+
+      const result = await deployAPI.deployment.deploy(resource.path, {
+        name: resource.name,
+        version: resource.version,
+      })
+
+      if (result.success) {
+        onShowNotification?.(`Deployed ${resource.name} v${resource.version}`, 'success')
+        window.dispatchEvent(new CustomEvent('deployment-updated'))
+      } else {
+        setError(result.error || 'Deployment failed')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Deployment failed')
+    } finally {
+      setDeployingPath(null)
+    }
+  }, [onShowNotification])
 
   const filteredResources = activeFilter === 'all'
     ? resources
@@ -383,6 +458,32 @@ export default function InstalledResourcesPanel({ theme = 'dark', workspacePath,
 
                   {/* Actions */}
                   <div style={{ display: 'flex', gap: 6 }}>
+                    {resource.type === 'workflow' && (
+                      <button
+                        onClick={() => handleDeploy(resource)}
+                        disabled={deployingPath === resource.path}
+                        style={{
+                          padding: '5px 10px',
+                          fontSize: '11px',
+                          fontWeight: 500,
+                          background: '#10b981',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: 4,
+                          cursor: deployingPath === resource.path ? 'wait' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          opacity: deployingPath === resource.path ? 0.7 : 1
+                        }}
+                      >
+                        {deployingPath === resource.path
+                          ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                          : <Play size={12} />
+                        }
+                        {deployingPath === resource.path ? 'Deploying...' : 'Deploy'}
+                      </button>
+                    )}
                     {onPublish && (
                       <button
                         onClick={() => handlePublish(resource)}
@@ -405,7 +506,7 @@ export default function InstalledResourcesPanel({ theme = 'dark', workspacePath,
                       </button>
                     )}
                     <button
-                      onClick={() => handleDelete(resource.path)}
+                      onClick={() => handleDelete(resource)}
                       disabled={isDeleting}
                       style={{
                         padding: '5px 10px',
@@ -431,6 +532,7 @@ export default function InstalledResourcesPanel({ theme = 'dark', workspacePath,
           )
         })}
       </div>
+      <ConfirmDialogComponent />
     </div>
   )
 }

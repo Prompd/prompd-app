@@ -73,6 +73,7 @@ export type ModalType =
   | 'apiKeySettings'
   | 'localStorage'
   | 'publish'
+  | 'publish-resource'
   | 'settings'
   | 'about'
   | 'aiGenerate'
