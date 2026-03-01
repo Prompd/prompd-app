@@ -44,8 +44,7 @@ interface PublishResourceModalProps {
   onOpenSettings?: () => void
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getElectronAPI = (): any => (window as any).electronAPI
+const getElectronAPI = () => window.electronAPI
 
 /**
  * Fetch from a registry URL, using Electron IPC to bypass CORS when available.

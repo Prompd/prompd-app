@@ -91,7 +91,7 @@ const getDependencies = (content: string): string[] => {
  */
 async function registryFetch(url: string, headers: Record<string, string>): Promise<{ ok: boolean; status: number; body: string }> {
   // Use Electron IPC to bypass CORS when available
-  const apiRequest = window.electronAPI?.apiRequest
+  const apiRequest = (window as any).electronAPI?.apiRequest
   if (apiRequest) {
     const result = await apiRequest(url, { method: 'GET', headers })
     return {

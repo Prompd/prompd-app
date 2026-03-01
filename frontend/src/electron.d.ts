@@ -341,6 +341,13 @@ export interface ElectronAPI {
       name?: string
       error?: string
     }>
+
+    // Direct registry publish
+    publish: (options: {
+      filePath: string
+      registryUrl: string
+      authToken: string
+    }) => Promise<{ success: boolean; data?: unknown; error?: string }>
   }
 
   // Node template management - save/restore workflow node configurations
@@ -428,15 +435,6 @@ export interface ElectronAPI {
       }>
       error?: string
     }>
-  }
-
-  // Package operations - direct registry publish
-  package?: {
-    publish: (options: {
-      filePath: string
-      registryUrl: string
-      authToken: string
-    }) => Promise<{ success: boolean; data?: unknown; error?: string }>
   }
 
   // Workflow trigger management (schedule, webhook, file-watch)

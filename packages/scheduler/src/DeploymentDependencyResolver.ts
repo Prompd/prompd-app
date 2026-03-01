@@ -91,7 +91,8 @@ export class DeploymentDependencyResolver {
 
     // Parse the file
     const content = fs.readFileSync(absolutePath, 'utf-8')
-    let parsed: any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PrompdParser.parse() returns untyped frontmatter
+    let parsed: { frontmatter?: Record<string, any>; body?: string }
 
     try {
       parsed = PrompdParser.parse(content)
