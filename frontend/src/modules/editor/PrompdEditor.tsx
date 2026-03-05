@@ -197,6 +197,7 @@ const modelCache = new Map<string, any>()
 
 export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorChange, language = 'prompd', readOnly = false, currentFilePath, workspacePath, tabId, pendingEdit, onAcceptEdit, onDeclineEdit }: Props) {
   const editorRef = useRef<any>(null)
+  const monacoRef = useRef<typeof monacoEditor | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isDragOver, setDragOver] = useState(false)
   const modelRef = useRef<any>(null)
@@ -336,6 +337,7 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
   const onMount: OnMount = useCallback((editor, monaco) => {
     console.log('[PrompdEditor] onMount called, language prop:', language)
     editorRef.current = editor
+    monacoRef.current = monaco
 
     // Sync value prop to model on mount
     // This handles the case where keepCurrentModel={true} reuses a cached model
@@ -1258,19 +1260,26 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      // Clear decorations using deltaDecorations (pass old IDs, empty new array)
-      if (validationDecorations.length > 0 && editorRef.current) {
-        try {
-          editorRef.current.deltaDecorations(validationDecorations, [])
-        } catch {}
-      }
-      // Dispose editor instance
       if (editorRef.current) {
+        try {
+          // Clear all markers BEFORE disposal to prevent hover/marker rendering
+          // on a disposed InstantiationService
+          const model = editorRef.current.getModel()
+          if (model && monacoRef.current) {
+            monacoRef.current.editor.setModelMarkers(model, 'prompd', [])
+            monacoRef.current.editor.setModelMarkers(model, 'prompd-compiler', [])
+          }
+          // Clear decorations
+          if (validationDecorations.length > 0) {
+            editorRef.current.deltaDecorations(validationDecorations, [])
+          }
+        } catch {}
         try {
           editorRef.current.dispose()
         } catch {}
       }
       editorRef.current = null
+      monacoRef.current = null
     }
   }, [])
 

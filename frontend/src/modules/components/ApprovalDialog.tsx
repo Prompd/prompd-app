@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { AlertTriangle, Check, X, Terminal, FileEdit, Folder, Search, GitMerge, Plus, Minus, Loader2 } from 'lucide-react'
 import type { ToolCall, EditOperation } from '../services/toolExecutor'
 import { ApprovalDiffView } from './ApprovalDiffView'
@@ -446,11 +447,11 @@ export function ApprovalDialog({ toolCall, toolCalls, onApprove, onReject, curre
     return renderParams(toolCall.params as Record<string, unknown>)
   }
 
-  return (
+  return createPortal(
     <div style={{
       position: 'fixed',
       inset: 0,
-      zIndex: 2000,
+      zIndex: 10000,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -739,6 +740,7 @@ export function ApprovalDialog({ toolCall, toolCalls, onApprove, onReject, curre
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

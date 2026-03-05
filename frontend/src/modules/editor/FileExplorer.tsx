@@ -376,6 +376,13 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
 
   useEffect(() => { refresh() }, [dirHandle])
 
+  // Refresh when files are renamed externally (code actions, tool executor)
+  useEffect(() => {
+    const handler = () => { refresh() }
+    window.addEventListener('prompd-file-renamed', handler)
+    return () => window.removeEventListener('prompd-file-renamed', handler)
+  }, [refresh])
+
   const openFile = useCallback(async (entry: FileEntry) => {
     // Check for binary file types that shouldn't be opened as text
     const binaryExtensions = ['.exe', '.dll', '.so', '.dylib', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.bmp', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.mp3', '.mp4', '.wav', '.avi', '.mov', '.woff', '.woff2', '.ttf', '.otf', '.eot']

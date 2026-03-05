@@ -74,8 +74,8 @@ function findTabByPathInArray(tabs: Tab[], path: string): Tab | undefined {
   const normalizedPath = path.replace(/\\/g, '/').replace(/^\.\//, '')
 
   const found = tabs.find(t => {
-    // Skip non-file tabs
-    if (t.type !== 'file') return false
+    // Skip non-file tabs (type is undefined for regular file tabs)
+    if (t.type && t.type !== 'file') return false
 
     // Normalize tab path the same way
     const tabPath = t.name.replace(/\\/g, '/').replace(/^\.\//, '')
