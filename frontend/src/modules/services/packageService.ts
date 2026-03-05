@@ -1,11 +1,34 @@
 import { prompdSettings } from './prompdSettings'
 import { getApiBaseUrl } from './apiConfig'
 import { electronFetch } from './electronFetch'
+import type { ResourceType } from './resourceTypes'
+import type { NodeTemplateNodeData } from './nodeTemplateTypes'
+
+/** Type-specific section for node-template packages */
+export interface NodeTemplateSectionData {
+  nodeTypeLabel: string
+  node: NodeTemplateNodeData
+  pathsConverted?: boolean
+}
+
+/** Type-specific section for skill packages */
+export interface SkillSectionData {
+  allowedTools?: string[]              // Tools the skill is permitted to use at runtime
+  parameters?: Record<string, unknown> // JSON Schema for input parameters
+}
+
+/** Type-specific section for workflow packages */
+export interface WorkflowSectionData {
+  entrypoint?: string
+  triggers?: Record<string, unknown>[]
+  parameters?: Record<string, unknown>
+}
 
 export interface PackageManifest {
   name: string
   version: string
   description: string
+  type?: ResourceType
   author?: string
   license?: string
   keywords?: string[]
@@ -14,6 +37,12 @@ export interface PackageManifest {
   repository?: string
   files?: string[]
   ignore?: string[]  // Glob patterns for files to exclude from package
+  tools?: string[]   // Required tool names (universal dependency declaration)
+  mcps?: string[]    // MCP server names required by this package
+  // Type-specific sections (keyed by the resource type)
+  'node-template'?: NodeTemplateSectionData
+  'skill'?: SkillSectionData
+  'workflow'?: WorkflowSectionData
 }
 
 // Check if running in Electron with local package support
@@ -34,6 +63,12 @@ export interface Namespace {
   frozen?: boolean
 }
 
+export interface CreatePackageResult {
+  blob: Blob
+  /** On-disk path to the .pdpkg file (only available in Electron/local mode) */
+  outputPath?: string
+}
+
 export class PackageService {
   /**
    * Create package using local CLI (Electron) or backend API (web)
@@ -44,7 +79,7 @@ export class PackageService {
     manifest: PackageManifest,
     getToken: () => Promise<string | null>,
     options: CreatePackageOptions = {}
-  ): Promise<Blob> {
+  ): Promise<CreatePackageResult> {
     console.log('[PackageService] Creating package:', manifest.name)
     const selectedFiles = manifest.files || []
     if (selectedFiles.length === 0) {
@@ -159,18 +194,19 @@ export class PackageService {
       throw new Error(error.error || 'Package creation failed')
     }
 
-    // Return blob
+    // Return blob (no outputPath in web mode)
     const blob = await response.blob()
     console.log(`[PackageService] ✅ Package created: ${blob.size} bytes`)
 
-    return blob
+    return { blob }
   }
 
   /**
-   * Publish package to registry via backend
+   * Publish package to registry directly via Electron IPC
+   * Sends the .pdpkg file directly to the registry (no backend proxy).
    */
   async publish(
-    packageBlob: Blob,
+    filePath: string | undefined,
     manifest: PackageManifest,
     getToken: () => Promise<string | null>,
     onProgress?: (percent: number) => void,
@@ -178,69 +214,50 @@ export class PackageService {
   ): Promise<void> {
     console.log('[PackageService] Publishing:', manifest.name)
 
-    const formData = new FormData()
-    formData.append('manifest', JSON.stringify(manifest))
-    formData.append('package', packageBlob, `${manifest.name.replace('/', '-')}-${manifest.version}.pdpkg`)
-
-    // Pass registry-specific auth to backend so it uses the right token and URL
-    if (registryConfig?.apiKey) {
-      formData.append('registryApiKey', registryConfig.apiKey)
-    }
-    if (registryConfig?.url) {
-      formData.append('registryUrl', registryConfig.url)
+    if (!filePath) {
+      throw new Error('No package file path available. Package creation may have failed.')
     }
 
-    const token = await getToken()
-    if (!token) {
-      throw new Error('Authentication required. Please sign in to publish packages.')
+    const electronAPI = (window as any).electronAPI
+    if (!electronAPI?.package?.publish) {
+      throw new Error('Electron IPC not available for publishing.')
     }
 
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
+    // Use registry API key if available, otherwise fall back to auth token
+    let authToken: string | null = registryConfig?.apiKey || null
+    if (!authToken) {
+      authToken = await getToken()
+    }
+    if (!authToken) {
+      throw new Error('Authentication required. Please sign in or configure a registry API key.')
+    }
 
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable && onProgress) {
-          onProgress((e.loaded / e.total) * 100)
-        }
-      })
+    // Resolve registry URL
+    const registryUrl = registryConfig?.url || prompdSettings.getRegistryUrl()
 
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const result = JSON.parse(xhr.responseText)
-            console.log('[PackageService] Published:', result.data)
-            resolve()
-          } catch {
-            resolve()
-          }
-        } else {
-          try {
-            const error = JSON.parse(xhr.responseText)
-            // Extract the actual error message - details may be JSON stringified
-            let errorMessage = error.error || 'Publish failed'
-            if (error.details) {
-              try {
-                const details = typeof error.details === 'string' ? JSON.parse(error.details) : error.details
-                if (details.error) {
-                  errorMessage = details.error
-                }
-              } catch {
-                // If details isn't valid JSON, use it as-is
-                errorMessage = error.details
-              }
-            }
-            reject(new Error(errorMessage))
-          } catch {
-            reject(new Error(`Publish failed: ${xhr.status} ${xhr.statusText}`))
-          }
-        }
-      })
+    if (onProgress) onProgress(10)
 
-      xhr.addEventListener('error', () => reject(new Error('Network error')))
-      xhr.open('POST', `${getApiBaseUrl()}/packages/publish`)
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-      xhr.send(formData)
+    // Pass manifest fields as metadata overrides so the IPC handler
+    // can merge them into the archive's prompd.json metadata (e.g., scoped name)
+    const metadataOverrides: Record<string, unknown> = {}
+    if (manifest.name) metadataOverrides.name = manifest.name
+    if (manifest.version) metadataOverrides.version = manifest.version
+    if (manifest.description) metadataOverrides.description = manifest.description
+
+    const result = await electronAPI.package.publish({
+      filePath,
+      registryUrl,
+      authToken,
+      metadataOverrides: Object.keys(metadataOverrides).length > 0 ? metadataOverrides : undefined,
     })
+
+    if (onProgress) onProgress(100)
+
+    if (!result.success) {
+      throw new Error(result.error || 'Publish failed')
+    }
+
+    console.log('[PackageService] Published via IPC:', result.data)
   }
 
   /**
@@ -300,15 +317,17 @@ export class PackageService {
   private async createPackageLocal(
     workspacePath: string,
     manifest: PackageManifest
-  ): Promise<Blob> {
+  ): Promise<CreatePackageResult> {
     console.log('[PackageService] Using local CLI for package creation')
     const electronAPI = (window as any).electronAPI
 
     // First, ensure prompd.json is up to date with the manifest
-    const manifestContent = JSON.stringify({
+    // Build a clean object — omit undefined values so they don't pollute the JSON
+    const manifestObj: Record<string, unknown> = {
       name: manifest.name,
       version: manifest.version,
       description: manifest.description,
+      type: manifest.type,
       author: manifest.author,
       license: manifest.license,
       keywords: manifest.keywords,
@@ -316,8 +335,16 @@ export class PackageService {
       repository: manifest.repository,
       main: manifest.main,
       files: manifest.files,
-      ignore: manifest.ignore
-    }, null, 2)
+      ignore: manifest.ignore,
+      tools: manifest.tools,
+      mcps: manifest.mcps,
+    }
+    // Include type-specific sections when present
+    if (manifest['node-template']) manifestObj['node-template'] = manifest['node-template']
+    if (manifest.skill) manifestObj.skill = manifest.skill
+    if (manifest.workflow) manifestObj.workflow = manifest.workflow
+
+    const manifestContent = JSON.stringify(manifestObj, null, 2)
 
     const manifestPath = `${workspacePath}/prompd.json`.replace(/\\/g, '/')
     const writeResult = await electronAPI.writeFile(manifestPath, manifestContent)
@@ -333,10 +360,11 @@ export class PackageService {
       throw new Error(result.error || 'Local package creation failed')
     }
 
-    console.log('[PackageService] Local CLI created package:', result.outputPath)
+    const outputPath: string = result.outputPath
+    console.log('[PackageService] Local CLI created package:', outputPath)
 
     // Read the created .pdpkg file as a blob (readBinaryFile returns base64)
-    const readResult = await electronAPI.readBinaryFile(result.outputPath)
+    const readResult = await electronAPI.readBinaryFile(outputPath)
     if (!readResult.success) {
       throw new Error(`Failed to read package file: ${readResult.error}`)
     }
@@ -350,7 +378,7 @@ export class PackageService {
     const blob = new Blob([bytes], { type: 'application/zip' })
     console.log(`[PackageService] Package blob created: ${blob.size} bytes`)
 
-    return blob
+    return { blob, outputPath }
   }
 
   /**

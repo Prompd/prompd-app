@@ -311,7 +311,7 @@ export const useEditorStore = create<EditorStore>()(
             if (index !== -1) {
               const tab = state.tabs[index]
               // Prevent setting dirty on chat/execution tabs (they can't be saved)
-              if ((tab.type === 'chat' || tab.type === 'execution') && 'dirty' in updates) {
+              if ((tab.type === 'chat' || tab.type === 'execution' || tab.type === 'brainstorm') && 'dirty' in updates) {
                 const { dirty, ...safeUpdates } = updates
                 state.tabs[index] = { ...tab, ...safeUpdates }
               } else {

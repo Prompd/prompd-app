@@ -3,7 +3,7 @@
  * Matches BuildOutputPanel styling with pin/minimize functionality
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { formatDuration } from '../../lib/executionUtils'
 import {
   CheckCircle,
@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { useWorkflowStore, type ExecutionHistoryEntry } from '../../../stores/workflowStore'
 import { useEditorStore } from '../../../stores/editorStore'
+import { useConfirmDialog } from '../ConfirmDialog'
 import type { WorkflowResult } from '../../services/workflowTypes'
 import type { CheckpointEvent, ExecutionTrace, TraceEntry } from '../../services/workflowExecutor'
 import { getTraceSummary } from '../../services/workflowExecutor'
@@ -82,6 +83,8 @@ export function WorkflowExecutionPanel({
   const executionHistory = useWorkflowStore(state => state.executionHistory)
   const loadExecutionFromHistory = useWorkflowStore(state => state.loadExecutionFromHistory)
   const clearExecutionHistory = useWorkflowStore(state => state.clearExecutionHistory)
+
+  const { showConfirm, ConfirmDialogComponent } = useConfirmDialog()
 
   // Editor store for opening trace in editor
   const addTab = useEditorStore(state => state.addTab)
@@ -587,8 +590,14 @@ export function WorkflowExecutionPanel({
                     </div>
                     <button
                       className="workflow-action-button"
-                      onClick={() => {
-                        if (confirm('Clear all execution history?')) {
+                      onClick={async () => {
+                        const confirmed = await showConfirm({
+                          title: 'Clear History',
+                          message: 'Clear all execution history?',
+                          confirmLabel: 'Clear',
+                          confirmVariant: 'danger'
+                        })
+                        if (confirmed) {
                           clearExecutionHistory()
                         }
                       }}
@@ -710,6 +719,7 @@ export function WorkflowExecutionPanel({
             </div>
           )}
         </div>
+      <ConfirmDialogComponent />
     </div>
   )
 }

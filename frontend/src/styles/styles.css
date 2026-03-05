@@ -563,6 +563,12 @@ body { background: var(--bg); color: var(--text); font: 14px/1.4 Inter, system-u
   opacity: 0;
   font-size: 12px;
   margin-left: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1;
   transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease, transform 0.1s ease;
 }
 .tab:hover .close,
@@ -786,6 +792,15 @@ select.input {
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
   }
 }
 
@@ -1131,6 +1146,49 @@ select.input {
   flex-shrink: 0;
 }
 
+.build-output-error-item .warning-icon {
+  color: #e5a50a;
+  flex-shrink: 0;
+}
+
+/* Severity filter bar */
+.build-output-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border-color, #333);
+}
+
+.build-output-filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 3px;
+  opacity: 0.5;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.build-output-filter-btn:hover {
+  background: var(--hover);
+  opacity: 0.8;
+}
+
+.build-output-filter-btn.active {
+  opacity: 1;
+  color: var(--error);
+}
+
+.build-output-filter-btn.warning.active {
+  color: #e5a50a;
+}
+
 .build-output-error-item .error-file {
   color: var(--accent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -1158,6 +1216,48 @@ select.input {
 
 .build-output-error-item:hover .error-link-icon {
   opacity: 1;
+}
+
+/* Error context menu */
+.error-context-menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 180px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.error-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.error-context-menu-item:hover {
+  background: var(--hover);
+}
+
+.error-context-menu-item svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.error-context-menu-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
 }
 
 /* Command output details (from /validate, /explain, etc.) */
@@ -1909,6 +2009,10 @@ select.input {
   border-radius: 8px;
 }
 
+.bottom-panel-tab-badge.warning {
+  background: #b8860b;
+}
+
 .bottom-panel-tab-indicator {
   width: 6px;
   height: 6px;
@@ -2002,4 +2106,13 @@ select.input {
 @keyframes helpChatFadeIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+@keyframes conversationDropdownFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* Right pane content reveal — pure CSS so React re-renders can't restart it */
+@keyframes splitPaneReveal {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
 }

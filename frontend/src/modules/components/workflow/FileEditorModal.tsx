@@ -16,6 +16,7 @@ import { FileText, Save, X, Code } from 'lucide-react'
 import { Editor } from '@monaco-editor/react'
 import { useUIStore, selectTheme } from '@/stores'
 import { getMonacoTheme, registerPrompdThemes } from '../../lib/monacoConfig'
+import { useConfirmDialog } from '../ConfirmDialog'
 
 interface FileEditorModalBaseProps {
   isOpen: boolean
@@ -83,6 +84,7 @@ export function FileEditorModal(props: FileEditorModalProps) {
   const [saving, setSaving] = useState(false)
   const originalContentRef = useRef<string>('')
   const contentRef = useRef<string>('')
+  const { showConfirm, ConfirmDialogComponent } = useConfirmDialog()
 
   const editorLanguage = isContentMode
     ? props.language
@@ -161,15 +163,20 @@ export function FileEditorModal(props: FileEditorModalProps) {
   }, [dirty, isContentMode, isContentMode ? props.onSaveContent : props.resolvedPath])
 
   // Close with dirty check
-  const handleClose = useCallback(() => {
+  const handleClose = useCallback(async () => {
     if (dirty) {
-      const discard = window.confirm('You have unsaved changes. Discard them?')
+      const discard = await showConfirm({
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. Discard them?',
+        confirmLabel: 'Discard',
+        confirmVariant: 'danger'
+      })
       if (!discard) return
     }
     setContent(null)
     setDirty(false)
     onClose()
-  }, [dirty, onClose])
+  }, [dirty, onClose, showConfirm])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -344,6 +351,7 @@ export function FileEditorModal(props: FileEditorModalProps) {
           )}
         </div>
       </div>
+      <ConfirmDialogComponent />
     </div>
   )
 }

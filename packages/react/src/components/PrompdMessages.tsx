@@ -208,19 +208,31 @@ export function PrompdMessages({
   className,
   onViewComparison,
 }: PrompdMessagesProps) {
+  const [thinkingExpanded, setThinkingExpanded] = useState(false)
+
   return (
     <div className={clsx('space-y-6', className)}>
-      {messages.map(message => (
-        <Message
-          key={message.id}
-          message={message}
-          onExpandResult={onExpandResult}
-          onPackageSelect={onPackageSelect}
-          onPrompdSelect={onPrompdSelect}
-          onDeclinePackage={onDeclinePackage}
-          onRerunExecution={onRerunExecution}
-          onViewComparison={onViewComparison}
-        />
+      {messages.filter(m => !m.metadata?.hidden).map(message => (
+        message.metadata?.type === 'thinking-content' ? (
+          <CollapsibleThinkingMessage
+            key={message.id}
+            content={message.content}
+            isStreaming={message.isStreaming}
+            expanded={thinkingExpanded}
+            onToggle={setThinkingExpanded}
+          />
+        ) : (
+          <Message
+            key={message.id}
+            message={message}
+            onExpandResult={onExpandResult}
+            onPackageSelect={onPackageSelect}
+            onPrompdSelect={onPrompdSelect}
+            onDeclinePackage={onDeclinePackage}
+            onRerunExecution={onRerunExecution}
+            onViewComparison={onViewComparison}
+          />
+        )
       ))}
     </div>
   )
@@ -1038,6 +1050,91 @@ function SlashCommandMessage({
   )
 }
 
+/**
+ * Thinking content messages get a distinct visual style — muted colors,
+ * Thinking content messages are rendered as collapsible blocks (collapsed by default).
+ */
+
+/**
+ * Collapsible thinking message — shows a compact header that can be expanded
+ * to reveal the full thinking content. Supports streaming with a spinner.
+ */
+function CollapsibleThinkingMessage({
+  content,
+  isStreaming,
+  expanded,
+  onToggle
+}: {
+  content: string
+  isStreaming?: boolean
+  expanded: boolean
+  onToggle: (expanded: boolean) => void
+}) {
+  return (
+    <div
+      className="prompd-message prompd-message-thinking"
+      style={{ maxWidth: '85%' }}
+    >
+      <div style={{
+        background: 'var(--prompd-panel)',
+        border: '1px dashed var(--prompd-border)',
+        borderRadius: '12px',
+        overflow: 'hidden'
+      }}>
+        {/* Header — always visible, clickable */}
+        <button
+          onClick={() => onToggle(!expanded)}
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+            color: 'var(--prompd-accent, #3b82f6)'
+          }}
+        >
+          <Cpu style={{ width: 14, height: 14, flexShrink: 0, opacity: 0.85 }} />
+          <span style={{
+            fontSize: '12px',
+            fontWeight: 600,
+            flex: 1
+          }}>
+            {isStreaming ? 'Thinking...' : 'Thinking'}
+          </span>
+          <span style={{ flexShrink: 0, opacity: 0.5 }}>
+            {isStreaming ? (
+              <Loader2 style={{ width: 12, height: 12, animation: 'spin 1s linear infinite' }} />
+            ) : expanded ? (
+              <ChevronDown style={{ width: 12, height: 12 }} />
+            ) : (
+              <ChevronRight style={{ width: 12, height: 12 }} />
+            )}
+          </span>
+        </button>
+
+        {/* Content — only shown when expanded */}
+        {expanded && (
+          <div style={{
+            padding: '0 12px 10px',
+            borderTop: '1px dashed var(--prompd-border)',
+            fontSize: '12.5px',
+            color: 'var(--prompd-muted, #888)',
+            opacity: 0.7,
+            maxHeight: '400px',
+            overflowY: 'auto'
+          }}>
+            <MarkdownChatMessage content={content} isUser={false} />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function Message({
   message,
   onExpandResult,
@@ -1060,6 +1157,7 @@ function Message({
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
   const isAssistant = message.role === 'assistant'
+  const isThinkingContent = isAssistant && message.metadata?.type === 'thinking-content'
 
   return (
     <div
@@ -1068,8 +1166,8 @@ function Message({
         isUser ? 'prompd-message-user flex-row-reverse' : isSystem ? 'prompd-message-system flex-row' : 'prompd-message-assistant flex-row'
       )}
     >
-      {/* Avatar - Beautiful Gradient Orbs */}
-      <div className="prompd-avatar flex-shrink-0 relative">
+      {/* Avatar - Beautiful Gradient Orbs (self-start pins to top of flex row) */}
+      <div className="prompd-avatar flex-shrink-0 self-start relative">
         <div
           className="prompd-avatar-orb w-9 h-9 rounded-full flex items-center justify-center shadow-lg"
           style={{
@@ -1077,9 +1175,13 @@ function Message({
               ? 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)'
               : isSystem
               ? 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)'
+              : isThinkingContent
+              ? 'linear-gradient(135deg, #6b7280 0%, #9ca3af 100%)'
               : 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
             boxShadow: isUser
               ? '0 4px 12px rgba(168, 85, 247, 0.3)'
+              : isThinkingContent
+              ? '0 4px 12px rgba(107, 114, 128, 0.2)'
               : '0 4px 12px rgba(59, 130, 246, 0.3)'
           }}
         >
@@ -1087,6 +1189,8 @@ function Message({
             <User className="w-5 h-5 text-white" />
           ) : isSystem ? (
             <AlertCircle className="w-5 h-5 text-white" />
+          ) : isThinkingContent ? (
+            <Cpu className="w-5 h-5 text-white" />
           ) : (
             <Bot className="w-5 h-5 text-white" />
           )}
@@ -1114,19 +1218,24 @@ function Message({
       >
         {/* Message Bubble - Sleek & Modern */}
         <div
-          className="prompd-message-content px-4 py-3 rounded-2xl shadow-sm backdrop-blur-sm"
+          className={clsx(
+            'prompd-message-content px-4 py-3 rounded-2xl shadow-sm backdrop-blur-sm',
+            'prompd-message-appear',
+            message.isStreaming && !isUser && 'prompd-message-streaming'
+          )}
           style={{
             background: isUser
               ? 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)'
               : isSystem
               ? 'var(--prompd-panel-2)'
               : 'var(--prompd-panel)',
-            color: isUser ? 'white' : 'var(--prompd-text)',
-            border: isUser ? 'none' : `1px solid var(--prompd-border)`,
+            color: isUser ? 'white' : isThinkingContent ? 'var(--prompd-muted, #888)' : 'var(--prompd-text)',
+            border: isUser ? 'none' : isThinkingContent ? '1px dashed var(--prompd-border)' : `1px solid var(--prompd-border)`,
             borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
             boxShadow: isUser
               ? '0 4px 12px rgba(59, 130, 246, 0.25)'
-              : '0 1px 3px rgba(0, 0, 0, 0.1)'
+              : '0 1px 3px rgba(0, 0, 0, 0.1)',
+            ...(isThinkingContent ? { opacity: 0.85, fontSize: '13px' } : {})
           }}
         >
           {/* System Message: Package Suggestions */}
@@ -1360,10 +1469,31 @@ function Message({
 
           {/* Regular message content (not system special types) */}
           {(!isSystem || !message.metadata?.type) ? (
-            <MarkdownChatMessage
-              content={message.content}
-              isUser={isUser}
-            />
+            <div className={message.isStreaming && !isUser ? 'prompd-streaming-text' : undefined}>
+              <MarkdownChatMessage
+                content={message.content}
+                isUser={isUser}
+              />
+            </div>
+          ) : null}
+
+          {/* Thinking Content Message — rendered as its own message type */}
+          {isAssistant && message.metadata?.type === 'thinking-content' ? (
+            <div style={{
+              fontSize: '12px',
+              fontWeight: 500,
+              color: 'var(--prompd-muted, #888)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              marginBottom: '4px'
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.4V19a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1.6c2.9-1.1 5-4 5-7.4a8 8 0 0 0-8-8z" />
+                <line x1="10" y1="22" x2="14" y2="22" />
+              </svg>
+              Thinking
+            </div>
           ) : null}
 
           {/* Run Info Footer - Inline within message bubble */}

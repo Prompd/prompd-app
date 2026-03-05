@@ -8,6 +8,8 @@ Prompd brings software engineering practices to AI prompt development. Instead o
 
 **Everything runs locally.** Your API keys, prompts, and data never leave your machine. LLM calls go directly from Prompd to provider APIs with zero intermediaries.
 
+> **Platform:** Pre-built binaries are currently **Windows only**. Mac and Linux builds are coming soon. You can build from source on any platform today.
+
 <!-- SCREENSHOT: Design View - Open a .prmd file in Design View showing the WYSIWYG editor
      with the provider bar (Anthropic/OpenAI tabs), parameter panel, and content sections.
      Use the public-examples/prompts/topic-researcher.prmd file for a good example. -->
@@ -52,7 +54,7 @@ Prompd brings software engineering practices to AI prompt development. Instead o
 
 ```bash
 # Clone the repository
-git clone https://github.com/Prompd/prompd.app.git
+git clone https://github.com/Prompd/prompd-app.git
 cd prompd.app
 
 # Build local packages (required before frontend)
@@ -150,7 +152,7 @@ At minimum, you need one LLM provider API key (e.g., Anthropic or OpenAI) config
 
 ## Documentation
 
-- [CLAUDE.md](CLAUDE.md) - Developer guide and full architecture reference
+- [CLAUDE-ARCHITECTURE.md](CLAUDE-ARCHITECTURE.md) - Deep architecture reference (node types, state management, execution model)
 - [CONTRIBUTING.md](CONTRIBUTING.md) - How to contribute
 - [docs/editor.md](docs/editor.md) - Editor features and usage
 - [frontend/ELECTRON.md](frontend/ELECTRON.md) - Build and distribution

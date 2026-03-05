@@ -30,19 +30,43 @@ function getEditorMarkdown(editor: Editor): string {
  * Un-escape markdown special characters inside Nunjucks expressions.
  * tiptap-markdown's serializer escapes characters like [ ] * _ ~ inside text nodes,
  * which corrupts Nunjucks syntax (e.g. `{%- for x in [items] %}` → `{%- for x in \[items\] %}`).
+ * Also decodes HTML entities (e.g. `&gt;` → `>`) that markdown-it introduces when
+ * Nunjucks tags contain comparison operators like `{% if x | length > 0 %}`.
  * This restores the original characters within {{ }}, {% %}, and {# #} blocks.
  */
 function unescapeNunjucks(markdown: string): string {
   return markdown.replace(/(\{[{%#]-?[\s\S]*?-?[}%#]\})/g, (match) => {
-    return match.replace(/\\([[\]\\*_~`|(){}])/g, '$1')
+    return match
+      .replace(/\\([[\]\\*_~`|(){}])/g, '$1')
+      .replace(/&gt;/g, '>')
+      .replace(/&lt;/g, '<')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
   })
 }
 
 /** Normalize markdown for comparison to prevent re-render loops from whitespace differences */
 function normalizeForCompare(s: string | undefined | null): string {
   if (!s) return ''
-  return s.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+  return s
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    // Treat \n{% same as \n\n{% — TipTap adds the blank line, original may not have it
+    .replace(/([^\n])\n(\{%-?\s)/g, '$1\n\n$2')
+    .trim()
 }
+
+/**
+ * Ensure block-level Nunjucks tags ({% %} at column 0) are preceded by a blank line.
+ * Without this, markdown-it's lazy continuation rule absorbs a standalone {% %} line
+ * immediately after a list item into that list item's paragraph.
+ * Inline {% %} within a paragraph are unaffected (they don't start at column 0).
+ */
+function preprocessNunjucksBlocks(markdown: string | undefined | null): string {
+  if (!markdown) return ''
+  return markdown.replace(/([^\n])\n(\{%-?\s)/g, '$1\n\n$2')
+}
+
 
 /**
  * Pre-process markdown to convert base64 image syntax to HTML img tags.
@@ -92,7 +116,13 @@ export default function WysiwygEditor({
 
   const handleUpdate = useCallback(({ editor }: { editor: Editor }) => {
     if (!editor || isUpdatingRef.current) return
-    const markdown = getEditorMarkdown(editor)
+    const rawMarkdown = getEditorMarkdown(editor)
+    // If the only difference from the current value is blank-line normalization around
+    // block {% %} tags (added by preprocessNunjucksBlocks), echo the original back so
+    // the file is not marked dirty. On a real user edit the normalized forms will differ.
+    const markdown = normalizeForCompare(rawMarkdown) === normalizeForCompare(lastValueRef.current)
+      ? lastValueRef.current
+      : rawMarkdown
     lastValueRef.current = markdown
     onChange?.(markdown)
   }, [onChange])
@@ -128,7 +158,7 @@ export default function WysiwygEditor({
       TableCell,
       NunjucksHighlight
     ],
-    content: preprocessBase64Images(value),
+    content: preprocessNunjucksBlocks(preprocessBase64Images(value)),
     editorProps: {
       attributes: {
         class: 'wysiwyg-editor',
@@ -164,7 +194,7 @@ export default function WysiwygEditor({
 
     isUpdatingRef.current = true
     lastValueRef.current = value
-    editor.commands.setContent(preprocessBase64Images(value))
+    editor.commands.setContent(preprocessNunjucksBlocks(preprocessBase64Images(value)))
     isUpdatingRef.current = false
   }, [value, editor])
 

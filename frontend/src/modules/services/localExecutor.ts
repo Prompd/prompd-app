@@ -58,6 +58,8 @@ export interface LocalExecuteOptions {
 export interface LocalExecuteResult {
   success: boolean
   response?: string
+  /** Thinking content from models with extended thinking */
+  thinking?: string
   error?: string
   usage: {
     promptTokens: number
@@ -187,6 +189,7 @@ class LocalExecutorService {
       return {
         success: result.success,
         response,
+        thinking: result.thinking,
         error: result.error,
         usage: result.usage,
         metadata: {

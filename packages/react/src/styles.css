@@ -172,6 +172,36 @@
   .prompd-mode-button:hover {
     background-color: var(--prompd-hover) !important;
   }
+
+  /* JSON syntax highlighting - light mode */
+  .prompd-json-highlight .prompd-json-key { color: #0550ae; }
+  .prompd-json-highlight .prompd-json-str { color: #0a3069; }
+  .prompd-json-highlight .prompd-json-num { color: #0550ae; }
+  .prompd-json-highlight .prompd-json-kw { color: #cf222e; }
+  .prompd-json-highlight .prompd-json-brace { color: #6e7781; }
+
+  /* JSON syntax highlighting - dark mode */
+  :root.dark .prompd-json-highlight .prompd-json-key,
+  [data-theme="dark"] .prompd-json-highlight .prompd-json-key { color: #79c0ff; }
+
+  :root.dark .prompd-json-highlight .prompd-json-str,
+  [data-theme="dark"] .prompd-json-highlight .prompd-json-str { color: #a5d6ff; }
+
+  :root.dark .prompd-json-highlight .prompd-json-num,
+  [data-theme="dark"] .prompd-json-highlight .prompd-json-num { color: #79c0ff; }
+
+  :root.dark .prompd-json-highlight .prompd-json-kw,
+  [data-theme="dark"] .prompd-json-highlight .prompd-json-kw { color: #ff7b72; }
+
+  :root.dark .prompd-json-highlight .prompd-json-brace,
+  [data-theme="dark"] .prompd-json-highlight .prompd-json-brace { color: #8b949e; }
+
+  /* Also support Tailwind dark: class */
+  .dark .prompd-json-highlight .prompd-json-key { color: #79c0ff; }
+  .dark .prompd-json-highlight .prompd-json-str { color: #a5d6ff; }
+  .dark .prompd-json-highlight .prompd-json-num { color: #79c0ff; }
+  .dark .prompd-json-highlight .prompd-json-kw { color: #ff7b72; }
+  .dark .prompd-json-highlight .prompd-json-brace { color: #8b949e; }
 }
 
 @layer utilities {
@@ -216,6 +246,50 @@
       max-height: 500px;
       transform: translateY(0);
     }
+  }
+
+  /* Spin animation for loading indicators */
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  /* Message appear animation — smooth slide-up and fade */
+  @keyframes prompd-message-appear {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .prompd-message-appear {
+    animation: prompd-message-appear 0.25s ease-out both;
+  }
+
+  /* Streaming cursor — blinking bar at end of text while AI is generating */
+  @keyframes prompd-cursor-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  .prompd-streaming-text > div > :last-child::after {
+    content: '\25CE';
+    display: inline;
+    color: var(--prompd-accent, #3b82f6);
+    animation: prompd-cursor-blink 0.8s steps(2) infinite;
+    margin-left: 2px;
+    font-size: 0.85em;
+  }
+
+  /* Subtle accent glow on message bubble while streaming */
+  .prompd-message-streaming {
+    border-color: color-mix(in srgb, var(--prompd-accent, #3b82f6) 40%, var(--prompd-border)) !important;
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.08), 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
   }
 
   /* Glassmorphic effects */

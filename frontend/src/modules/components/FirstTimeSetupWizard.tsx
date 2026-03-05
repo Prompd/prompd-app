@@ -331,6 +331,10 @@ export function FirstTimeSetupWizard({ isOpen, onClose, onComplete, theme }: Fir
   // Hook for refreshing providers after API key save
   const refreshLLMProviders = useUIStore(state => state.refreshLLMProviders)
 
+  // View mode preference
+  const defaultViewMode = useUIStore(state => state.defaultViewMode)
+  const setDefaultViewMode = useUIStore(state => state.setDefaultViewMode)
+
   // Current wizard step
   const [currentStep, setCurrentStep] = useState<WizardStep>('welcome')
 
@@ -886,6 +890,72 @@ Remember: Output ONLY the raw .prmd content starting with --- (no code blocks, n
                     <div style={{ fontSize: '14px', fontWeight: 500, color: colors.text }}>Start Building</div>
                     <div style={{ fontSize: '13px', color: colors.textSecondary }}>Execute and iterate on your prompts</div>
                   </div>
+                </div>
+              </div>
+
+              {/* View mode preference toggle */}
+              <div style={{ marginTop: '32px', maxWidth: '440px', marginLeft: 'auto', marginRight: 'auto' }}>
+                <div style={{ fontSize: '14px', fontWeight: 500, color: colors.text, marginBottom: '6px', textAlign: 'center' }}>
+                  How would you like to edit your prompts?
+                </div>
+                <div style={{ fontSize: '12px', color: colors.textSecondary, marginBottom: '14px', textAlign: 'center' }}>
+                  You can change this anytime in Settings
+                </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    onClick={() => setDefaultViewMode('design')}
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '14px 12px',
+                      background: defaultViewMode === 'design' ? colors.primary : colors.bgSecondary,
+                      border: `1.5px solid ${defaultViewMode === 'design' ? colors.primary : colors.border}`,
+                      borderRadius: '10px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      color: defaultViewMode === 'design' ? 'white' : colors.text,
+                    }}
+                  >
+                    <PenTool size={20} />
+                    <span style={{ fontSize: '14px', fontWeight: 600 }}>Design</span>
+                    <span style={{
+                      fontSize: '11px',
+                      lineHeight: 1.4,
+                      color: defaultViewMode === 'design' ? 'rgba(255,255,255,0.8)' : colors.textSecondary,
+                    }}>
+                      Visual editor with rich toolbar. Great for getting started.
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setDefaultViewMode('code')}
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '14px 12px',
+                      background: defaultViewMode === 'code' ? colors.primary : colors.bgSecondary,
+                      border: `1.5px solid ${defaultViewMode === 'code' ? colors.primary : colors.border}`,
+                      borderRadius: '10px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      color: defaultViewMode === 'code' ? 'white' : colors.text,
+                    }}
+                  >
+                    <Code size={20} />
+                    <span style={{ fontSize: '14px', fontWeight: 600 }}>Code</span>
+                    <span style={{
+                      fontSize: '11px',
+                      lineHeight: 1.4,
+                      color: defaultViewMode === 'code' ? 'rgba(255,255,255,0.8)' : colors.textSecondary,
+                    }}>
+                      Markdown editor with full control. Best for those familiar with markdown.
+                    </span>
+                  </button>
                 </div>
               </div>
             </div>

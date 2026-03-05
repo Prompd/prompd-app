@@ -54,7 +54,7 @@ export default defineConfig({
     commonjsOptions: {
       // Default only processes node_modules/. Since @prompd/cli is file-linked
       // (outside node_modules), we must include it for CJS→ESM conversion.
-      include: [/node_modules/, /prompd-cli\/cli\/npm\/dist/]
+      include: [/node_modules/, /prompd-cli[\\/]typescript[\\/]dist/]
     },
     rollupOptions: {
       external: (id: string) => {

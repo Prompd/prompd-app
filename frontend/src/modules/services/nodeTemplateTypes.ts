@@ -38,13 +38,17 @@ export interface NodeTemplateNodeData {
 export interface NodeTemplate {
   version: '1.0'
   type: 'node-template'
-  name: string
+  id?: string   // Slugified package identifier (e.g., "chat-agent-with-tools")
+  name: string  // Human-readable display name (e.g., "Chat Agent With Tools")
   description?: string
-  nodeTypeLabel: string
   createdAt: string
   files?: string[]     // workspace-relative file paths bundled in the .pdpkg
   packages?: string[]  // package references (@ns/package@version) that need to be installed
-  node: NodeTemplateNodeData
+  'node-template': {
+    nodeTypeLabel: string
+    node: NodeTemplateNodeData
+    pathsConverted?: boolean
+  }
 }
 
 /** List item returned by template:list IPC */
@@ -55,6 +59,7 @@ export interface TemplateListItem {
   nodeType: WorkflowNodeType
   nodeTypeLabel: string
   scope: 'workspace' | 'user'
+  origin?: 'local' | 'registry'
   createdAt: string
 }
 

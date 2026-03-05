@@ -2,7 +2,7 @@
  * DeploymentService - Manages workflow deployments and trigger registration
  *
  * Handles:
- * - Package extraction to ~/.prompd/workflows/{id}/
+ * - Package extraction to ~/.prompd/deployments/{id}/
  * - Workflow and manifest reading
  * - Trigger extraction from TriggerNode
  * - Deployment lifecycle (deploy, delete, purge, status)
@@ -62,11 +62,16 @@ export class DeploymentService {
     this.dbPath = options.dbPath
     this.db = new DeploymentDatabase(this.dbPath)
     this.executeWorkflow = options.executeWorkflow
-    this.deploymentsPath = options.deploymentsPath || path.join(os.homedir(), '.prompd', 'workflows')
+    this.deploymentsPath = options.deploymentsPath || path.join(os.homedir(), '.prompd', 'deployments')
 
     // Ensure deployments directory exists
     if (!fs.existsSync(this.deploymentsPath)) {
       fs.mkdirSync(this.deploymentsPath, { recursive: true })
+    }
+
+    // Migrate existing deployments from legacy ~/.prompd/workflows/ to ~/.prompd/deployments/
+    if (!options.deploymentsPath) {
+      this.migrateLegacyDeployments()
     }
 
     // Create trigger manager with callback to execute workflows
@@ -82,6 +87,67 @@ export class DeploymentService {
 
     // Re-register all active triggers at startup
     this.reregisterAllTriggers()
+  }
+
+  /**
+   * Migrate deployments from legacy ~/.prompd/workflows/ to ~/.prompd/deployments/.
+   * Only moves UUID-named directories (deployment IDs), leaves package installs untouched.
+   */
+  private migrateLegacyDeployments(): void {
+    const legacyBase = path.join(os.homedir(), '.prompd', 'workflows')
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    let migratedCount = 0
+
+    try {
+      // Phase 1: Move any UUID dirs still in the legacy location
+      if (fs.existsSync(legacyBase)) {
+        const entries = fs.readdirSync(legacyBase, { withFileTypes: true })
+        for (const entry of entries) {
+          if (!entry.isDirectory() || !UUID_RE.test(entry.name)) continue
+
+          const src = path.join(legacyBase, entry.name)
+          const dest = path.join(this.deploymentsPath, entry.name)
+          if (fs.existsSync(dest)) continue
+
+          fs.renameSync(src, dest)
+          this.db.deployments.updatePackagePath(entry.name, dest)
+          migratedCount++
+        }
+      }
+
+      // Phase 2: Fix DB records that still reference the legacy path
+      // If files exist at the new location, update the path. Otherwise delete the stale record.
+      let purgedCount = 0
+      const allDeployments = this.db.deployments.getAll()
+      for (const dep of allDeployments) {
+        if (dep.packagePath && dep.packagePath.includes(path.join('.prompd', 'workflows'))) {
+          const newPath = dep.packagePath.replace(
+            path.join('.prompd', 'workflows'),
+            path.join('.prompd', 'deployments')
+          )
+          if (fs.existsSync(newPath)) {
+            // Files were moved manually — update the DB to point to new location
+            this.db.deployments.updatePackagePath(dep.id, newPath)
+            migratedCount++
+          } else if (!fs.existsSync(dep.packagePath)) {
+            // Files don't exist at either location — purge the stale record
+            this.db.triggers.deleteByDeployment(dep.id)
+            this.db.executions.cancelRunningExecutions(dep.id)
+            this.db.deployments.delete(dep.id)
+            purgedCount++
+          }
+        }
+      }
+
+      if (migratedCount > 0) {
+        console.log(`[DeploymentService] Migrated ${migratedCount} deployment path(s) from workflows/ to deployments/`)
+      }
+      if (purgedCount > 0) {
+        console.log(`[DeploymentService] Purged ${purgedCount} stale deployment record(s) (files no longer on disk)`)
+      }
+    } catch (err) {
+      console.warn('[DeploymentService] Legacy migration failed (non-fatal):', (err as Error).message)
+    }
   }
 
   /**
@@ -424,8 +490,16 @@ export class DeploymentService {
       // Copy directory contents
       this.copyDirectory(packagePath, deploymentDir)
     } else if (packagePath.endsWith('.pdpkg')) {
-      // Extract ZIP file
+      // Extract ZIP file with ZIP Slip protection
       const zip = new AdmZip(packagePath)
+      const resolvedDeployDir = path.resolve(deploymentDir)
+      for (const entry of zip.getEntries()) {
+        if (entry.entryName.endsWith('/')) continue // skip directory entries
+        const resolvedTarget = path.resolve(deploymentDir, entry.entryName)
+        if (!resolvedTarget.startsWith(resolvedDeployDir + path.sep)) {
+          throw new Error(`Security: ZIP entry "${entry.entryName}" would escape deployment directory`)
+        }
+      }
       zip.extractAllTo(deploymentDir, true)
     } else {
       throw new Error('Package must be a .pdpkg file or directory')
@@ -467,8 +541,11 @@ export class DeploymentService {
       try {
         const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'))
         if (manifest.main && manifest.main.endsWith('.pdflow')) {
-          const mainPath = path.join(deploymentDir, manifest.main)
-          if (fs.existsSync(mainPath)) {
+          const mainPath = path.resolve(deploymentDir, manifest.main)
+          const resolvedDeployDir = path.resolve(deploymentDir)
+          if (!mainPath.startsWith(resolvedDeployDir + path.sep)) {
+            console.warn('[DeploymentService] manifest.main escapes deployment directory, ignoring')
+          } else if (fs.existsSync(mainPath)) {
             console.log(`[DeploymentService] Resolved workflow from prompd.json main: ${manifest.main}`)
             return manifest.main
           }

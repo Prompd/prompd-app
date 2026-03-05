@@ -102,7 +102,7 @@ function cloneEdges(edges: WorkflowCanvasEdge[]): WorkflowCanvasEdge[] {
 }
 
 // Container node types that can have children
-const CONTAINER_TYPES = ['loop', 'parallel', 'tool-call-router', 'chat-agent']
+const CONTAINER_TYPES = ['loop', 'parallel', 'tool-call-router', 'chat-agent', 'node-group']
 
 // Node types that can be dropped into tool-call-router
 const TOOL_ROUTER_ALLOWED_CHILDREN = ['tool', 'tool-call-parser']
@@ -147,6 +147,11 @@ function canNodeBeDroppedIntoContainer(
   // Chat-agent accepts tool nodes (like tool-call-router does)
   if (containerType === 'chat-agent') {
     return TOOL_ROUTER_ALLOWED_CHILDREN.includes(nodeType)
+  }
+
+  // Group accepts any node type except other groups (purely visual container)
+  if (containerType === 'node-group') {
+    return nodeType !== 'node-group'
   }
 
   // Loop and parallel accept any non-container node
@@ -477,6 +482,7 @@ interface WorkflowStoreState {
   addNodeFromTemplate: (templateData: Record<string, unknown>, position: { x: number; y: number }, onEdgeId?: string) => string | null
   toggleNodeDisabled: (nodeId: string) => void
   ejectChildNodes: (containerId: string) => void
+  groupNodes: (nodeIds: string[]) => string | null
 
   // Context menu operations
   showContextMenu: (type: 'node' | 'edge' | 'canvas', position: { x: number; y: number }, nodeId?: string, edgeId?: string) => void
@@ -504,6 +510,7 @@ interface WorkflowStoreState {
   setCheckpoints: (checkpoints: CheckpointEvent[]) => void
   setPromptsSent: (prompts: PromptSentInfo[]) => void
   clearExecutionState: () => void
+  addToExecutionHistory: (entry: ExecutionHistoryEntry) => void
   loadExecutionFromHistory: (id: string) => void
   clearExecutionHistory: () => void
 
@@ -744,6 +751,7 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         if (!node) return
 
         const isContainer = CONTAINER_TYPES.includes(node.type || '')
+        const isGroupableContainer = isContainer && node.type !== 'node-group'
         const currentParentId = node.parentId
 
         // Calculate absolute position (needed for both container detection and docking)
@@ -768,8 +776,8 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
           absolutePosition = position
         }
 
-        // Container-into-container parent/child detection (skip for containers)
-        if (!isContainer) {
+        // Container-into-container parent/child detection (skip for containers, unless they can be grouped)
+        if (!isContainer || isGroupableContainer) {
           // Find container at position, passing node type for filtering
           const containerId = findContainerAtPosition(state.nodes, absolutePosition, nodeId, node.type)
 
@@ -784,27 +792,23 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
             state.dragState.hoverContainerId = containerId
             state.dragState.exitingContainerId = prevHoverId && prevHoverId !== containerId ? prevHoverId : null
           }
+        } else {
+          // Non-groupable container — skip parent/child detection
         }
 
         // Check for dock targets (for ALL dockable node types, including containers)
         const nodeType = node.type || ''
         if (DOCKABLE_NODE_TYPES.includes(nodeType as WorkflowNodeType)) {
-          console.log('[onNodeDrag] Dragging dockable node:', nodeType, 'ID:', nodeId)
-          console.log('[Docking Check] Looking for dock target for', nodeType, 'at absolute position:', absolutePosition)
           const dockTarget = findDockTargetAtPosition(state.nodes, absolutePosition, nodeType, DEFAULT_SNAP_THRESHOLD)
 
           if (dockTarget) {
-            console.log('[Docking] ✅ Found dock target:', dockTarget, 'at position:', absolutePosition)
             state.dockingState = {
               draggingNodeId: nodeId,
               hoveredDockTarget: dockTarget,
               snapThreshold: DEFAULT_SNAP_THRESHOLD,
             }
           } else {
-            console.log('[Docking] ❌ No dock target found at position:', absolutePosition)
             if (state.dockingState?.draggingNodeId === nodeId) {
-              // Clear docking state if we moved away from dock target
-              console.log('[Docking] Clearing docking state')
               state.dockingState = null
             }
           }
@@ -950,8 +954,11 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         // Clear docking state
         state.dockingState = null
 
-        // Skip if this node IS a container
-        if (CONTAINER_TYPES.includes(rfNode.type || '')) {
+        // Skip if this node is a group container (can't nest groups)
+        // Other container types (loop, parallel, chat-agent, etc.) are allowed through
+        // so they can be dropped into group nodes — findContainerAtPosition + canNodeBeDroppedIntoContainer
+        // will correctly filter which targets accept them
+        if (rfNode.type === 'node-group') {
           return
         }
 
@@ -1222,9 +1229,8 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
             const savedWidth = currentNode?.width
             const savedHeight = currentNode?.height
 
-            // Collapsed dimensions for container nodes
+            // Collapsed width for container nodes (height is auto-determined by content)
             const COLLAPSED_WIDTH = 180
-            const COLLAPSED_HEIGHT = 120 // Approximate height for collapsed view with metadata
 
             // Update ALL nodes - container gets new data, children get hidden state
             // Creating new objects for all affected nodes to trigger React Flow re-render
@@ -1246,18 +1252,25 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
                 }
 
                 if (isCollapsed) {
-                  // Set to collapsed size
+                  // Set collapsed width; delete height so the node auto-sizes
+                  // from its content. ContainerNode's useEffect will
+                  // DOM-measure the actual height and set `measured` via RAF.
                   newNode.width = COLLAPSED_WIDTH
-                  newNode.height = COLLAPSED_HEIGHT
+                  delete newNode.height
                 } else {
                   // Restore to saved dimensions or remove to let node auto-size
                   const savedW = (node.data as Record<string, unknown>)?._savedWidth as number | undefined
                   const savedH = (node.data as Record<string, unknown>)?._savedHeight as number | undefined
-                  if (savedW) newNode.width = savedW
-                  else delete newNode.width
+                  if (savedW) {
+                    newNode.width = savedW
+                  } else {
+                    delete newNode.width
+                  }
                   if (savedH) newNode.height = savedH
                   else delete newNode.height
                 }
+                // Always delete measured so React Flow re-measures from DOM
+                delete (newNode as Record<string, unknown>).measured
 
                 return newNode
               }
@@ -1534,8 +1547,9 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
     // Add a node from a saved template. If onEdgeId is provided, insert on that edge
     // (remove original edge, wire source -> template root -> target) in a single atomic operation.
     addNodeFromTemplate: (templateData, position, onEdgeId?) => {
-      // Support both nested (node: {}) and legacy flat structure
-      const nodeInfo = (templateData.node || templateData) as Record<string, unknown>
+      // Read node info from the type-specific 'node-template' section
+      const ntSection = templateData['node-template'] as Record<string, unknown> | undefined
+      const nodeInfo = ntSection?.node as Record<string, unknown> | undefined
       if (!nodeInfo?.nodeType) return null
 
       // If inserting on an edge, resolve midpoint and validate
@@ -1862,6 +1876,106 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
 
         state.isDirty = true
       })
+    },
+
+    groupNodes: (nodeIds) => {
+      if (nodeIds.length < 2) return null
+      get().pushHistory()
+
+      const state = get()
+      // Only group top-level nodes (skip nodes already inside a container)
+      const nodesToGroup = state.nodes.filter(
+        n => nodeIds.includes(n.id) && !n.parentId
+      )
+      if (nodesToGroup.length < 2) return null
+
+      // Compute bounding box of selected nodes
+      const PADDING = 40
+      const HEADER_HEIGHT = 60
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      for (const node of nodesToGroup) {
+        const w = (node.width as number) || 200
+        const h = (node.height as number) || 60
+        if (node.position.x < minX) minX = node.position.x
+        if (node.position.y < minY) minY = node.position.y
+        if (node.position.x + w > maxX) maxX = node.position.x + w
+        if (node.position.y + h > maxY) maxY = node.position.y + h
+      }
+
+      const groupX = minX - PADDING
+      const groupY = minY - HEADER_HEIGHT - PADDING
+      const groupWidth = (maxX - minX) + PADDING * 2
+      const groupHeight = (maxY - minY) + HEADER_HEIGHT + PADDING * 2
+
+      // Create group node
+      const groupNode = createWorkflowNode('node-group', { x: groupX, y: groupY })
+      const groupId = groupNode.id
+
+      set(state => {
+        // Add group to workflow file
+        groupNode.width = groupWidth
+        groupNode.height = groupHeight
+        if (state.workflowFile) {
+          state.workflowFile.nodes.push(groupNode)
+        }
+
+        // Add group to React Flow nodes (before children)
+        const rfGroupNode: WorkflowCanvasNode = {
+          id: groupId,
+          type: 'node-group',
+          position: { x: groupX, y: groupY },
+          data: groupNode.data,
+          width: groupWidth,
+          height: groupHeight,
+        }
+        state.nodes.push(rfGroupNode)
+
+        // Re-parent each selected node into the group
+        const childIds = nodesToGroup.map(n => n.id)
+        state.nodes = state.nodes.map(node => {
+          if (childIds.includes(node.id)) {
+            const relativePosition = {
+              x: node.position.x - groupX,
+              y: node.position.y - groupY,
+            }
+            return {
+              ...node,
+              parentId: groupId,
+              extent: 'parent' as const,
+              position: relativePosition,
+            }
+          }
+          return node
+        })
+
+        // Ensure parent appears before children in the array
+        const children = state.nodes.filter(n => childIds.includes(n.id))
+        const others = state.nodes.filter(n => !childIds.includes(n.id))
+        // Re-build: everything before group (inclusive), then children, then rest
+        const groupInOthers = others.findIndex(n => n.id === groupId)
+        const before = others.slice(0, groupInOthers + 1)
+        const after = others.slice(groupInOthers + 1)
+        state.nodes = [...before, ...children, ...after]
+
+        // Update workflow file nodes with parent info
+        if (state.workflowFile) {
+          for (const childId of childIds) {
+            const fileNode = state.workflowFile.nodes.find(n => n.id === childId)
+            if (fileNode) {
+              fileNode.parentId = groupId
+              const rfNode = state.nodes.find(n => n.id === childId)
+              if (rfNode) {
+                fileNode.position = { ...rfNode.position }
+              }
+            }
+          }
+        }
+
+        state.isDirty = true
+        state.selectedNodeId = groupId
+      })
+
+      return groupId
     },
 
     // =========================================================================
@@ -2491,6 +2605,15 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         state.checkpoints = []
         state.promptsSent = []
         state.executionState = null
+      })
+    },
+
+    addToExecutionHistory: (entry) => {
+      set(state => {
+        state.executionHistory.unshift(entry)
+        if (state.executionHistory.length > 50) {
+          state.executionHistory = state.executionHistory.slice(0, 50)
+        }
       })
     },
 

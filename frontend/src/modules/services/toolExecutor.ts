@@ -594,31 +594,17 @@ NEVER put markdown headers (# Title) BETWEEN the opening --- and closing ---. Th
       const result = await api.rename(fullOldPath, fullNewPath)
 
       if (result.success) {
-        // Update any open tabs that reference the old file path
-        const store = useEditorStore.getState()
-        const tabs = store.tabs
         const normalizedOld = fullOldPath.replace(/\\/g, '/')
+        const normalizedNew = fullNewPath.replace(/\\/g, '/')
+        const newFileName = normalizedNew.split('/').pop() || newPath
 
-        for (const tab of tabs) {
-          if (!tab.filePath) continue
-          const tabPath = tab.filePath.replace(/\\/g, '/')
-
-          const matches =
-            tabPath === normalizedOld ||
-            tabPath.endsWith('/' + oldPath.replace(/\\/g, '/')) ||
-            normalizedOld.endsWith('/' + tabPath) ||
-            (this.workspacePath && tabPath === `${this.workspacePath.replace(/\\/g, '/')}/${oldPath.replace(/\\/g, '/')}`)
-
-          if (matches) {
-            // Extract new filename for tab name
-            const newFileName = newPath.replace(/\\/g, '/').split('/').pop() || newPath
-            console.log(`[ToolExecutor] Renaming tab: ${tab.name} -> ${newFileName}`)
-            store.updateTab(tab.id, {
-              name: newFileName,
-              filePath: fullNewPath
-            })
-          }
-        }
+        // Dispatch rename event so App.tsx handler can update tab name,
+        // filePath, and pseudo-handle in one place (same pattern as codeActions.ts).
+        // The event must fire BEFORE any direct tab updates so the handler
+        // can still find the tab by its old name.
+        window.dispatchEvent(new CustomEvent('prompd-file-renamed', {
+          detail: { oldPath: normalizedOld, newPath: normalizedNew, newFileName }
+        }))
 
         return {
           success: true,

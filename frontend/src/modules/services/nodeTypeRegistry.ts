@@ -25,6 +25,7 @@ import {
   ShieldCheck, Wrench, Terminal, Search, FileCode, Globe, Plug,
   ScanSearch, Route, GitBranch, Repeat, GitFork, Combine,
   Wand2, Database, TableProperties, UserCircle, Eye, AlertTriangle, Workflow,
+  Group, Sparkles,
 } from 'lucide-react'
 import type { WorkflowNodeType } from './workflowTypes'
 
@@ -45,6 +46,7 @@ export interface NodeTypeCategory {
   key: string
   label: string
   paletteLabel: string  // May differ from context menu label
+  description: string   // Brief help text shown on hover in palette
   types: WorkflowNodeType[]
 }
 
@@ -118,6 +120,10 @@ export const NODE_TYPE_REGISTRY: Record<WorkflowNodeType, NodeTypeEntry> = {
     type: 'database-query', label: 'DB Query', description: 'Query a database connection',
     icon: TableProperties, color: 'var(--node-teal)', colorVar: 'teal',
   },
+  'skill': {
+    type: 'skill', label: 'Skill', description: 'Execute an installed skill package',
+    icon: Sparkles, color: 'var(--node-violet)', colorVar: 'violet',
+  },
   // --- Add new tool/execution node types here ---
 
   // Tool Routing
@@ -181,6 +187,10 @@ export const NODE_TYPE_REGISTRY: Record<WorkflowNodeType, NodeTypeEntry> = {
     type: 'workflow', label: 'Sub-Workflow', description: 'Invoke another .pdflow',
     icon: Workflow, color: 'var(--node-green)', colorVar: 'teal',
   },
+  'node-group': {
+    type: 'node-group', label: 'Group', description: 'Visual grouping for template export',
+    icon: Group, color: 'var(--node-slate)', colorVar: 'slate',
+  },
 }
 
 // ============================================================================
@@ -192,49 +202,57 @@ export const NODE_TYPE_CATEGORIES: NodeTypeCategory[] = [
     key: 'entry-exit',
     label: 'Core',
     paletteLabel: 'Entry & Exit',
+    description: 'Start or end your workflow. Every workflow needs a Trigger to begin.',
     types: ['trigger', 'output'],
   },
   {
     key: 'ai-prompts',
     label: 'AI & Agents',
     paletteLabel: 'AI & Prompts',
+    description: 'AI agents, prompts, and validation guardrails.',
     types: ['prompt', 'provider', 'agent', 'chat-agent', 'claude-code', 'guardrail'],
   },
   {
     key: 'tools-execution',
     label: 'Tools & Execution',
     paletteLabel: 'Tools & Execution',
-    types: ['tool', 'command', 'web-search', 'code', 'api', 'mcp-tool', 'database-query'],
+    description: 'Execute commands, code, APIs, and external tools.',
+    types: ['tool', 'command', 'web-search', 'code', 'api', 'mcp-tool', 'database-query', 'skill'],
   },
   {
     key: 'tool-routing',
     label: 'Tool Routing',
     paletteLabel: 'Tool Routing',
+    description: 'Route and parse tool calls between AI agents and tools.',
     types: ['tool-call-parser', 'tool-call-router'],
   },
   {
     key: 'control-flow',
     label: 'Control Flow',
     paletteLabel: 'Control Flow',
+    description: 'Conditions, loops, and parallel execution.',
     types: ['condition', 'loop', 'parallel', 'merge'],
   },
   {
     key: 'data',
     label: 'Data & Transform',
     paletteLabel: 'Data',
+    description: 'Transform data with templates and store state in memory.',
     types: ['transformer', 'memory'],
   },
   {
     key: 'interaction',
     label: 'Interaction',
     paletteLabel: 'Interaction & Debug',
+    description: 'Pause for user input, log checkpoints, or handle errors.',
     types: ['user-input', 'callback', 'error-handler'],
   },
   {
     key: 'composition',
     label: 'Composition',
     paletteLabel: 'Composition',
-    types: ['workflow'],
+    description: 'Build complex workflows from sub-workflows and grouped nodes.',
+    types: ['workflow', 'node-group'],
   },
 ]
 

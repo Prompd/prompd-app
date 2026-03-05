@@ -14,7 +14,7 @@ import {
 } from '@prompd/react'
 import { LLMClientRouter } from '../services/llmClientRouter'
 import { CompactingLLMClient, SlidingWindowCompactor } from '@prompd/react'
-import { resolveContextWindowSize, formatContextWindow } from '../services/contextWindowResolver'
+import { resolveEffectiveContextWindow, formatContextWindow } from '../services/contextWindowResolver'
 
 /** Module-level singleton — SlidingWindowCompactor is stateless */
 const slidingWindowCompactor = new SlidingWindowCompactor()
@@ -23,7 +23,8 @@ import { PrompdEditorIntegration } from '../integrations/PrompdEditorIntegration
 import { registryApi } from '../services/registryApi'
 import { conversationStorage, type Conversation, type ConversationMessage, type AgentPermissionLevel } from '../services/conversationStorage'
 import { ConversationSidebar } from '../components/ConversationSidebar'
-import { MessageSquare, ExternalLink, Plus, MoreVertical, ChevronDown, Loader2, Zap, ShieldCheck, ClipboardList, MessageCircle, Undo2, Redo2, Play } from 'lucide-react'
+import { MessageSquare, ExternalLink, Plus, MoreVertical, ChevronDown, Loader2, Zap, ShieldCheck, ClipboardList, Undo2, Redo2, Play, Brain } from 'lucide-react'
+import { AskUserPanel } from '../components/AskUserPanel'
 import { SidebarPanelHeader } from '../components/SidebarPanelHeader'
 import { PrompdIcon } from '../components/PrompdIcon'
 import { fetchChatModes, chatModesToArray, type ChatModeConfig } from '../services/chatModesApi'
@@ -130,12 +131,13 @@ export default function AiChatPanel({
   const { trackUsage } = usePrompdUsage()
 
   // Centralized LLM provider state
-  const { llmProvider, setLLMProvider, setLLMModel, initializeLLMProviders } = useUIStore(
+  const { llmProvider, setLLMProvider, setLLMModel, initializeLLMProviders, setLLMGenerationMode } = useUIStore(
     useShallow(state => ({
       llmProvider: state.llmProvider,
       setLLMProvider: state.setLLMProvider,
       setLLMModel: state.setLLMModel,
-      initializeLLMProviders: state.initializeLLMProviders
+      initializeLLMProviders: state.initializeLLMProviders,
+      setLLMGenerationMode: state.setLLMGenerationMode
     }))
   )
 
@@ -204,6 +206,7 @@ export default function AiChatPanel({
 
   const [showConversationSidebar, setShowConversationSidebar] = useState(false)
   const [conversationList, setConversationList] = useState<typeof conversationStorage extends { list: () => infer R } ? R : never>([])
+  const moreMenuRef = useRef<HTMLDivElement>(null)
 
   // Register stop function for menu integration (Shift+F5)
   useEffect(() => {
@@ -660,14 +663,16 @@ export default function AiChatPanel({
       }
     })
 
-    // Build context messages for current file using shared utility
-    let contextMessages: Array<{ role: 'system'; content: string }> = []
+    // Build a getter that returns fresh context on every call.
+    // Ensures the LLM always sees the latest file content, even after
+    // tool calls modify files mid-conversation.
+    const getContextMessages = (): Array<{ role: 'system'; content: string }> => {
+      const currentFile = getText()
+      const fileName = getActiveTabName()
 
-    const currentFile = getText()
-    const fileName = getActiveTabName()
+      if (!currentFile || typeof currentFile !== 'string') return []
 
-    if (currentFile && typeof currentFile === 'string') {
-      contextMessages = buildFileContextMessages({
+      return buildFileContextMessages({
         fileName,
         content: currentFile,
         cursorPosition: cursorPositionRef.current
@@ -675,7 +680,9 @@ export default function AiChatPanel({
     }
 
     // Wrap base client with context compaction (decorator pattern)
-    const contextWindowSize = resolveContextWindowSize(
+    // Use effective (capped) context window so compaction triggers at a practical
+    // conversation length even for models with 1M+ token windows.
+    const effectiveCtxWindow = resolveEffectiveContextWindow(
       llmProvider.provider,
       llmProvider.model,
       llmProvider.providersWithPricing
@@ -683,20 +690,24 @@ export default function AiChatPanel({
     const compactingClient = new CompactingLLMClient(
       baseClient,
       slidingWindowCompactor,
-      contextWindowSize
+      effectiveCtxWindow
     )
 
     // Use the shared agent LLM client wrapper (agent wrapper calls compactingClient.send())
-    return agentActions.createAgentLLMClient(compactingClient, chatRef, contextMessages)
+    return agentActions.createAgentLLMClient(compactingClient, chatRef, getContextMessages)
   // Include activeTabId to trigger rebuild when active tab changes
   }, [llmProvider.provider, llmProvider.model, getToken, getText, getActiveTabName, agentActions, activeTabId])
 
-  // Context utilization for status bar display
+  // Context utilization for status bar display (uses effective/capped context window)
   const contextUtilization = useMemo(() => {
-    if (agentState.lastPromptTokens <= 0) return null
-    const ctxWindow = resolveContextWindowSize(llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing)
-    return { pct: Math.round((agentState.lastPromptTokens / ctxWindow) * 100), formatted: formatContextWindow(ctxWindow) }
-  }, [agentState.lastPromptTokens, llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing])
+    const totalIn = agentState.tokenUsage.promptTokens
+    if (totalIn <= 0) return null
+    const ctxWindow = resolveEffectiveContextWindow(llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing)
+    return {
+      pct: Math.round((totalIn / ctxWindow) * 100),
+      formatted: formatContextWindow(ctxWindow)
+    }
+  }, [agentState.tokenUsage.promptTokens, llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing])
 
   // Custom empty state content - unified agent mode
   const emptyStateContent = useMemo(() => {
@@ -805,6 +816,7 @@ export default function AiChatPanel({
         onExportConversation={handleExportConversation}
         isOpen={showConversationSidebar}
         onClose={() => setShowConversationSidebar(false)}
+        anchorRef={moreMenuRef}
       />
 
       {/* Plan Approval Dialog */}
@@ -888,7 +900,7 @@ export default function AiChatPanel({
         </button>
 
         {/* 3-dot Menu */}
-        <div style={{ position: 'relative' }}>
+        <div ref={moreMenuRef} style={{ position: 'relative' }}>
           <button
             onClick={() => setShowMoreMenu(!showMoreMenu)}
             title="More options"
@@ -1178,6 +1190,7 @@ export default function AiChatPanel({
             inputValue={chatInputValue}
             onInputChange={setChatInputValue}
             inputTheme={permissionLevel}
+            generationMode={llmProvider.generationMode}
             waitingForUserInput={!!agentState.pendingAskUser}
             onStop={() => agentActions.stop()}
             onBeforeSubmit={async (inputValue) => {
@@ -1330,6 +1343,50 @@ export default function AiChatPanel({
                 >
                   <Redo2 size={14} />
                 </button>
+                {/* Thinking mode toggle - only shown when current model supports thinking */}
+                {(() => {
+                  const currentProvider = llmProvider.providersWithPricing?.find(p => p.providerId === llmProvider.provider)
+                  const currentModel = currentProvider?.models.find(m => m.model === llmProvider.model)
+                  return currentModel?.supportsThinking === true
+                })() && (
+                  <button
+                    type="button"
+                    onClick={() => setLLMGenerationMode(
+                      llmProvider.generationMode === 'thinking' ? 'default' : 'thinking'
+                    )}
+                    title={llmProvider.generationMode === 'thinking'
+                      ? 'Disable extended thinking'
+                      : 'Extended thinking (Anthropic)'}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '6px 8px',
+                      background: llmProvider.generationMode === 'thinking'
+                        ? 'rgba(245, 158, 11, 0.12)' : 'transparent',
+                      border: llmProvider.generationMode === 'thinking'
+                        ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid var(--border)',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      color: llmProvider.generationMode === 'thinking'
+                        ? '#f59e0b' : 'var(--text-muted)',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (llmProvider.generationMode !== 'thinking') {
+                        e.currentTarget.style.background = 'var(--hover)'
+                        e.currentTarget.style.color = '#f59e0b'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (llmProvider.generationMode !== 'thinking') {
+                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.color = 'var(--text-muted)'
+                      }
+                    }}
+                  >
+                    <Brain size={14} />
+                  </button>
+                )}
                 <button
                   type="button"
                   className={permissionLevel === 'plan' && agentState.isAgentLoopActive ? 'plan-executing' : ''}
@@ -1466,162 +1523,23 @@ export default function AiChatPanel({
               </div>
             }
             aboveInput={agentState.pendingAskUser ? (
-              <div style={{
-                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%)',
-                borderTop: '2px solid rgba(168, 85, 247, 0.5)',
-                padding: '16px 20px'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '16px',
-                  maxWidth: '600px',
-                  margin: '0 auto'
-                }}>
-                  {/* Icon */}
-                  <div style={{
-                    width: '44px',
-                    height: '44px',
-                    borderRadius: '12px',
-                    background: 'rgba(168, 85, 247, 0.2)',
-                    border: '1px solid rgba(168, 85, 247, 0.4)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    <MessageCircle size={22} style={{ color: '#a855f7' }} />
-                  </div>
-                  {/* Content */}
-                  <div style={{ flex: 1 }}>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      marginBottom: '8px'
-                    }}>
-                      <span style={{
-                        color: '#a855f7',
-                        fontWeight: 700,
-                        fontSize: '14px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>
-                        Agent needs your input
-                      </span>
-                      <span style={{
-                        background: 'rgba(168, 85, 247, 0.3)',
-                        color: '#c4b5fd',
-                        fontSize: '10px',
-                        padding: '2px 8px',
-                        borderRadius: '10px',
-                        fontWeight: 600
-                      }}>
-                        WAITING
-                      </span>
-                    </div>
-                    <div style={{
-                      color: 'var(--prompd-text)',
-                      fontSize: '15px',
-                      lineHeight: 1.6,
-                      fontWeight: 500
-                    }}>
-                      {agentState.pendingAskUser.question}
-                    </div>
-                    {/* Option buttons when ask_user provides options */}
-                    {agentState.pendingAskUser.options && agentState.pendingAskUser.options.length > 0 && (
-                      <div style={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: '8px',
-                        marginTop: '12px'
-                      }}>
-                        {agentState.pendingAskUser.options.map((opt, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => {
-                              if (chatRef.current) {
-                                chatRef.current.addMessage({
-                                  id: `user-response-${Date.now()}`,
-                                  role: 'user',
-                                  content: opt.label,
-                                  timestamp: new Date().toISOString()
-                                })
-                              }
-                              agentState.pendingAskUser?.resolve(opt.label)
-                              setChatInputValue('')
-                            }}
-                            style={{
-                              padding: opt.description ? '10px 16px' : '8px 16px',
-                              background: 'rgba(168, 85, 247, 0.1)',
-                              border: '1px solid rgba(168, 85, 247, 0.3)',
-                              borderRadius: '8px',
-                              cursor: 'pointer',
-                              textAlign: 'left',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '2px',
-                              transition: 'all 0.15s'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = 'rgba(168, 85, 247, 0.2)'
-                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.5)'
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = 'rgba(168, 85, 247, 0.1)'
-                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.3)'
-                            }}
-                          >
-                            <span style={{ color: '#a855f7', fontWeight: 600, fontSize: '14px' }}>{opt.label}</span>
-                            {opt.description && (
-                              <span style={{ color: 'var(--prompd-muted)', fontSize: '12px' }}>{opt.description}</span>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <div style={{
-                      fontSize: '12px',
-                      color: 'var(--prompd-muted)',
-                      marginTop: '10px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{
-                          background: 'var(--prompd-panel)',
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          fontFamily: 'monospace',
-                          fontSize: '11px'
-                        }}>Enter</span>
-                        {agentState.pendingAskUser.options && agentState.pendingAskUser.options.length > 0
-                          ? 'Or type a custom answer below'
-                          : 'Type your answer below and press Enter to continue'
-                        }
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => agentActions.cancelAskUser()}
-                        style={{
-                          padding: '4px 12px',
-                          background: 'rgba(239, 68, 68, 0.2)',
-                          border: '1px solid rgba(239, 68, 68, 0.4)',
-                          borderRadius: '6px',
-                          color: '#f87171',
-                          fontSize: '12px',
-                          fontWeight: 500,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <AskUserPanel
+                question={agentState.pendingAskUser.question}
+                options={agentState.pendingAskUser.options}
+                onSelect={(label) => {
+                  if (chatRef.current) {
+                    chatRef.current.addMessage({
+                      id: `user-response-${Date.now()}`,
+                      role: 'user',
+                      content: label,
+                      timestamp: new Date().toISOString()
+                    })
+                  }
+                  agentState.pendingAskUser?.resolve(label)
+                  setChatInputValue('')
+                }}
+                onCancel={() => agentActions.cancelAskUser()}
+              />
             ) : undefined}
             onMessage={(message) => {
               console.log('[AiChatPanel] PrompdChat message received:', message.role, message.content?.slice(0, 100))
@@ -1816,21 +1734,21 @@ export default function AiChatPanel({
         <div style={{
           padding: '3px 12px',
           fontSize: '11px',
-          color: theme === 'dark' ? 'var(--text-muted, #6b7280)' : 'rgba(0,0,0,0.4)',
+          color: theme === 'dark' ? 'var(--text-secondary, #9ca3af)' : 'rgba(0,0,0,0.55)',
           borderTop: `1px solid ${theme === 'dark' ? 'var(--border, #2d2d3d)' : '#e2e8f0'}`,
           display: 'flex',
           alignItems: 'center',
           gap: '8px',
           flexShrink: 0,
           fontFamily: 'var(--font-mono, monospace)',
-          background: theme === 'dark' ? 'rgba(255,255,255,0.01)' : 'rgba(0,0,0,0.01)'
+          background: theme === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)'
         }}>
           <span>{agentState.tokenUsage.totalTokens.toLocaleString()} tokens</span>
-          <span style={{ opacity: 0.5 }}>
+          <span style={{ opacity: 0.7 }}>
             ({agentState.tokenUsage.promptTokens.toLocaleString()} in / {agentState.tokenUsage.completionTokens.toLocaleString()} out)
           </span>
           {contextUtilization && (
-            <span style={{ opacity: 0.5, marginLeft: 'auto' }}>
+            <span style={{ opacity: 0.7, marginLeft: 'auto' }}>
               Context: {contextUtilization.pct}% of {contextUtilization.formatted}
             </span>
           )}

@@ -1,11 +1,21 @@
-import { CheckCircle, AlertCircle, Loader, Package, FolderOpen, FileWarning, ExternalLink } from 'lucide-react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { CheckCircle, AlertCircle, AlertTriangle, Loader, Package, FolderOpen, FileWarning, ExternalLink, Copy, ClipboardList, FileCode } from 'lucide-react'
 import { useUIStore, selectBuildOutput } from '../../stores/uiStore'
 import { useEditorStore } from '../../stores/editorStore'
 import type { BuildError } from '../../stores/types'
 
+interface ContextMenuState {
+  visible: boolean
+  x: number
+  y: number
+  error: BuildError | null
+  displayFileName: string
+}
+
 interface BuildOutputPanelProps {
   onOpenFile?: (filePath: string, line?: number) => void
   embedded?: boolean // When true, panel is embedded in tabs (parent handles all controls)
+  errorsOnly?: boolean // When true, only show error list (for Errors tab)
 }
 
 /**
@@ -13,7 +23,7 @@ interface BuildOutputPanelProps {
  * Features clickable error links that navigate to file/line
  * When embedded=true, parent BottomPanelTabs handles all controls/visibility
  */
-export function BuildOutputPanel({ onOpenFile, embedded = false }: BuildOutputPanelProps) {
+export function BuildOutputPanel({ onOpenFile, embedded = false, errorsOnly = false }: BuildOutputPanelProps) {
   const buildOutput = useUIStore(selectBuildOutput)
 
   // Editor store for opening files and jumping to lines
@@ -22,6 +32,56 @@ export function BuildOutputPanel({ onOpenFile, embedded = false }: BuildOutputPa
   const tabs = useEditorStore(state => state.tabs)
   const activeTabId = useEditorStore(state => state.activeTabId)
   const updateTab = useEditorStore(state => state.updateTab)
+
+  // Severity filter toggles (for errorsOnly mode)
+  const [showErrors, setShowErrors] = useState(true)
+  const [showWarnings, setShowWarnings] = useState(true)
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    visible: false, x: 0, y: 0, error: null, displayFileName: ''
+  })
+  const contextMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close context menu on click outside or Escape
+  useEffect(() => {
+    if (!contextMenu.visible) return
+    const handleClose = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(prev => ({ ...prev, visible: false }))
+      }
+    }
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(prev => ({ ...prev, visible: false }))
+    }
+    document.addEventListener('mousedown', handleClose)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClose)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [contextMenu.visible])
+
+  const handleErrorContextMenu = useCallback((e: React.MouseEvent, error: BuildError, displayFileName: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ visible: true, x: e.clientX, y: e.clientY, error, displayFileName })
+  }, [])
+
+  const copyToClipboard = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      // Fallback for clipboard access issues
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+    setContextMenu(prev => ({ ...prev, visible: false }))
+  }, [])
 
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`
@@ -142,10 +202,47 @@ export function BuildOutputPanel({ onOpenFile, embedded = false }: BuildOutputPa
     }
   }
 
+  // Compute severity counts for the filter bar
+  const allErrors = buildOutput.errors || []
+  const errorCount = allErrors.filter(e => !e.severity || e.severity === 'error').length
+  const warningCount = allErrors.filter(e => e.severity === 'warning').length
+  const infoCount = allErrors.filter(e => e.severity === 'info' || e.severity === 'hint').length
+
+  // Filter errors based on toggles (only when errorsOnly mode)
+  const filteredErrors = errorsOnly ? allErrors.filter(e => {
+    const sev = e.severity || 'error'
+    if (sev === 'error') return showErrors
+    if (sev === 'warning') return showWarnings
+    // info/hint always shown when warnings are shown
+    return showWarnings
+  }) : allErrors
+
   return (
     <div className="build-output-content" style={{ height: embedded ? '100%' : 'auto' }}>
+          {/* Severity filter toggles (errorsOnly mode) */}
+          {errorsOnly && (errorCount > 0 || warningCount > 0) && (
+            <div className="build-output-filter-bar">
+              <button
+                className={`build-output-filter-btn ${showErrors ? 'active' : ''}`}
+                onClick={() => setShowErrors(!showErrors)}
+                title={showErrors ? 'Hide errors' : 'Show errors'}
+              >
+                <AlertCircle size={12} />
+                <span>{errorCount}</span>
+              </button>
+              <button
+                className={`build-output-filter-btn warning ${showWarnings ? 'active' : ''}`}
+                onClick={() => setShowWarnings(!showWarnings)}
+                title={showWarnings ? 'Hide warnings' : 'Show warnings'}
+              >
+                <AlertTriangle size={12} />
+                <span>{warningCount + infoCount}</span>
+              </button>
+            </div>
+          )}
+
           {/* Building status */}
-          {buildOutput.status === 'building' && (
+          {!errorsOnly && buildOutput.status === 'building' && (
             <div className="build-output-status-message">
               <Loader size={16} className="animate-spin" />
               <span>{buildOutput.message}</span>
@@ -153,7 +250,7 @@ export function BuildOutputPanel({ onOpenFile, embedded = false }: BuildOutputPa
           )}
 
           {/* Success message */}
-          {buildOutput.status === 'success' && (
+          {!errorsOnly && buildOutput.status === 'success' && (
             <div className="build-output-success-content">
               <div className="build-output-status-message success">
                 <CheckCircle size={16} />
@@ -207,9 +304,9 @@ export function BuildOutputPanel({ onOpenFile, embedded = false }: BuildOutputPa
           {buildOutput.status === 'error' && (
             <div className="build-output-error-content">
               {/* Show structured errors if available */}
-              {buildOutput.errors && buildOutput.errors.length > 0 ? (
+              {filteredErrors.length > 0 ? (
                 <div className="build-output-error-list">
-                  {buildOutput.errors.map((error, index) => {
+                  {filteredErrors.map((error, index) => {
                     // Extract filename from path (handles both Unix and Windows paths)
                     const errorFileName = error.file ? (error.file.split(/[/\\]/).pop() || error.file) : 'Unknown'
 
@@ -238,9 +335,13 @@ export function BuildOutputPanel({ onOpenFile, embedded = false }: BuildOutputPa
                         key={index}
                         className="build-output-error-item"
                         onClick={() => handleErrorClick(error)}
-                        title={`Click to open ${displayFileName}${error.line ? `:${error.line}` : ''}`}
+                        onContextMenu={(e) => handleErrorContextMenu(e, error, displayFileName)}
+                        title={`Click to open ${displayFileName}${error.line ? `:${error.line}` : ''} | Right-click for copy options`}
                       >
-                        <FileWarning size={14} className="error-icon" />
+                        {error.severity === 'warning' || error.severity === 'info' || error.severity === 'hint'
+                          ? <AlertTriangle size={14} className="warning-icon" />
+                          : <FileWarning size={14} className="error-icon" />
+                        }
                         <span className="error-file">
                           {displayFileName}
                           {error.line && <span className="error-location">:{error.line}</span>}
@@ -270,10 +371,76 @@ export function BuildOutputPanel({ onOpenFile, embedded = false }: BuildOutputPa
             </div>
           )}
 
+          {/* Errors-only empty state */}
+          {errorsOnly && buildOutput.status !== 'error' && (
+            <div className="build-output-status-message success" style={{ padding: '12px 16px', opacity: 0.7 }}>
+              <CheckCircle size={14} />
+              <span>No errors</span>
+            </div>
+          )}
+
           {/* Timestamp footer */}
-      {buildOutput.timestamp && (
+      {!errorsOnly && buildOutput.timestamp && (
         <div className="build-output-footer">
           <span className="build-output-timestamp">{formatTime(buildOutput.timestamp)}</span>
+        </div>
+      )}
+
+      {/* Context menu for error items */}
+      {contextMenu.visible && contextMenu.error && (
+        <div
+          ref={contextMenuRef}
+          className="error-context-menu"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button
+            className="error-context-menu-item"
+            onClick={() => copyToClipboard(contextMenu.error!.message)}
+          >
+            <Copy size={14} />
+            <span>Copy Message</span>
+          </button>
+          <button
+            className="error-context-menu-item"
+            onClick={() => {
+              const err = contextMenu.error!
+              const location = err.line ? `${contextMenu.displayFileName}:${err.line}${err.column ? `:${err.column}` : ''}` : contextMenu.displayFileName
+              copyToClipboard(`${location} - ${err.message}`)
+            }}
+          >
+            <ClipboardList size={14} />
+            <span>Copy Details</span>
+          </button>
+          <button
+            className="error-context-menu-item"
+            onClick={() => {
+              const err = contextMenu.error!
+              const location = err.line ? `${err.file}:${err.line}` : err.file
+              copyToClipboard(location)
+            }}
+          >
+            <FileCode size={14} />
+            <span>Copy File Path</span>
+          </button>
+          {buildOutput.errors && buildOutput.errors.length > 1 && (
+            <>
+              <div className="error-context-menu-separator" />
+              <button
+                className="error-context-menu-item"
+                onClick={() => {
+                  const allErrors = buildOutput.errors!.map(err => {
+                    const fileName = err.file ? (err.file.split(/[/\\]/).pop() || err.file) : 'Unknown'
+                    const location = err.line ? `${fileName}:${err.line}` : fileName
+                    return `${location} - ${err.message}`
+                  }).join('\n')
+                  copyToClipboard(allErrors)
+                }}
+              >
+                <ClipboardList size={14} />
+                <span>Copy All Errors</span>
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

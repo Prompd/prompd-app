@@ -14,7 +14,7 @@ import type {
   TokenUsage,
   ProviderEntry
 } from './types'
-import { electronFetch } from '../electronFetch'
+import { electronFetch, electronStreamFetch } from '../electronFetch'
 
 /**
  * Abstract base class for LLM providers
@@ -65,14 +65,19 @@ export abstract class BaseProvider implements IExecutionProvider {
   protected createSuccessResult(
     response: string,
     usage: TokenUsage,
-    duration: number
+    duration: number,
+    thinking?: string
   ): ExecutionResult {
-    return {
+    const result: ExecutionResult = {
       success: true,
       response,
       usage,
       duration
     }
+    if (thinking) {
+      result.thinking = thinking
+    }
+    return result
   }
 }
 
@@ -92,6 +97,26 @@ export class OpenAICompatibleProvider extends BaseProvider {
     this.name = config.name
     this.displayName = config.displayName
     this.baseUrl = baseUrlOverride || config.baseUrl
+  }
+
+  /**
+   * OpenAI reasoning models (o1, o3, etc.) use `max_completion_tokens`
+   * instead of `max_tokens`. Detect by model name pattern.
+   */
+  private isReasoningModel(model: string): boolean {
+    return /^o\d/.test(model)
+  }
+
+  /**
+   * Set the correct token limit parameter based on model type.
+   * Reasoning models use max_completion_tokens; all others use max_tokens.
+   */
+  private setMaxTokens(body: Record<string, unknown>, model: string, maxTokens: number): void {
+    if (this.name === 'openai' && this.isReasoningModel(model)) {
+      body.max_completion_tokens = maxTokens
+    } else {
+      body.max_tokens = maxTokens
+    }
   }
 
   async execute(request: ExecutionRequest): Promise<ExecutionResult> {
@@ -122,10 +147,15 @@ export class OpenAICompatibleProvider extends BaseProvider {
       }
 
       if (request.maxTokens) {
-        body.max_tokens = request.maxTokens
+        this.setMaxTokens(body, request.model, request.maxTokens)
       }
       if (request.temperature !== undefined) {
         body.temperature = request.temperature
+      }
+
+      // Reasoning models don't support temperature
+      if (this.name === 'openai' && this.isReasoningModel(request.model)) {
+        delete body.temperature
       }
 
       // JSON mode - request structured JSON output
@@ -201,10 +231,15 @@ export class OpenAICompatibleProvider extends BaseProvider {
     }
 
     if (request.maxTokens) {
-      body.max_tokens = request.maxTokens
+      this.setMaxTokens(body, request.model, request.maxTokens)
     }
     if (request.temperature !== undefined) {
       body.temperature = request.temperature
+    }
+
+    // Reasoning models don't support temperature
+    if (this.name === 'openai' && this.isReasoningModel(request.model)) {
+      delete body.temperature
     }
 
     // JSON mode - request structured JSON output
@@ -212,7 +247,7 @@ export class OpenAICompatibleProvider extends BaseProvider {
       body.response_format = { type: 'json_object' }
     }
 
-    const response = await electronFetch(`${this.baseUrl}/chat/completions`, {
+    const response = await electronStreamFetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -367,10 +402,14 @@ export class AnthropicProvider extends BaseProvider {
         { role: 'user', content: request.prompt }
       ]
 
-      // For thinking mode, ensure minimum 1024 tokens for both max_tokens and budget
+      // For thinking mode, max_tokens must be strictly greater than budget_tokens.
+      // We set budget_tokens to the user's maxTokens and max_tokens to budget + 16k for the response.
       const isThinking = request.mode === 'thinking'
-      const maxTokens = isThinking
+      const budgetTokens = isThinking
         ? Math.max(1024, request.maxTokens || 4096)
+        : 0
+      const maxTokens = isThinking
+        ? budgetTokens + 16384
         : (request.maxTokens || 4096)
 
       const body: Record<string, unknown> = {
@@ -386,9 +425,9 @@ export class AnthropicProvider extends BaseProvider {
         body.temperature = request.temperature
       }
 
-      // Extended thinking mode - uses budget_tokens (minimum 1024)
+      // Extended thinking mode - budget_tokens must be < max_tokens
       if (isThinking) {
-        body.thinking = { type: 'enabled', budget_tokens: maxTokens }
+        body.thinking = { type: 'enabled', budget_tokens: budgetTokens }
       }
 
       const response = await electronFetch(`${this.baseUrl}/v1/messages`, {
@@ -414,13 +453,13 @@ export class AnthropicProvider extends BaseProvider {
       // With thinking mode, there may be thinking blocks followed by text blocks
       // Image blocks (from multimodal responses) are converted to markdown syntax
       let content = ''
+      let thinking = ''
       if (data.content && Array.isArray(data.content)) {
         for (const block of data.content) {
           if (block.type === 'text') {
             content += block.text || ''
           } else if (block.type === 'thinking') {
-            // Include thinking content (summarized in Claude 4)
-            content += block.thinking || ''
+            thinking += block.thinking || ''
           } else if (block.type === 'image' && block.source?.data) {
             const mimeType = block.source.media_type || 'image/png'
             content += `\n\n![generated image](data:${mimeType};base64,${block.source.data})\n\n`
@@ -433,7 +472,7 @@ export class AnthropicProvider extends BaseProvider {
         totalTokens: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0)
       }
 
-      return this.createSuccessResult(content, usage, duration)
+      return this.createSuccessResult(content, usage, duration, thinking || undefined)
     } catch (error) {
       const duration = Date.now() - startTime
       const message = error instanceof Error ? error.message : 'Unknown error'
@@ -446,10 +485,13 @@ export class AnthropicProvider extends BaseProvider {
       { role: 'user', content: request.prompt }
     ]
 
-    // For thinking mode, ensure minimum 1024 tokens for both max_tokens and budget
+    // For thinking mode, max_tokens must be strictly greater than budget_tokens.
     const isThinking = request.mode === 'thinking'
-    const maxTokens = isThinking
+    const budgetTokens = isThinking
       ? Math.max(1024, request.maxTokens || 4096)
+      : 0
+    const maxTokens = isThinking
+      ? budgetTokens + 16384
       : (request.maxTokens || 4096)
 
     const body: Record<string, unknown> = {
@@ -466,12 +508,12 @@ export class AnthropicProvider extends BaseProvider {
       body.temperature = request.temperature
     }
 
-    // Extended thinking mode - uses budget_tokens (minimum 1024)
+    // Extended thinking mode - budget_tokens must be < max_tokens
     if (isThinking) {
-      body.thinking = { type: 'enabled', budget_tokens: maxTokens }
+      body.thinking = { type: 'enabled', budget_tokens: budgetTokens }
     }
 
-    const response = await electronFetch(`${this.baseUrl}/v1/messages`, {
+    const response = await electronStreamFetch(`${this.baseUrl}/v1/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -495,6 +537,7 @@ export class AnthropicProvider extends BaseProvider {
     const decoder = new TextDecoder()
     let buffer = ''
     let totalUsage: TokenUsage | undefined
+    let currentBlockType = ''
 
     try {
       while (true) {
@@ -519,12 +562,22 @@ export class AnthropicProvider extends BaseProvider {
                 completionTokens: 0,
                 totalTokens: json.message.usage.input_tokens || 0
               }
+            } else if (json.type === 'content_block_start') {
+              currentBlockType = json.content_block?.type || 'text'
             } else if (json.type === 'content_block_delta') {
-              // Handle both regular text and thinking text deltas
-              const delta = json.delta?.text || json.delta?.thinking || ''
-              if (delta) {
-                yield { content: delta, done: false }
+              if (currentBlockType === 'thinking') {
+                const delta = json.delta?.thinking || ''
+                if (delta) {
+                  yield { content: '', thinking: delta, done: false }
+                }
+              } else {
+                const delta = json.delta?.text || ''
+                if (delta) {
+                  yield { content: delta, done: false }
+                }
               }
+            } else if (json.type === 'content_block_stop') {
+              currentBlockType = ''
             } else if (json.type === 'message_delta' && json.usage) {
               // Update with output tokens (comes at end)
               const outputTokens = json.usage.output_tokens || 0
@@ -671,7 +724,7 @@ export class GoogleGeminiProvider extends BaseProvider {
 
     const url = `${this.baseUrl}/v1beta/models/${request.model}:streamGenerateContent?alt=sse&key=${request.apiKey}`
 
-    const response = await electronFetch(url, {
+    const response = await electronStreamFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -823,7 +876,7 @@ export class CohereProvider extends BaseProvider {
       body.temperature = request.temperature
     }
 
-    const response = await electronFetch(`${this.baseUrl}/v1/chat`, {
+    const response = await electronStreamFetch(`${this.baseUrl}/v1/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

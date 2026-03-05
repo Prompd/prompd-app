@@ -5,7 +5,8 @@ import type * as monacoEditor from 'monaco-editor'
 import { parse as parseYAML } from 'yaml'
 import type { CompilationDiagnostic } from '../../../electron.d'
 import { getRegistrySync } from './registrySync'
-import { analyzeParameterUsage } from './crossReference'
+import { analyzeParameterUsage, extractParameterDefinitions } from './crossReference'
+import type { ParameterDefinition } from './crossReference'
 
 const LANGUAGE_ID = 'prompd'
 
@@ -55,6 +56,201 @@ export function getWorkspacePath(): string | null {
 export function enableCompilerDiagnostics() {
   deferCompilerDiagnostics = false
   console.log('[intellisense] Compiler diagnostics enabled')
+}
+
+/**
+ * Resolve inherited parameter definitions from the parent .prmd file.
+ * Handles three path formats:
+ *   1. Relative paths: ./base.prmd, ../shared/base.prmd
+ *   2. Direct package refs: @namespace/package@version/path/to/file.prmd
+ *   3. Prefix aliases: @core/prompts/base.prmd (resolved via using: section)
+ */
+async function resolveInheritedParameters(
+  yamlContent: string
+): Promise<ParameterDefinition[]> {
+  const electronAPI = (window as unknown as Record<string, unknown>).electronAPI as {
+    isElectron?: boolean
+    readFile?: (path: string) => Promise<{ success: boolean; content?: string; error?: string }>
+    readDir?: (path: string) => Promise<{ success: boolean; files?: { name: string; isDirectory: boolean }[] }>
+    getHomePath?: () => Promise<string>
+  } | undefined
+
+  if (!electronAPI?.readFile) return []
+
+  // Extract inherits: value
+  const inheritsMatch = yamlContent.match(/^\s*inherits:\s*["']?(.+?)["']?\s*$/m)
+  if (!inheritsMatch) return []
+  const inheritsRef = inheritsMatch[1].trim()
+
+  // Build prefix map from using: section
+  const prefixMap = new Map<string, string>()
+  const usingEntries = Array.from(yamlContent.matchAll(
+    /(?:^|\n)\s*-\s*(?:name:\s*["']?(@[\w./@^~*-]+)["']?\s+prefix:\s*["']?(@[\w-]+)["']?|prefix:\s*["']?(@[\w-]+)["']?\s+name:\s*["']?(@[\w./@^~*-]+)["']?)/g
+  ))
+  for (const entry of usingEntries) {
+    const pkg = entry[1] || entry[4]
+    const prefix = entry[2] || entry[3]
+    if (pkg && prefix) {
+      prefixMap.set(prefix, pkg)
+    }
+  }
+
+  let resolvedFilePath: string | null = null
+
+  // 1. Prefix alias reference (e.g., @core/prompts/base.prmd)
+  const prefixMatch = inheritsRef.match(/^(@[\w-]+)\/(.+)$/)
+  if (prefixMatch && prefixMap.has(prefixMatch[1])) {
+    const pkgRef = prefixMap.get(prefixMatch[1])!
+    const subPath = prefixMatch[2]
+    resolvedFilePath = await resolvePackagePath(pkgRef, subPath, electronAPI)
+  }
+  // 2. Direct package reference with version (e.g., @namespace/package@version/path.prmd)
+  else if (inheritsRef.startsWith('@') && !prefixMap.has(inheritsRef.split('/')[0])) {
+    const versionAt = inheritsRef.indexOf('@', 1)
+    if (versionAt > 0) {
+      const packageRef = inheritsRef.substring(0, versionAt)
+      const rest = inheritsRef.substring(versionAt + 1)
+      const slashIdx = rest.indexOf('/')
+      const version = slashIdx >= 0 ? rest.substring(0, slashIdx) : rest
+      const subPath = slashIdx >= 0 ? rest.substring(slashIdx + 1) : ''
+      const fullRef = `${packageRef}@${version}`
+      resolvedFilePath = await resolvePackagePath(fullRef, subPath, electronAPI)
+    } else {
+      // No version specifier: @scope/name/path/to/file.prmd
+      // Parse as @scope/name package with remaining path as subpath
+      const parts = inheritsRef.split('/')
+      if (parts.length >= 3) {
+        const packageName = `${parts[0]}/${parts[1]}` // @scope/name
+        const subPath = parts.slice(2).join('/')
+        resolvedFilePath = await resolvePackagePath(packageName, subPath, electronAPI)
+      }
+    }
+  }
+  // 3. Relative path (e.g., ./base.prmd, ../shared/base.prmd)
+  else if (currentFilePath) {
+    const sep = currentFilePath.includes('\\') ? '\\' : '/'
+    const dir = currentFilePath.substring(0, currentFilePath.lastIndexOf(sep))
+    resolvedFilePath = `${dir}${sep}${inheritsRef.replace(/\//g, sep)}`
+  }
+
+  if (!resolvedFilePath) return []
+
+  // Read the parent file and extract its parameter definitions
+  try {
+    const result = await electronAPI.readFile(resolvedFilePath)
+    if (!result.success || !result.content) return []
+
+    const normalized = result.content.replace(/\r\n/g, '\n')
+    const fmMatch = normalized.match(/^---\n([\s\S]*?)\n---/)
+    if (!fmMatch) return []
+
+    return extractParameterDefinitions(fmMatch[1], normalized)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Resolve a package reference to a file path in the .prompd/cache/ directory.
+ * Checks workspace cache first, then global ~/.prompd/cache/.
+ */
+async function resolvePackagePath(
+  pkgRef: string,
+  subPath: string,
+  electronAPI: {
+    readFile?: (path: string) => Promise<{ success: boolean; content?: string; error?: string }>
+    readDir?: (path: string) => Promise<{ success: boolean; files?: { name: string; isDirectory: boolean }[] }>
+    getHomePath?: () => Promise<string>
+  }
+): Promise<string | null> {
+  // Parse @namespace/name@version
+  const versionAt = pkgRef.lastIndexOf('@')
+  let packageName: string
+  let packageVersion: string
+  if (versionAt > 0 && pkgRef[0] === '@') {
+    packageName = pkgRef.substring(0, versionAt)
+    packageVersion = pkgRef.substring(versionAt + 1)
+  } else {
+    packageName = pkgRef
+    packageVersion = ''
+  }
+
+  const nsSlash = packageName.indexOf('/')
+  if (nsSlash < 0) return null
+  const ns = packageName.substring(1, nsSlash) // strip @
+  const name = packageName.substring(nsSlash + 1)
+
+  // Helper: try to find a file inside a cache base path (e.g., .prompd/cache/@ns/name)
+  const tryResolveInCache = async (cacheBase: string, sep: string): Promise<string | null> => {
+    const pkgDir = [cacheBase, `@${ns}`, name].join(sep)
+
+    if (packageVersion) {
+      // Specific version requested — try directly
+      const filePath = [pkgDir, packageVersion, subPath].join(sep)
+      if (electronAPI.readFile) {
+        const check = await electronAPI.readFile(filePath)
+        if (check.success) return filePath
+      }
+    }
+
+    // No version or version not found — scan for available versions
+    if (electronAPI.readDir) {
+      try {
+        const result = await electronAPI.readDir(pkgDir)
+        if (!result.success || !result.files) return null
+        const versionDirs = result.files
+          .filter(e => e.isDirectory)
+          .map(e => e.name)
+          .sort()
+          .reverse() // latest version first (lexicographic approximation)
+
+        for (const ver of versionDirs) {
+          const filePath = [pkgDir, ver, subPath].join(sep)
+          if (electronAPI.readFile) {
+            const check = await electronAPI.readFile(filePath)
+            if (check.success) return filePath
+          }
+        }
+      } catch {
+        // Directory doesn't exist or can't be read
+      }
+    }
+
+    return null
+  }
+
+  // Try workspace .prompd/cache/ first
+  if (currentWorkspacePath) {
+    const sep = currentWorkspacePath.includes('\\') ? '\\' : '/'
+    const wsCache = [currentWorkspacePath, '.prompd', 'cache'].join(sep)
+    const result = await tryResolveInCache(wsCache, sep)
+    if (result) return result
+
+    // Also try .prompd/packages/ (installed packages directory)
+    const wsPkgs = [currentWorkspacePath, '.prompd', 'packages'].join(sep)
+    const pkgResult = await tryResolveInCache(wsPkgs, sep)
+    if (pkgResult) return pkgResult
+  }
+
+  // Fall back to global ~/.prompd/cache/ and ~/.prompd/packages/
+  try {
+    if (electronAPI.getHomePath) {
+      const homePath = await electronAPI.getHomePath()
+      const sep = homePath.includes('\\') ? '\\' : '/'
+
+      const globalCache = [homePath, '.prompd', 'cache'].join(sep)
+      const result = await tryResolveInCache(globalCache, sep)
+      if (result) return result
+
+      const globalPkgs = [homePath, '.prompd', 'packages'].join(sep)
+      const pkgResult = await tryResolveInCache(globalPkgs, sep)
+      if (pkgResult) return pkgResult
+    }
+  } catch {
+    // Can't resolve home path
+  }
+
+  return null
 }
 
 /**
@@ -518,7 +714,7 @@ function validateJsonSyntax(
     }
 
     markers.push({
-      severity: monaco.MarkerSeverity.Error,
+      severity: monaco.MarkerSeverity.Warning,
       startLineNumber: errorLine,
       startColumn: errorColumn,
       endLineNumber: errorLine,
@@ -1051,7 +1247,8 @@ async function fetchCompilerDiagnostics(content: string): Promise<CompilationDia
 
   try {
     const result = await window.electronAPI.compiler.getDiagnostics(content, {
-      filePath: currentFilePath || undefined
+      filePath: currentFilePath || undefined,
+      workspaceRoot: currentWorkspacePath || undefined
     })
 
     if (result.success && result.diagnostics) {
@@ -1103,6 +1300,9 @@ export async function validateModel(
   // Parse frontmatter (handle both LF and CRLF line endings)
   const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
   console.log('[intellisense] Frontmatter match:', frontmatterMatch ? 'found' : 'not found')
+
+  // Inherited params resolved during validation, shared by both single-brace and cross-ref validators
+  let resolvedInheritedParams: ParameterDefinition[] = []
 
   if (!frontmatterMatch) {
     // Missing frontmatter - only warn for .prmd files
@@ -1180,6 +1380,23 @@ export async function validateModel(
             message: `ID should use kebab-case format (lowercase letters, numbers, hyphens only): '${id}'`
           })
         }
+
+        // Check if id matches the filename (without extension)
+        if (currentFilePath) {
+          const fileName = currentFilePath.replace(/\\/g, '/').split('/').pop() || ''
+          const fileBaseName = fileName.replace(/\.prmd$/i, '')
+          if (fileBaseName && id !== fileBaseName) {
+            markers.push({
+              severity: monaco.MarkerSeverity.Warning,
+              startLineNumber: lineNumber,
+              startColumn: idMatch[0].indexOf(id) + 1,
+              endLineNumber: lineNumber,
+              endColumn: idMatch[0].indexOf(id) + id.length + 1,
+              message: `ID '${id}' does not match filename '${fileBaseName}'.`,
+              code: 'id-filename-mismatch'
+            })
+          }
+        }
       }
 
       // Validate package references (inherits + using)
@@ -1215,6 +1432,19 @@ export async function validateModel(
         }
       }
 
+      // Check if file inherits from another (parent parameters are expected but not visible)
+      const inheritsMatch = yamlContent.match(/^\s*inherits:\s*["']?(.+?)["']?\s*$/m)
+      const hasInherits = !!inheritsMatch
+
+      // Resolve inherited parameters once — shared by both single-brace and cross-ref validators
+      if (hasInherits) {
+        try {
+          resolvedInheritedParams = await resolveInheritedParameters(yamlContent)
+        } catch {
+          // Resolution failed — will be handled gracefully below
+        }
+      }
+
       // Validate undefined parameter references
       const definedParams = new Set<string>()
 
@@ -1222,6 +1452,7 @@ export async function validateModel(
       const lines = yamlContent.split(/\r?\n/)
       let inParametersSection = false
       let parametersIndent = -1
+      let parameterLevelIndent = -1
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]
@@ -1230,12 +1461,14 @@ export async function validateModel(
         if (line.match(/^\s*parameters:\s*$/)) {
           inParametersSection = true
           parametersIndent = line.search(/\S/)
+          parameterLevelIndent = -1
           console.log('[intellisense] Found parameters section at indent', parametersIndent)
           continue
         }
 
         // Check if we've left parameters section (new key at same or lower indent)
-        if (inParametersSection && line.trim() !== '') {
+        // Skip comment lines — they shouldn't trigger section exit
+        if (inParametersSection && line.trim() !== '' && !line.trim().startsWith('#')) {
           const currentIndent = line.search(/\S/)
           if (currentIndent !== -1 && currentIndent <= parametersIndent && !line.match(/^\s*-/)) {
             inParametersSection = false
@@ -1244,28 +1477,43 @@ export async function validateModel(
         }
 
         if (inParametersSection) {
+          // Skip comment lines inside parameters section
+          if (line.trim().startsWith('#')) continue
+
+          const currentIndent = line.search(/\S/)
+
+          // Set parameter level indent on first parameter encountered
+          if (parameterLevelIndent === -1 && currentIndent > parametersIndent && line.trim() !== '') {
+            parameterLevelIndent = currentIndent
+          }
+
           // Array format: "  - name: paramName"
+          // Only match at the parameter level indent to avoid matching nested
+          // "- name:" entries inside complex default values
           const arrayMatch = line.match(/^\s*-\s*name:\s*["']?(\w+)["']?/)
-          if (arrayMatch) {
+          if (arrayMatch && (parameterLevelIndent === -1 || currentIndent === parameterLevelIndent)) {
             console.log('[intellisense] Found array-format param:', arrayMatch[1])
             definedParams.add(arrayMatch[1])
             continue
           }
 
-          // Object format (multiline): "  paramName:" on its own line
-          const objectMultilineMatch = line.match(/^\s+([a-zA-Z_][a-zA-Z0-9_]*):\s*$/)
-          if (objectMultilineMatch) {
-            console.log('[intellisense] Found object-format param:', objectMultilineMatch[1])
-            definedParams.add(objectMultilineMatch[1])
-            continue
-          }
+          // Object format — only match at parameter level indent
+          if (parameterLevelIndent !== -1 && currentIndent === parameterLevelIndent) {
+            // Object format (multiline): "  paramName:" on its own line
+            const objectMultilineMatch = line.match(/^\s+([a-zA-Z_][a-zA-Z0-9_]*):\s*$/)
+            if (objectMultilineMatch) {
+              console.log('[intellisense] Found object-format param:', objectMultilineMatch[1])
+              definedParams.add(objectMultilineMatch[1])
+              continue
+            }
 
-          // Inline object format: "  paramName: { type: string }"
-          const inlineObjectMatch = line.match(/^\s+([a-zA-Z_][a-zA-Z0-9_]*):\s*\{/)
-          if (inlineObjectMatch) {
-            console.log('[intellisense] Found inline-object param:', inlineObjectMatch[1])
-            definedParams.add(inlineObjectMatch[1])
-            continue
+            // Inline object format: "  paramName: { type: string }"
+            const inlineObjectMatch = line.match(/^\s+([a-zA-Z_][a-zA-Z0-9_]*):\s*\{/)
+            if (inlineObjectMatch) {
+              console.log('[intellisense] Found inline-object param:', inlineObjectMatch[1])
+              definedParams.add(inlineObjectMatch[1])
+              continue
+            }
           }
         }
       }
@@ -1273,16 +1521,19 @@ export async function validateModel(
       console.log('[intellisense] Defined params:', Array.from(definedParams))
 
       // Extract loop variables from {% for VAR in COLLECTION %} or {%- for VAR in COLLECTION %} blocks
-      // Also handles [COLLECTION] bracket syntax (e.g., {% for item in [items] %})
-      const forLoopPattern = /\{%-?\s*for\s+(\w+)\s+in\s+\[?\s*(\w+)/g
+      // Also handles tuple unpacking: {% for key, value in dict %} and [COLLECTION] bracket syntax
+      const forLoopPattern = /\{%-?\s*for\s+([\w,\s]+?)\s+in\s+\[?\s*(\w+)/g
       console.log('[intellisense] Searching for loop patterns in content length:', content.length)
       const loopMatchArray = Array.from(content.matchAll(forLoopPattern))
       console.log('[intellisense] Found', loopMatchArray.length, 'for loop matches')
       for (const match of loopMatchArray) {
-        const loopVar = match[1]
+        // Split on comma to handle tuple unpacking (e.g., "service, owner")
+        const vars = match[1].split(',').map(v => v.trim()).filter(Boolean)
         const collectionVar = match[2]
-        console.log('[intellisense] Found loop variable:', loopVar, 'iterating over:', collectionVar, 'at index:', match.index)
-        definedParams.add(loopVar)
+        for (const loopVar of vars) {
+          console.log('[intellisense] Found loop variable:', loopVar, 'iterating over:', collectionVar, 'at index:', match.index)
+          definedParams.add(loopVar)
+        }
         // Also add 'loop' helper variable (Nunjucks built-in)
         definedParams.add('loop')
       }
@@ -1305,13 +1556,37 @@ export async function validateModel(
       definedParams.add('previous_step')    // Alias for previous_output
       definedParams.add('input')            // Alias for previous_output in code/transform nodes
 
-      console.log('[intellisense] After loop/set extraction, definedParams:', Array.from(definedParams))
+      // Add inherited parameters so they're recognized as defined
+      for (const inheritedParam of resolvedInheritedParams) {
+        definedParams.add(inheritedParam.name)
+      }
+
+      console.log('[intellisense] After loop/set/inherited extraction, definedParams:', Array.from(definedParams))
 
       // Check body for parameter references (handle CRLF)
       const bodyMatch = content.match(/---\r?\n[\s\S]*?\r?\n---\r?\n([\s\S]*)$/)
       if (bodyMatch) {
         const body = bodyMatch[1]
         const bodyStartOffset = frontmatterMatch[0].length
+
+        // Build a set of line numbers that are inside fenced code blocks
+        // so we can skip single-brace references inside code blocks (e.g., JSON keys)
+        const codeBlockLines = new Set<number>()
+        const bodyLines = body.split(/\r?\n/)
+        let inCodeBlock = false
+        for (let i = 0; i < bodyLines.length; i++) {
+          if (/^\s*```/.test(bodyLines[i])) {
+            if (inCodeBlock) {
+              codeBlockLines.add(i) // closing fence
+              inCodeBlock = false
+            } else {
+              codeBlockLines.add(i) // opening fence
+              inCodeBlock = true
+            }
+          } else if (inCodeBlock) {
+            codeBlockLines.add(i)
+          }
+        }
 
         // Find single-brace references {var} that are NOT part of double braces {{var}}
         // Use negative lookbehind/lookahead to exclude {{ and }}
@@ -1331,17 +1606,37 @@ export async function validateModel(
           const lineNumber = fullContent.substring(0, matchIndex).split('\n').length
           const column = fullContent.substring(0, matchIndex).split('\n').pop()!.length + 1
 
+          // Skip references inside fenced code blocks (e.g., {length} in JSON)
+          const bodyLineIndex = lineNumber - fullContent.substring(0, bodyStartOffset).split('\n').length
+          if (codeBlockLines.has(bodyLineIndex)) continue
+
           if (!isDefined) {
-            // Undefined parameter - show as error
-            markers.push({
-              severity: monaco.MarkerSeverity.Error,
-              startLineNumber: lineNumber,
-              startColumn: column,
-              endLineNumber: lineNumber,
-              endColumn: column + match[0].length,
-              message: `Undefined parameter '{${paramName}}'. Define it in frontmatter parameters section.`,
-              tags: [monaco.MarkerTag.Unnecessary]
-            })
+            if (hasInherits && resolvedInheritedParams.length === 0) {
+              // Inherits but couldn't resolve parent — suppress entirely,
+              // we can't verify so trust the inheritance declaration
+              continue
+            } else if (hasInherits) {
+              // Resolved parent but param not found in local or inherited
+              markers.push({
+                severity: monaco.MarkerSeverity.Warning,
+                startLineNumber: lineNumber,
+                startColumn: column,
+                endLineNumber: lineNumber,
+                endColumn: column + match[0].length,
+                message: `Parameter '{${paramName}}' is not defined locally or in inherited '${inheritsMatch![1]}'.`,
+              })
+            } else {
+              // Undefined parameter
+              markers.push({
+                severity: monaco.MarkerSeverity.Warning,
+                startLineNumber: lineNumber,
+                startColumn: column,
+                endLineNumber: lineNumber,
+                endColumn: column + match[0].length,
+                message: `Undefined parameter '{${paramName}}'. Define it in frontmatter parameters section.`,
+                tags: [monaco.MarkerTag.Unnecessary]
+              })
+            }
           } else {
             // Defined parameter but using single braces - show info hint to use double braces
             markers.push({
@@ -1395,9 +1690,12 @@ export async function validateModel(
   }
 
   // Cross-reference analysis for parameter usage (unused/undefined parameters)
+  // Reuses the inherited parameters already resolved above for the single-brace validator
   if (isPrompdFile) {
     try {
-      const crossRefDiagnostics = analyzeParameterUsage(content, monaco)
+      // Reuse inherited params resolved earlier in the single-brace validation block
+      const inheritedDefs = resolvedInheritedParams.length > 0 ? resolvedInheritedParams : undefined
+      const crossRefDiagnostics = analyzeParameterUsage(content, monaco, inheritedDefs)
       markers.push(...crossRefDiagnostics)
     } catch (error) {
       console.warn('[intellisense] Error during cross-reference analysis:', error)

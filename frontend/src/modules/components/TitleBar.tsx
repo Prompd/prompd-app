@@ -57,6 +57,7 @@ function buildMenus(ms: MenuState): MenuDef[] {
       label: 'File',
       items: [
         { label: 'New File', accelerator: 'Ctrl+N', action: () => api.triggerMenuAction('menu-new-file') },
+        { label: 'New Project...', action: () => api.triggerMenuAction('menu-new-project') },
         { label: 'Open File...', accelerator: 'Ctrl+O', action: () => api.openFileDialog() },
         { label: 'Open Folder...', accelerator: 'Ctrl+Shift+O', action: () => api.openFolderDialog() },
         { label: 'Close Folder', enabled: ms.hasWorkspace, action: () => api.closeFolder() },
@@ -239,41 +240,9 @@ export default function TitleBar({ theme }: TitleBarProps) {
   const menuRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
   const isHoveringRef = useRef(false)
 
-  // Gradient logo — direct DOM updates, zero re-renders
+  // Static logo — no mouse-follow effect (gradient effect moved to editor P icon)
   const titlebarRef = useRef<HTMLDivElement>(null)
   const logoRef = useRef<HTMLDivElement>(null)
-  const rafRef = useRef<number>(0)
-
-  useEffect(() => {
-    const logo = logoRef.current
-    if (!logo) return
-
-    const onMove = (e: MouseEvent) => {
-      cancelAnimationFrame(rafRef.current)
-      rafRef.current = requestAnimationFrame(() => {
-        if (!logo) return
-        const rect = logo.getBoundingClientRect()
-        const cx = rect.left + rect.width / 2
-        const cy = rect.top + rect.height / 2
-        const deg = Math.atan2(e.clientY - cy, e.clientX - cx) * (180 / Math.PI)
-        logo.style.background = `conic-gradient(from ${deg}deg, #06b6d4, #8b5cf6, #ec4899, #f59e0b, #06b6d4)`
-        logo.style.transition = 'none'
-      })
-    }
-    const onLeave = () => {
-      if (!logo) return
-      logo.style.background = 'linear-gradient(135deg, #06b6d4, #3b82f6)'
-      logo.style.transition = 'background 0.4s ease'
-    }
-
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseleave', onLeave)
-    return () => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseleave', onLeave)
-      cancelAnimationFrame(rafRef.current)
-    }
-  }, [])
 
   // Fetch initial title + menu state, listen for updates
   useEffect(() => {

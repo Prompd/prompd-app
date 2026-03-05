@@ -11,6 +11,16 @@ export interface ChatModeConfig {
   icon: string
   description: string
   systemPrompt: string
+  settings?: {
+    maxIterations?: number
+    streamResponses?: boolean
+    permissionLevels?: Record<string, {
+      label: string
+      description: string
+      requiresApprovalTools: string[]
+    }>
+    defaultPermissionLevel?: string
+  }
   followUpStrategies?: {
     detailed?: string
     vague?: string
@@ -60,42 +70,60 @@ function cacheModes(modes: ChatModesResponse): void {
   }
 }
 
+// Module-level singleton: one fetch shared across all callers
+let inflight: Promise<ChatModesResponse> | null = null
+let resolved: ChatModesResponse | null = null
+
 /**
- * Fetch all chat mode configurations from the backend
- * Falls back to cache if offline or API fails
+ * Fetch all chat mode configurations from the backend.
+ * Deduplicates concurrent calls — first caller triggers the fetch,
+ * all subsequent callers share the same promise/result.
+ * Falls back to localStorage cache if offline or API fails.
  */
 export async function fetchChatModes(): Promise<ChatModesResponse> {
-  const base = getApiBaseUrl()
-  const url = `${base}/chat-modes`
-  console.log('[chatModesApi] API base:', base)
-  console.log('[chatModesApi] Full URL:', url)
+  // Return cached result immediately if already fetched this session
+  if (resolved) return resolved
 
-  try {
-    const response = await fetch(url)
+  // Return in-flight promise if a fetch is already in progress
+  if (inflight) return inflight
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch chat modes: ${response.statusText} (URL: ${url}, base: ${base})`)
+  inflight = (async () => {
+    const base = getApiBaseUrl()
+    const url = `${base}/chat-modes`
+
+    try {
+      const response = await fetch(url)
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch chat modes: ${response.statusText} (URL: ${url}, base: ${base})`)
+      }
+
+      const data = await response.json()
+
+      // Cache the fresh data
+      cacheModes(data)
+      resolved = data
+
+      return data
+    } catch (error) {
+      console.warn('[chatModesApi] API fetch failed, trying cache:', error)
+
+      // Try to use cached data
+      const cached = getCachedModes()
+      if (cached) {
+        console.log('[chatModesApi] Using cached chat modes (offline mode)')
+        resolved = cached
+        return cached
+      }
+
+      // No cache available, throw error
+      throw new Error(`Failed to fetch chat modes and no cache available: ${error}`)
+    } finally {
+      inflight = null
     }
+  })()
 
-    const data = await response.json()
-
-    // Cache the fresh data
-    cacheModes(data)
-
-    return data
-  } catch (error) {
-    console.warn('[chatModesApi] API fetch failed, trying cache:', error)
-
-    // Try to use cached data
-    const cached = getCachedModes()
-    if (cached) {
-      console.log('[chatModesApi] Using cached chat modes (offline mode)')
-      return cached
-    }
-
-    // No cache available, throw error
-    throw new Error(`Failed to fetch chat modes and no cache available: ${error}`)
-  }
+  return inflight
 }
 
 /**

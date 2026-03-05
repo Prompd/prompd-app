@@ -50,6 +50,10 @@ export class RegistryClientService {
         params.keywords = options.category
       }
 
+      if (options.type) {
+        params.type = options.type
+      }
+
       const response = await this.client.get('/-/v1/search', { params })
       const result = {
         objects: response.data.objects || [],
@@ -99,7 +103,8 @@ export class RegistryClientService {
         homepage: packageData.homepage,
         license: versionData.license || packageData.license,
         publishedAt: versionData.publishedAt,
-        category: versionData.category || 'other'
+        category: versionData.category || 'other',
+        type: packageData.type || versionData.type || 'package'
       }
 
       this.setCache(cacheKey, result)
@@ -248,6 +253,10 @@ export class RegistryClientService {
 
       if (options.category) {
         params.keywords = options.category
+      }
+
+      if (options.type) {
+        params.type = options.type
       }
 
       const response = await this.client.get('/-/v1/search', { params })

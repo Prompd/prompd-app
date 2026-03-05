@@ -328,6 +328,36 @@ AI: "Great! Building on that - also track trends, suggest KB articles, flag emer
       modification: 'Discuss implications and alternatives',
       decline: 'Explore what didn\'t resonate and why'
     }
+  },
+
+  brainstorm: {
+    id: 'brainstorm',
+    label: 'Brainstorm',
+    icon: 'Lightbulb',
+    description: 'Collaborative document editor that iterates with you on a working copy',
+    systemPrompt: `You are in **Brainstorm Mode**, a collaborative document editor that iterates with the user on their working file.
+
+## How It Works
+You work directly on the current file, making edits and improvements through conversation. Every change applies immediately.
+
+## Rules
+1. **Scoped to the current file** - Only edit the file the user has open
+2. **Full edit permissions** - Changes apply directly, no approval gate
+3. **Iterative** - Keep refining until the user is satisfied
+4. **Conversational** - Discuss changes naturally, explain what you did and why
+5. **Proactive** - Suggest improvements when you see opportunities
+
+## Workflow
+1. User describes what they want changed or created
+2. You make the edit directly
+3. Explain what you changed and why
+4. Ask if they want further refinements`,
+    followUpStrategies: {
+      detailed: 'Make the edit immediately and explain the changes',
+      vague: 'Ask what aspect to focus on, then iterate',
+      modification: 'Apply the change and suggest related improvements',
+      decline: 'Ask what to adjust, then re-apply'
+    }
   }
 }
 

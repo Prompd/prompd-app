@@ -40,6 +40,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // API requests (bypasses CORS by using main process)
   apiRequest: (url, options) => ipcRenderer.invoke('api:request', url, options),
 
+  // Streaming API requests - sends body chunks incrementally via IPC events
+  // Used by LLM providers for real-time streaming (SSE)
+  apiStreamRequest: (url, options, streamId) => ipcRenderer.invoke('api:streamRequest', url, options, streamId),
+  onApiStreamChunk: (callback) => {
+    const handler = (_event, streamId, data) => callback(streamId, data)
+    ipcRenderer.on('api:stream-chunk', handler)
+    return () => ipcRenderer.removeListener('api:stream-chunk', handler)
+  },
+  onApiStreamEnd: (callback) => {
+    const handler = (_event, streamId) => callback(streamId)
+    ipcRenderer.on('api:stream-end', handler)
+    return () => ipcRenderer.removeListener('api:stream-end', handler)
+  },
+  onApiStreamError: (callback) => {
+    const handler = (_event, streamId, error) => callback(streamId, error)
+    ipcRenderer.on('api:stream-error', handler)
+    return () => ipcRenderer.removeListener('api:stream-error', handler)
+  },
+
   // Custom title bar support
   platform: process.platform,
   triggerMenuAction: (action, ...args) => ipcRenderer.invoke('menu:trigger', action, ...args),
@@ -141,6 +160,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu-new-file', handler)
     return () => ipcRenderer.removeListener('menu-new-file', handler)
   },
+  onMenuNewProject: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-new-project', handler)
+    return () => ipcRenderer.removeListener('menu-new-project', handler)
+  },
+  selectDirectory: (title) => ipcRenderer.invoke('dialog:selectDirectory', title),
   onMenuOpenFile: (callback) => {
     const handler = (event, filePath) => callback(filePath)
     ipcRenderer.on('menu-open-file', handler)
@@ -402,13 +427,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('package:createLocal', workspacePath, outputDir),
 
     // Install a single package by reference (e.g. "@prompd/core@0.0.1")
-    install: (packageRef, workspacePath) =>
-      ipcRenderer.invoke('package:install', packageRef, workspacePath),
+    // options: { global?: boolean, type?: 'package'|'workflow'|'node-template'|'skill' }
+    install: (packageRef, workspacePath, options) =>
+      ipcRenderer.invoke('package:install', packageRef, workspacePath, options),
 
     // Install all dependencies from prompd.json
     // Returns: { success, message, installed: [{name, version, status}], failed?: [{name, version, error}] }
     installAll: (workspacePath) =>
-      ipcRenderer.invoke('package:installAll', workspacePath)
+      ipcRenderer.invoke('package:installAll', workspacePath),
+
+    // Uninstall a package by name, removing files and prompd.json dependency
+    uninstall: (packageName, workspacePath, options) =>
+      ipcRenderer.invoke('package:uninstall', packageName, workspacePath, options),
+
+    // Publish package directly to registry (bypasses backend proxy)
+    publish: (options) =>
+      ipcRenderer.invoke('package:publish', options),
   },
 
   // Node template management - save/restore workflow node configurations
@@ -421,6 +455,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('template:delete', workspacePath, fileName, scope),
     insert: (workspacePath, fileName, scope, workflowFilePath) =>
       ipcRenderer.invoke('template:insert', workspacePath, fileName, scope, workflowFilePath),
+  },
+
+  // Resource management - scan/manage installed resources across type directories
+  resource: {
+    listInstalled: (workspacePath) =>
+      ipcRenderer.invoke('resource:listInstalled', workspacePath),
+    delete: (resourcePath) =>
+      ipcRenderer.invoke('resource:delete', resourcePath),
+    getManifest: (resourcePath) =>
+      ipcRenderer.invoke('resource:getManifest', resourcePath),
+  },
+
+  // Skill discovery - scan installed skills for workflow SkillNode usage
+  skill: {
+    list: (workspacePath) =>
+      ipcRenderer.invoke('skill:list', workspacePath),
   },
 
   // Trigger service - background workflow execution management
@@ -505,7 +555,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // Deployment service - package-based workflow deployment with multi-trigger support
-  // Deploys .pdpkg packages to ~/.prompd/workflows/{id}/ and extracts triggers from workflow files
+  // Deploys .pdpkg packages to ~/.prompd/deployments/{id}/ and extracts triggers from workflow files
   deployment: {
     // Deploy a package
     // packagePath: Path to .pdpkg file or workflow directory

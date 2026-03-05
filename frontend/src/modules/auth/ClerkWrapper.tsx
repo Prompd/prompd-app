@@ -212,6 +212,11 @@ function ElectronAuthWrapper({ children }: AuthWrapperProps) {
           }
         }
 
+        // Clear the safety-net timeout — callback arrived
+        if (oauthTimeoutRef.current) {
+          clearTimeout(oauthTimeoutRef.current)
+          oauthTimeoutRef.current = null
+        }
         setIsLoading(false)
       }
     }
@@ -343,6 +348,17 @@ function ElectronAuthWrapper({ children }: AuthWrapperProps) {
     }
   }, [isAuthenticated, tokens])
 
+  const oauthTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const cancelOAuth = useCallback(() => {
+    if (oauthTimeoutRef.current) {
+      clearTimeout(oauthTimeoutRef.current)
+      oauthTimeoutRef.current = null
+    }
+    setIsLoading(false)
+    setAuthError(null)
+  }, [])
+
   const signIn = useCallback(async () => {
     if (!electronAPI) return
 
@@ -350,8 +366,20 @@ function ElectronAuthWrapper({ children }: AuthWrapperProps) {
     setAuthError(null)
     setSessionExpired(false) // Clear expired state when re-authenticating
 
+    // Safety-net timeout — 5 minutes should cover account creation
+    if (oauthTimeoutRef.current) clearTimeout(oauthTimeoutRef.current)
+    oauthTimeoutRef.current = setTimeout(() => {
+      oauthTimeoutRef.current = null
+      setIsLoading(false)
+      setAuthError('Authentication timed out. Please try again.')
+    }, 5 * 60 * 1000)
+
     const result = await electronAPI.auth.startOAuth()
     if (!result.success) {
+      if (oauthTimeoutRef.current) {
+        clearTimeout(oauthTimeoutRef.current)
+        oauthTimeoutRef.current = null
+      }
       setAuthError(result.error || 'Failed to start OAuth')
       setIsLoading(false)
     }
@@ -424,8 +452,34 @@ function ElectronAuthWrapper({ children }: AuthWrapperProps) {
           animation: 'spin 1s linear infinite'
         }} />
         <div style={{ fontSize: '14px', color: '#94a3b8' }}>
-          Loading...
+          Waiting for authentication...
         </div>
+        <div style={{ fontSize: '12px', color: '#64748b' }}>
+          Complete sign-in in your browser to continue
+        </div>
+        <button
+          onClick={cancelOAuth}
+          style={{
+            marginTop: '8px',
+            padding: '6px 20px',
+            background: 'transparent',
+            border: '1px solid #334155',
+            borderRadius: '6px',
+            color: '#94a3b8',
+            fontSize: '13px',
+            cursor: 'pointer',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.borderColor = '#475569'
+            e.currentTarget.style.color = '#cbd5e1'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.borderColor = '#334155'
+            e.currentTarget.style.color = '#94a3b8'
+          }}
+        >
+          Cancel
+        </button>
         <style dangerouslySetInnerHTML={{
           __html: `
             @keyframes spin {

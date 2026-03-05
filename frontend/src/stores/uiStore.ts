@@ -6,7 +6,7 @@
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import type { SidebarPanel, ModalType, Toast, BuildOutput } from './types'
+import type { SidebarPanel, ModalType, Toast, BuildOutput, PackageBuildRecord } from './types'
 import { getApiBaseUrl, waitForUserSync, isUserSynced } from '../modules/services/apiConfig'
 import { configService } from '../modules/services/configService'
 
@@ -14,6 +14,17 @@ import { configService } from '../modules/services/configService'
 // This is needed because React StrictMode runs effects twice,
 // and Zustand's set() is async, so state checks can race
 let isInitializingProviders = false
+
+/**
+ * Infer whether a model supports extended thinking based on model ID.
+ * Used as fallback when the backend/config doesn't provide the flag.
+ * Currently only Anthropic Sonnet/Opus models support thinking.
+ */
+function inferSupportsThinking(providerId: string, modelId: string): boolean {
+  if (providerId !== 'anthropic') return false
+  const id = modelId.toLowerCase()
+  return id.includes('sonnet') || id.includes('opus')
+}
 
 /**
  * Model info with pricing
@@ -27,6 +38,7 @@ export interface ModelWithPricing {
   supportsVision?: boolean
   supportsTools?: boolean
   supportsImageGeneration?: boolean
+  supportsThinking?: boolean
 }
 
 /**
@@ -125,6 +137,7 @@ interface UIState {
 
   // Build output panel
   buildOutput: BuildOutput
+  packageBuildHistory: PackageBuildRecord[]
   showBuildPanel: boolean
   buildPanelPinned: boolean
 
@@ -213,6 +226,8 @@ interface UIActions {
   // Build output panel
   setBuildOutput: (output: Partial<BuildOutput>) => void
   clearBuildOutput: () => void
+  addPackageBuildRecord: (record: PackageBuildRecord) => void
+  clearPackageBuildHistory: () => void
   setShowBuildPanel: (show: boolean) => void
   toggleBuildPanel: () => void
   setBuildPanelPinned: (pinned: boolean) => void
@@ -284,6 +299,7 @@ export const useUIStore = create<UIStore>()(
           selectedEnvFile: null,
           toasts: [],
           buildOutput: { status: 'idle', message: '' },
+          packageBuildHistory: [],
           showBuildPanel: false,
           buildPanelPinned: false,
           showWorkflowPanel: false,
@@ -434,7 +450,7 @@ export const useUIStore = create<UIStore>()(
             let locallyConfiguredProviders: string[] = []
             let localCustomProviders: Array<{ name: string; displayName: string; models: { id: string; name: string; contextWindow?: number }[]; isCustom: boolean }> = []
             // Raw custom provider config for capability flags
-            let customProviderConfigs: Record<string, { models?: (string | { id: string; name?: string; supports_vision?: boolean; supports_tools?: boolean; supports_image_generation?: boolean; context_window?: number })[] }> = {}
+            let customProviderConfigs: Record<string, { models?: (string | { id: string; name?: string; supports_vision?: boolean; supports_tools?: boolean; supports_image_generation?: boolean; supports_thinking?: boolean; context_window?: number })[] }> = {}
             if ((window as any).electronAPI?.isElectron) {
               try {
                 const { localExecutor } = await import('../modules/services/localExecutor')
@@ -494,9 +510,9 @@ export const useUIStore = create<UIStore>()(
                 hasKey: true,
                 isCustom: false,
                 models: [
-                  { model: 'claude-haiku-4-5-20251001', displayName: 'Claude Haiku 4.5', inputPrice: 1.00, outputPrice: 5.00, supportsImageGeneration: false },
-                  { model: 'claude-sonnet-4-5-20250929', displayName: 'Claude Sonnet 4.5', inputPrice: 3.00, outputPrice: 15.00, supportsImageGeneration: false },
-                  { model: 'claude-opus-4-6', displayName: 'Claude Opus 4.6', inputPrice: 5.00, outputPrice: 25.00, supportsImageGeneration: false }
+                  { model: 'claude-haiku-4-5-20251001', displayName: 'Claude Haiku 4.5', inputPrice: 1.00, outputPrice: 5.00, supportsImageGeneration: false, supportsThinking: false },
+                  { model: 'claude-sonnet-4-5-20250929', displayName: 'Claude Sonnet 4.5', inputPrice: 3.00, outputPrice: 15.00, supportsImageGeneration: false, supportsThinking: true },
+                  { model: 'claude-opus-4-6', displayName: 'Claude Opus 4.6', inputPrice: 5.00, outputPrice: 25.00, supportsImageGeneration: false, supportsThinking: true }
                 ]
               },
               {
@@ -541,7 +557,8 @@ export const useUIStore = create<UIStore>()(
                         contextWindow: caps?.context_window,
                         supportsVision: caps?.supports_vision,
                         supportsTools: caps?.supports_tools,
-                        supportsImageGeneration: caps?.supports_image_generation
+                        supportsImageGeneration: caps?.supports_image_generation,
+                      supportsThinking: caps?.supports_thinking ?? inferSupportsThinking(cp.name, m.id)
                       }
                     })
                   }]
@@ -607,7 +624,8 @@ export const useUIStore = create<UIStore>()(
                     contextWindow: m.contextWindow,
                     supportsVision: m.supportsVision,
                     supportsTools: m.supportsTools,
-                    supportsImageGeneration: m.supportsImageGeneration || false
+                    supportsImageGeneration: m.supportsImageGeneration || false,
+                    supportsThinking: m.supportsThinking ?? inferSupportsThinking(p.providerId, m.model)
                   }))
 
                   // If API returned empty models, use default models for known providers
@@ -661,7 +679,8 @@ export const useUIStore = create<UIStore>()(
                             contextWindow: caps?.context_window,
                             supportsVision: caps?.supports_vision,
                             supportsTools: caps?.supports_tools,
-                            supportsImageGeneration: caps?.supports_image_generation
+                            supportsImageGeneration: caps?.supports_image_generation,
+                            supportsThinking: caps?.supports_thinking ?? inferSupportsThinking(cp.name, m.id)
                           }
                         })
                       })
@@ -870,6 +889,17 @@ export const useUIStore = create<UIStore>()(
 
           clearBuildOutput: () => set((state) => {
             state.buildOutput = { status: 'idle', message: '' }
+          }),
+
+          addPackageBuildRecord: (record) => set((state) => {
+            state.packageBuildHistory.unshift(record)
+            if (state.packageBuildHistory.length > 50) {
+              state.packageBuildHistory = state.packageBuildHistory.slice(0, 50)
+            }
+          }),
+
+          clearPackageBuildHistory: () => set((state) => {
+            state.packageBuildHistory = []
           }),
 
           setShowBuildPanel: (show) => set((state) => {

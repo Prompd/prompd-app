@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { MessageSquare, Pin, MoreVertical, Trash2, Edit2, Download, Clock } from 'lucide-react'
 import type { ConversationMeta } from '../services/conversationStorage'
 import { useConfirmDialog } from './ConfirmDialog'
@@ -14,6 +14,7 @@ interface ConversationSidebarProps {
   onExportConversation: (id: string, format: 'json' | 'markdown') => void
   isOpen: boolean
   onClose: () => void
+  anchorRef?: React.RefObject<HTMLElement | null>
 }
 
 export function ConversationSidebar({
@@ -26,7 +27,8 @@ export function ConversationSidebar({
   onPinConversation,
   onExportConversation,
   isOpen,
-  onClose
+  onClose,
+  anchorRef
 }: ConversationSidebarProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [contextMenuId, setContextMenuId] = useState<string | null>(null)
@@ -93,6 +95,39 @@ export function ConversationSidebar({
     setRenameValue('')
   }
 
+  // Escape key handler
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') onClose()
+  }, [onClose])
+
+  useEffect(() => {
+    if (!isOpen) return
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, handleKeyDown])
+
+  // Calculate position from anchor element
+  const getPopoverPosition = useCallback((): React.CSSProperties => {
+    if (!anchorRef?.current) {
+      return { top: 48, right: 16 }
+    }
+    const rect = anchorRef.current.getBoundingClientRect()
+    const popoverWidth = 320
+    const popoverMaxHeight = Math.min(600, window.innerHeight - 120)
+
+    // Position below the anchor, right-aligned
+    let top = rect.bottom + 8
+    let left = rect.right - popoverWidth
+
+    // Clamp to viewport
+    if (left < 8) left = 8
+    if (top + popoverMaxHeight > window.innerHeight - 8) {
+      top = Math.max(8, window.innerHeight - popoverMaxHeight - 8)
+    }
+
+    return { top, left }
+  }, [anchorRef])
+
   const modeIcons: Record<string, string> = {
     generate: '🎯',
     edit: '🔧',
@@ -102,33 +137,36 @@ export function ConversationSidebar({
 
   if (!isOpen) return null
 
+  const popoverPos = getPopoverPosition()
+
   return (
     <>
-      {/* Backdrop */}
+      {/* Transparent click-catcher backdrop */}
       <div
         style={{
           position: 'fixed',
           inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          zIndex: 200
+          zIndex: 199
         }}
         onClick={onClose}
       />
 
-      {/* Sidebar */}
+      {/* Dropdown popover */}
       <div
         style={{
           position: 'fixed',
-          top: 0,
-          left: 0,
-          bottom: 0,
+          ...popoverPos,
           width: '320px',
+          maxHeight: `min(600px, calc(100vh - 120px))`,
           backgroundColor: 'var(--panel-2, var(--background, #ffffff))',
-          borderRight: '1px solid var(--border)',
+          border: '1px solid var(--border)',
+          borderRadius: '12px',
           display: 'flex',
           flexDirection: 'column',
-          zIndex: 201,
-          boxShadow: '4px 0 12px rgba(0, 0, 0, 0.1)'
+          zIndex: 200,
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.1)',
+          overflow: 'hidden',
+          animation: 'conversationDropdownFadeIn 0.15s ease-out'
         }}
       >
         {/* Header */}

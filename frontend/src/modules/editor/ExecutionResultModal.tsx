@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   CheckCircle,
   XCircle,
@@ -14,9 +14,15 @@ import {
   X,
   Sparkles,
   Play,
-  Settings
+  Settings,
+  Eye,
+  Code,
+  Braces,
+  Loader2
 } from 'lucide-react'
 import WysiwygEditor from '../components/WysiwygEditor'
+import { JsonTreeViewer, extractJson } from '../components/common/JsonTreeViewer'
+import MarkdownPreview from '../components/MarkdownPreview'
 
 export interface ExecutionResult {
   content: string
@@ -63,6 +69,7 @@ interface ExecutionResultModalProps {
   theme: 'vs-dark' | 'light'
   onClose: () => void
   onRunAgain: () => void
+  isExecuting?: boolean
 }
 
 export function ExecutionResultModal({
@@ -72,23 +79,75 @@ export function ExecutionResultModal({
   onSelectIndex,
   theme,
   onClose,
-  onRunAgain
+  onRunAgain,
+  isExecuting = false
 }: ExecutionResultModalProps) {
   const [activeTab, setActiveTab] = useState<'response' | 'prompd' | 'metadata'>('response')
+  const [responseViewMode, setResponseViewMode] = useState<'preview' | 'source' | 'json'>('preview')
+  const [prompdViewMode, setPrompdViewMode] = useState<'preview' | 'source' | 'json'>('preview')
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
+  // Track whether we initiated a rerun so we can auto-navigate to the new result
+  const [waitingForResult, setWaitingForResult] = useState(false)
+  const historyLengthRef = useRef(executionHistory.length)
+
+  // When a new result arrives after a rerun, auto-navigate to it (index 0)
+  useEffect(() => {
+    if (waitingForResult && executionHistory.length > historyLengthRef.current) {
+      setWaitingForResult(false)
+      historyLengthRef.current = executionHistory.length
+      onSelectIndex(0)
+    }
+  }, [executionHistory.length, waitingForResult, onSelectIndex])
+
+  // Keep ref in sync when history changes without rerun
+  useEffect(() => {
+    if (!waitingForResult) {
+      historyLengthRef.current = executionHistory.length
+    }
+  }, [executionHistory.length, waitingForResult])
+
+  // Try to parse response content as JSON for the JSON tree view
+  const responseJson = useMemo(() => {
+    if (!result.content) return null
+    return extractJson(result.content)
+  }, [result.content])
+
+  // Compiled prompt content and JSON representation
+  const compiledText = useMemo(() => {
+    if (!result.compiledPrompt) return ''
+    return typeof result.compiledPrompt === 'string'
+      ? result.compiledPrompt
+      : result.compiledPrompt.finalPrompt || ''
+  }, [result.compiledPrompt])
+
+  const compiledJson = useMemo(() => {
+    if (!result.compiledPrompt) return null
+    // If it's the structured object form, use it directly
+    if (typeof result.compiledPrompt === 'object') return result.compiledPrompt
+    // Otherwise try to parse the string as JSON
+    return extractJson(result.compiledPrompt)?.parsed ?? null
+  }, [result.compiledPrompt])
 
   const handleCopy = () => {
-    const textToCopy = activeTab === 'prompd'
-      ? (typeof result.compiledPrompt === 'string'
-          ? result.compiledPrompt
-          : result.compiledPrompt?.finalPrompt || '')
-      : result.content
+    let textToCopy: string
+    if (activeTab === 'prompd') {
+      if (prompdViewMode === 'json' && compiledJson) {
+        textToCopy = JSON.stringify(compiledJson, null, 2)
+      } else {
+        textToCopy = compiledText
+      }
+    } else if (activeTab === 'response' && responseViewMode === 'json' && responseJson) {
+      textToCopy = JSON.stringify(responseJson.parsed, null, 2)
+    } else {
+      textToCopy = result.content
+    }
     navigator.clipboard.writeText(textToCopy)
     setCopyFeedback('Copied!')
     setTimeout(() => setCopyFeedback(null), 2000)
   }
 
   const isDark = theme === 'vs-dark'
+  const showLoading = waitingForResult && isExecuting
 
   return (
     <div
@@ -144,7 +203,24 @@ export function ExecutionResultModal({
                 }}>
                   Execution Result
                 </h2>
-                {result.status === 'success' ? (
+                {showLoading ? (
+                  <span style={{
+                    padding: '4px 10px',
+                    background: 'rgba(99, 102, 241, 0.15)',
+                    color: '#818cf8',
+                    borderRadius: '20px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px'
+                  }}>
+                    <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                    Running
+                  </span>
+                ) : result.status === 'success' ? (
                   <span style={{
                     padding: '4px 10px',
                     background: 'rgba(16, 185, 129, 0.15)',
@@ -188,7 +264,7 @@ export function ExecutionResultModal({
                 gap: '8px'
               }}>
                 <Clock size={12} />
-                {new Date(result.timestamp).toLocaleString()}
+                {showLoading ? 'Executing...' : new Date(result.timestamp).toLocaleString()}
               </div>
             </div>
             <button
@@ -219,7 +295,34 @@ export function ExecutionResultModal({
           </div>
 
           {/* Stats Cards */}
-          {result.metadata && (
+          {showLoading ? (
+            <div style={{
+              padding: '0 24px 16px 24px',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: '12px'
+            }}>
+              {['Model', 'Duration', 'Tokens', 'Est. Cost'].map(label => (
+                <div key={label} style={{
+                  padding: '12px 16px',
+                  background: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                  borderRadius: '10px',
+                  border: '1px solid var(--border)'
+                }}>
+                  <div style={{
+                    fontSize: '10px',
+                    color: 'var(--text-secondary)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    marginBottom: '8px'
+                  }}>
+                    {label}
+                  </div>
+                  <SkeletonBar width={label === 'Model' ? '80%' : '50%'} isDark={isDark} />
+                </div>
+              ))}
+            </div>
+          ) : result.metadata && (
             <div style={{
               padding: '0 24px 16px 24px',
               display: 'grid',
@@ -341,30 +444,102 @@ export function ExecutionResultModal({
           flexDirection: 'column',
           position: 'relative'
         }}>
+          {showLoading ? (
+            <LoadingContentPlaceholder isDark={isDark} />
+          ) : (
+          <>
           {/* Response Tab */}
           {activeTab === 'response' && (
-            <WysiwygEditor
-              value={result.content}
-              readOnly
-              height="100%"
-              theme={isDark ? 'dark' : 'light'}
-              showToolbar={false}
-            />
+            <>
+              <ViewModeBar
+                mode={responseViewMode}
+                onModeChange={setResponseViewMode}
+                hasJson={!!responseJson}
+                isDark={isDark}
+              />
+              <div style={{ flex: 1, overflow: 'auto' }}>
+                {responseViewMode === 'preview' && (
+                  <MarkdownPreview
+                    content={result.content}
+                    height="100%"
+                    theme={isDark ? 'dark' : 'light'}
+                  />
+                )}
+                {responseViewMode === 'source' && (
+                  <pre style={{
+                    margin: 0,
+                    padding: '16px 20px',
+                    fontFamily: 'var(--font-mono, "Fira Code", "Cascadia Code", Consolas, monospace)',
+                    fontSize: '13px',
+                    lineHeight: 1.6,
+                    color: 'var(--text)',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    background: 'transparent',
+                    height: '100%',
+                    overflow: 'auto'
+                  }}>
+                    {result.content}
+                  </pre>
+                )}
+                {responseViewMode === 'json' && responseJson && (
+                  <div style={{ padding: '16px 20px' }}>
+                    <JsonTreeViewer
+                      data={responseJson.parsed}
+                      rootPath="response"
+                      defaultExpandDepth={3}
+                    />
+                  </div>
+                )}
+              </div>
+            </>
           )}
 
           {/* Compiled Prompd Tab */}
           {activeTab === 'prompd' && result.compiledPrompt && (
-            <WysiwygEditor
-              value={
-                typeof result.compiledPrompt === 'string'
-                  ? result.compiledPrompt
-                  : result.compiledPrompt?.finalPrompt || ''
-              }
-              readOnly
-              height="100%"
-              theme={isDark ? 'dark' : 'light'}
-              showToolbar={false}
-            />
+            <>
+              <ViewModeBar
+                mode={prompdViewMode}
+                onModeChange={setPrompdViewMode}
+                hasJson={!!compiledJson}
+                isDark={isDark}
+              />
+              <div style={{ flex: 1, overflow: 'auto' }}>
+                {prompdViewMode === 'preview' && (
+                  <MarkdownPreview
+                    content={compiledText}
+                    height="100%"
+                    theme={isDark ? 'dark' : 'light'}
+                  />
+                )}
+                {prompdViewMode === 'source' && (
+                  <pre style={{
+                    margin: 0,
+                    padding: '16px 20px',
+                    fontFamily: 'var(--font-mono, "Fira Code", "Cascadia Code", Consolas, monospace)',
+                    fontSize: '13px',
+                    lineHeight: 1.6,
+                    color: 'var(--text)',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    background: 'transparent',
+                    height: '100%',
+                    overflow: 'auto'
+                  }}>
+                    {compiledText}
+                  </pre>
+                )}
+                {prompdViewMode === 'json' && compiledJson && (
+                  <div style={{ padding: '16px 20px' }}>
+                    <JsonTreeViewer
+                      data={compiledJson}
+                      rootPath="compiled"
+                      defaultExpandDepth={3}
+                    />
+                  </div>
+                )}
+              </div>
+            </>
           )}
 
           {activeTab === 'prompd' && !result.compiledPrompt && (
@@ -386,6 +561,8 @@ export function ExecutionResultModal({
           {/* Metadata Tab */}
           {activeTab === 'metadata' && (
             <MetadataTab result={result} isDark={isDark} />
+          )}
+          </>
           )}
         </div>
 
@@ -478,35 +655,50 @@ export function ExecutionResultModal({
           <div style={{ display: 'flex', gap: '10px' }}>
             <button
               onClick={() => {
-                onClose()
+                setWaitingForResult(true)
                 onRunAgain()
               }}
+              disabled={isExecuting}
               style={{
                 padding: '10px 20px',
                 borderRadius: '8px',
                 fontSize: '13px',
                 fontWeight: 600,
-                background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+                background: isExecuting
+                  ? 'linear-gradient(135deg, #4338ca 0%, #4f46e5 100%)'
+                  : 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
                 color: 'white',
                 border: 'none',
-                cursor: 'pointer',
+                cursor: isExecuting ? 'not-allowed' : 'pointer',
                 transition: 'all 0.2s',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                boxShadow: '0 2px 8px rgba(79, 70, 229, 0.3)'
+                boxShadow: '0 2px 8px rgba(79, 70, 229, 0.3)',
+                opacity: isExecuting ? 0.8 : 1
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-1px)'
-                e.currentTarget.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.4)'
+                if (!isExecuting) {
+                  e.currentTarget.style.transform = 'translateY(-1px)'
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.4)'
+                }
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = 'translateY(0)'
                 e.currentTarget.style.boxShadow = '0 2px 8px rgba(79, 70, 229, 0.3)'
               }}
             >
-              <Play size={14} />
-              Run Again
+              {isExecuting ? (
+                <>
+                  <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                  Running...
+                </>
+              ) : (
+                <>
+                  <Play size={14} />
+                  Run Again
+                </>
+              )}
             </button>
             <button
               onClick={onClose}
@@ -533,6 +725,79 @@ export function ExecutionResultModal({
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// View Mode Toggle Bar
+interface ViewModeBarProps {
+  mode: 'preview' | 'source' | 'json'
+  onModeChange: (mode: 'preview' | 'source' | 'json') => void
+  hasJson: boolean
+  isDark: boolean
+}
+
+function ViewModeBar({ mode, onModeChange, hasJson, isDark }: ViewModeBarProps) {
+  const modes: Array<{ id: 'preview' | 'source' | 'json'; label: string; icon: typeof Eye; disabled?: boolean }> = [
+    { id: 'preview', label: 'Preview', icon: Eye },
+    { id: 'source', label: 'Source', icon: Code },
+    { id: 'json', label: 'JSON Tree', icon: Braces, disabled: !hasJson }
+  ]
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '2px',
+      padding: '6px 16px',
+      borderBottom: '1px solid var(--border)',
+      background: isDark ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.02)',
+      flexShrink: 0
+    }}>
+      {modes.map(({ id, label, icon: Icon, disabled }) => {
+        const isActive = mode === id
+        return (
+          <button
+            key={id}
+            onClick={() => !disabled && onModeChange(id)}
+            disabled={disabled}
+            style={{
+              padding: '5px 12px',
+              fontSize: '12px',
+              fontWeight: isActive ? 600 : 400,
+              background: isActive
+                ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)')
+                : 'transparent',
+              color: disabled
+                ? 'var(--text-secondary)'
+                : isActive ? 'var(--text)' : 'var(--text-secondary)',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              opacity: disabled ? 0.4 : 1,
+              transition: 'all 0.15s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px'
+            }}
+            onMouseEnter={(e) => {
+              if (!isActive && !disabled) {
+                e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'
+                e.currentTarget.style.color = 'var(--text)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isActive && !disabled) {
+                e.currentTarget.style.background = 'transparent'
+                e.currentTarget.style.color = 'var(--text-secondary)'
+              }
+            }}
+          >
+            <Icon size={13} />
+            {label}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -920,6 +1185,77 @@ function MetadataList({ items, isDark }: MetadataListProps) {
           </span>
         </div>
       ))}
+    </div>
+  )
+}
+
+// Skeleton loading bar with pulse animation
+function SkeletonBar({ width = '60%', height = '14px', isDark }: { width?: string; height?: string; isDark: boolean }) {
+  return (
+    <div style={{
+      width,
+      height,
+      borderRadius: '4px',
+      background: isDark
+        ? 'linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.06) 75%)'
+        : 'linear-gradient(90deg, rgba(0,0,0,0.06) 25%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.06) 75%)',
+      backgroundSize: '200% 100%',
+      animation: 'shimmer 1.5s ease-in-out infinite'
+    }} />
+  )
+}
+
+// Full loading placeholder for the content area
+function LoadingContentPlaceholder({ isDark }: { isDark: boolean }) {
+  return (
+    <div style={{
+      flex: 1,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '24px',
+      padding: '48px 24px'
+    }}>
+      <Loader2
+        size={36}
+        style={{
+          color: 'var(--accent)',
+          animation: 'spin 1s linear infinite',
+          opacity: 0.6
+        }}
+      />
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          fontSize: '15px',
+          fontWeight: 600,
+          color: 'var(--text)',
+          marginBottom: '6px'
+        }}>
+          Executing prompt...
+        </div>
+        <div style={{
+          fontSize: '12px',
+          color: 'var(--text-secondary)'
+        }}>
+          Waiting for response from the model
+        </div>
+      </div>
+      {/* Skeleton lines to suggest where content will appear */}
+      <div style={{
+        width: '100%',
+        maxWidth: '600px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        marginTop: '8px'
+      }}>
+        <SkeletonBar width="90%" height="12px" isDark={isDark} />
+        <SkeletonBar width="100%" height="12px" isDark={isDark} />
+        <SkeletonBar width="75%" height="12px" isDark={isDark} />
+        <SkeletonBar width="85%" height="12px" isDark={isDark} />
+        <SkeletonBar width="40%" height="12px" isDark={isDark} />
+      </div>
     </div>
   )
 }

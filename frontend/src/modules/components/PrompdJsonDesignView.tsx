@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Plus, Trash2, AlertCircle, AlertTriangle, Info, Search, Package, BookOpen, ChevronDown, FileText, Files, Check, Square, Sparkles, EyeOff, Globe, Tag, Server, Plug } from 'lucide-react'
+import { Plus, Trash2, AlertCircle, AlertTriangle, Info, Search, Package, BookOpen, ChevronDown, FileText, Files, Check, Square, Sparkles, EyeOff, Globe, Tag, Server, Plug, Wrench } from 'lucide-react'
 import VersionInput from './VersionInput'
 import { TagInput } from './TagInput'
 import DependencyVersionSelect from './DependencyVersionSelect'
@@ -19,13 +19,14 @@ interface PrompdJsonConfig {
   description?: string
   author?: string
   version?: string
-  type?: 'package' | 'workflow' | 'skill'  // Package type (skill requires MCP servers)
+  type?: 'package' | 'workflow' | 'skill' | 'node-template'  // Package type
   keywords?: string[]  // Searchable keywords for categorization
   main?: string  // Main .prmd file entry point
   files?: string[]  // Files to include in package
   readme?: string
   ignore?: string[]
   dependencies?: Record<string, string>
+  tools?: string[]  // Required tool names (skill type)
   mcps?: string[]  // MCP server names required by this package
   registry?: string
   [key: string]: unknown
@@ -472,6 +473,24 @@ export default function PrompdJsonDesignView({ value, onChange, theme = 'dark', 
     })
   }, [config.mcps])
 
+  // Tool management callbacks (skill type)
+  const addTool = useCallback((name: string) => {
+    if (readOnly || !name.trim()) return
+    const trimmed = name.trim()
+    updateConfig(prev => {
+      const current = prev.tools || []
+      if (current.includes(trimmed)) return {}
+      return { tools: [...current, trimmed] }
+    })
+  }, [updateConfig, readOnly])
+
+  const removeTool = useCallback((name: string) => {
+    if (readOnly) return
+    updateConfig(prev => ({
+      tools: (prev.tools || []).filter(t => t !== name)
+    }))
+  }, [updateConfig, readOnly])
+
   // MCP server management callbacks
   const addMcpServer = useCallback((name: string) => {
     if (readOnly || !name.trim()) return
@@ -757,7 +776,8 @@ export default function PrompdJsonDesignView({ value, onChange, theme = 'dark', 
                 >
                   <option value="package">Package - Standard prompt package</option>
                   <option value="workflow">Workflow - Deployable workflow package</option>
-                  <option value="skill">Skill - Requires MCP server connections</option>
+                  <option value="node-template">Node Template - Reusable node configuration</option>
+                  <option value="skill">Skill - AI agent skill with tool declarations</option>
                 </select>
                 <ChevronDown
                   size={16}
@@ -774,6 +794,66 @@ export default function PrompdJsonDesignView({ value, onChange, theme = 'dark', 
             </div>
           </div>
         </div>
+
+        {/* Tools Section (skill type only) */}
+        {config.type === 'skill' && (
+          <div style={{
+            marginBottom: '24px',
+            background: 'var(--bg)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            padding: '20px'
+          }}>
+            <h2 style={{
+              margin: '0 0 12px 0',
+              fontSize: '16px',
+              fontWeight: 600,
+              color: colors.text,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px'
+            }}>
+              <Wrench size={16} style={{ color: colors.primary }} />
+              Tools
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 500,
+                color: colors.primary,
+                background: colors.infoBg,
+                border: `1px solid ${colors.infoBorder}`,
+                padding: '2px 8px',
+                borderRadius: '10px'
+              }}>
+                Required for Skills
+              </span>
+            </h2>
+            <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: colors.textSecondary }}>
+              Tool names this skill requires access to (e.g., Read, Write, Bash)
+            </p>
+
+            <TagInput
+              tags={config.tools || []}
+              onChange={(tools) => updateConfig({ tools })}
+              placeholder="Add tool name (press Enter or comma to add)"
+              disabled={readOnly}
+              theme={theme}
+            />
+
+            {(config.tools || []).length === 0 && (
+              <p style={{
+                margin: '12px 0 0 0',
+                fontSize: '12px',
+                color: theme === 'dark' ? '#fde047' : '#a16207',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <AlertTriangle size={12} />
+                Skills should declare at least one required tool
+              </p>
+            )}
+          </div>
+        )}
 
         {/* MCP Servers Section */}
         <div style={{

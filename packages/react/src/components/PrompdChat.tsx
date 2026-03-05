@@ -27,8 +27,10 @@ export const PrompdChat = forwardRef<PrompdChatHandle, PrompdChatProps>(function
   onBeforeSubmit,
   aboveInput,
   inputTheme = 'default',
+  generationMode,
   waitingForUserInput = false,
-  onStop
+  onStop,
+  hideModeSelector = false
 }, ref) {
   const { llmClient: defaultLLMClient } = usePrompd()
 
@@ -129,8 +131,11 @@ export const PrompdChat = forwardRef<PrompdChatHandle, PrompdChatProps>(function
         onMessage(userMessage)
       }
     } else {
-      // Hidden context - only show thinking indicator
-      setMessages(prev => [...prev, thinkingMessage])
+      // Hidden context (tool results from agent loop) — persist in state
+      // so subsequent LLM calls include the full conversation history.
+      // Marked hidden so the UI doesn't render them as chat bubbles.
+      const hiddenMessage: PrompdChatMessage = { ...userMessage, metadata: { hidden: true } }
+      setMessages(prev => [...prev, hiddenMessage, thinkingMessage])
     }
 
     setIsLoading(true)
@@ -145,43 +150,210 @@ export const PrompdChat = forwardRef<PrompdChatHandle, PrompdChatProps>(function
         })
       })
 
-      // Build messages array for LLM
+      // Build messages array for LLM.
+      // Both visible and hidden messages are already in state,
+      // so currentMessages contains the full conversation history
+      // including the message we just added above.
       const llmMessages = currentMessages
         .filter(m => !(m.metadata && 'isThinking' in m.metadata && m.metadata.isThinking))
+        .filter(m => m.metadata?.type !== 'thinking-content')
         .map(m => ({
           role: m.role,
           content: m.content
         }))
 
-      // Add the new message (whether shown in UI or not)
-      llmMessages.push({
-        role: 'user',
-        content: userMessage.content
-      })
+      // Pre-allocate IDs for streaming messages
+      const streamingThinkingMsgId = generateMessageId()
+      const streamingAssistantMsgId = generateMessageId()
+      let thinkingStarted = false
+      let contentStarted = false
 
-      const response = await llmClient.send({
-        messages: llmMessages
-      })
+      // Character-drip streaming buffer.
+      // HTTP data arrives in large infrequent bursts from the IPC layer, so simple
+      // frame-rate coalescing still looks choppy. Instead, we queue all incoming text
+      // and release a fixed number of characters per animation frame, creating a
+      // smooth, consistent typewriter effect regardless of network burst patterns.
+      const textQueue = { thinking: '', content: '' }
+      let dripFrameId: number | null = null
+      const CHARS_PER_FRAME = 8 // ~480 chars/sec at 60fps — matches typical LLM output speed
 
-      const assistantMessage: PrompdChatMessage = {
-        id: generateMessageId(),
-        role: 'assistant',
-        content: response.content,
-        timestamp: new Date().toISOString(),
-        metadata: {
-          ...response.metadata, // Preserve all metadata from LLM response
-          provider: response.provider,
-          model: response.model,
-          usage: response.usage
+      const applyThinking = (text: string) => {
+        if (!thinkingStarted) {
+          thinkingStarted = true
+          setMessages(prev => {
+            const filtered = prev.filter(m => m.id !== thinkingMessageId)
+            return [...filtered, {
+              id: streamingThinkingMsgId,
+              role: 'assistant' as const,
+              content: text,
+              timestamp: new Date().toISOString(),
+              metadata: { type: 'thinking-content' },
+              isStreaming: true
+            }]
+          })
+        } else {
+          setMessages(prev => prev.map(m =>
+            m.id === streamingThinkingMsgId
+              ? { ...m, content: m.content + text }
+              : m
+          ))
         }
       }
 
-      // Remove thinking message and add real response
-      // If messageAlreadyRendered, the agent hook already added the message before tool execution
-      if (response.metadata?.messageAlreadyRendered) {
-        setMessages(prev => prev.filter(m => m.id !== thinkingMessageId))
+      const applyContent = (text: string) => {
+        if (!contentStarted) {
+          contentStarted = true
+          setMessages(prev => {
+            const filtered = !thinkingStarted
+              ? prev.filter(m => m.id !== thinkingMessageId)
+              : prev
+            return [...filtered, {
+              id: streamingAssistantMsgId,
+              role: 'assistant' as const,
+              content: text,
+              timestamp: new Date().toISOString(),
+              isStreaming: true
+            }]
+          })
+        } else {
+          setMessages(prev => prev.map(m =>
+            m.id === streamingAssistantMsgId
+              ? { ...m, content: m.content + text }
+              : m
+          ))
+        }
+      }
+
+      const dripLoop = () => {
+        const bufferSize = textQueue.thinking.length + textQueue.content.length
+        // Adaptive speed: ramp up linearly as buffer grows to prevent falling behind
+        const speed = CHARS_PER_FRAME * (1 + Math.floor(bufferSize / 200))
+
+        if (textQueue.thinking.length > 0) {
+          const n = Math.min(textQueue.thinking.length, speed)
+          const released = textQueue.thinking.slice(0, n)
+          textQueue.thinking = textQueue.thinking.slice(n)
+          applyThinking(released)
+        }
+
+        if (textQueue.content.length > 0) {
+          const n = Math.min(textQueue.content.length, speed)
+          const released = textQueue.content.slice(0, n)
+          textQueue.content = textQueue.content.slice(n)
+          applyContent(released)
+        }
+
+        // Keep dripping while there's text in the queue
+        if (textQueue.thinking.length > 0 || textQueue.content.length > 0) {
+          dripFrameId = requestAnimationFrame(dripLoop)
+        } else {
+          dripFrameId = null
+        }
+      }
+
+      const onChunk = (chunk: { content?: string; thinking?: string; done: boolean }) => {
+        if (chunk.done) {
+          // Flush ALL remaining text immediately on done
+          if (dripFrameId !== null) {
+            cancelAnimationFrame(dripFrameId)
+            dripFrameId = null
+          }
+          if (textQueue.thinking) { applyThinking(textQueue.thinking); textQueue.thinking = '' }
+          if (textQueue.content) { applyContent(textQueue.content); textQueue.content = '' }
+          return
+        }
+
+        if (chunk.thinking) textQueue.thinking += chunk.thinking
+        if (chunk.content) textQueue.content += chunk.content
+
+        // Start the drip loop if not already running
+        if (dripFrameId === null) {
+          dripFrameId = requestAnimationFrame(dripLoop)
+        }
+      }
+
+      const response = await llmClient.send({
+        messages: llmMessages,
+        ...(generationMode ? { mode: generationMode } : {}),
+        onChunk
+      })
+
+      if (contentStarted || thinkingStarted) {
+        // Streaming was active — finalize messages with metadata
+        setMessages(prev => {
+          let result = prev.filter(m => m.id !== thinkingMessageId)
+          return result.map(m => {
+            if (m.id === streamingAssistantMsgId) {
+              return {
+                ...m,
+                isStreaming: false,
+                content: response.content,
+                metadata: {
+                  ...response.metadata,
+                  provider: response.provider,
+                  model: response.model,
+                  usage: response.usage
+                }
+              }
+            }
+            if (m.id === streamingThinkingMsgId) {
+              return { ...m, isStreaming: false }
+            }
+            return m
+          })
+        })
+
+        if (onMessage) {
+          onMessage({
+            id: streamingAssistantMsgId,
+            role: 'assistant',
+            content: response.content,
+            timestamp: new Date().toISOString(),
+            metadata: {
+              ...response.metadata,
+              provider: response.provider,
+              model: response.model,
+              usage: response.usage
+            }
+          })
+        }
       } else {
-        setMessages(prev => prev.filter(m => m.id !== thinkingMessageId).concat(assistantMessage))
+        // Non-streaming fallback — onChunk was never called
+        const thinking = response.thinking || (response.metadata?.thinking as string | undefined)
+        const assistantMessage: PrompdChatMessage = {
+          id: generateMessageId(),
+          role: 'assistant',
+          content: response.content,
+          timestamp: new Date().toISOString(),
+          metadata: {
+            ...response.metadata,
+            provider: response.provider,
+            model: response.model,
+            usage: response.usage,
+          }
+        }
+
+        const newMessages: PrompdChatMessage[] = []
+        if (thinking) {
+          newMessages.push({
+            id: generateMessageId(),
+            role: 'assistant',
+            content: thinking,
+            timestamp: new Date().toISOString(),
+            metadata: { type: 'thinking-content' }
+          })
+        }
+        newMessages.push(assistantMessage)
+
+        if (response.metadata?.messageAlreadyRendered) {
+          setMessages(prev => prev.filter(m => m.id !== thinkingMessageId))
+        } else {
+          setMessages(prev => prev.filter(m => m.id !== thinkingMessageId).concat(newMessages))
+        }
+
+        if (onMessage) {
+          onMessage(assistantMessage)
+        }
       }
 
       // If the agent is waiting for user input (ask_user tool call), stop loading to allow input
@@ -190,10 +362,6 @@ export const PrompdChat = forwardRef<PrompdChatHandle, PrompdChatProps>(function
         console.log('[PrompdChat] Agent waiting for input - enabling chat input')
         setIsLoading(false)
         isLoadingRef.current = false
-      }
-
-      if (onMessage) {
-        onMessage(assistantMessage)
       }
     } catch (error) {
       console.error('Failed to send message:', error)
@@ -211,7 +379,7 @@ export const PrompdChat = forwardRef<PrompdChatHandle, PrompdChatProps>(function
       setIsLoading(false)
       isLoadingRef.current = false
     }
-  }, [llmClient, onMessage])
+  }, [llmClient, onMessage, generationMode])
 
   const handleSubmit = async () => {
     console.log('[PrompdChat] handleSubmit called - isLoading:', isLoading, 'waitingForUserInput:', waitingForUserInput, 'input:', input.slice(0, 30))
@@ -324,7 +492,7 @@ export const PrompdChat = forwardRef<PrompdChatHandle, PrompdChatProps>(function
             history={inputHistory}
             leftControls={
               customLeftControls ?? (
-                currentMode && modes && modes.length > 0 && onModeChange ? (
+                !hideModeSelector && currentMode && modes && modes.length > 0 && onModeChange ? (
                   <PrompdModeDropdown
                     currentMode={currentMode}
                     modes={modes}

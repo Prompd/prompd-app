@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
-import { Hash, Thermometer, Sparkles, Brain, FileJson, Zap, ChevronDown, HelpCircle } from 'lucide-react'
+import { Hash, Thermometer, Sparkles, Brain, FileJson, Zap, ChevronDown, HelpCircle, Image, ImageOff } from 'lucide-react'
 import type { GenerationMode } from '../types/wizard'
 
 // Re-export for convenience
@@ -20,6 +20,12 @@ interface GenerationControlsProps {
   theme?: 'vs-dark' | 'light'
   /** Current provider name to determine supported modes */
   provider?: string
+  /** Whether image generation is enabled (default: true) */
+  imageGeneration?: boolean
+  /** Callback when image generation toggle changes */
+  onImageGenerationChange?: (enabled: boolean) => void
+  /** Whether the current model supports image generation */
+  modelSupportsImageGeneration?: boolean
 }
 
 interface ModeConfig {
@@ -55,7 +61,10 @@ export function GenerationControls({
   onTemperatureChange,
   onModeChange,
   theme = 'vs-dark',
-  provider
+  provider,
+  imageGeneration = true,
+  onImageGenerationChange,
+  modelSupportsImageGeneration = false
 }: GenerationControlsProps) {
   const [showModeDropdown, setShowModeDropdown] = useState(false)
   const [showTokenPresets, setShowTokenPresets] = useState(false)
@@ -247,6 +256,51 @@ export function GenerationControls({
           </div>
         )}
       </div>
+
+      {/* Image Generation Toggle */}
+      {modelSupportsImageGeneration && onImageGenerationChange && (
+        <button
+          onClick={() => onImageGenerationChange(!imageGeneration)}
+          title={imageGeneration ? 'Image generation enabled' : 'Image generation disabled'}
+          style={{
+            ...styles.controlGroup,
+            cursor: 'pointer',
+            gap: '5px',
+            background: imageGeneration
+              ? (isDark ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.1)')
+              : styles.controlGroup.background,
+            borderColor: imageGeneration
+              ? (isDark ? 'rgba(16, 185, 129, 0.3)' : 'rgba(16, 185, 129, 0.25)')
+              : styles.controlGroup.border.split(' ').pop()
+          }}
+          onMouseEnter={(e) => {
+            if (imageGeneration) {
+              e.currentTarget.style.background = isDark ? 'rgba(16, 185, 129, 0.18)' : 'rgba(16, 185, 129, 0.15)'
+            } else {
+              e.currentTarget.style.background = styles.controlGroupHover.background
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (imageGeneration) {
+              e.currentTarget.style.background = isDark ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.1)'
+            } else {
+              e.currentTarget.style.background = styles.controlGroup.background
+            }
+          }}
+        >
+          {imageGeneration
+            ? <Image size={14} style={{ color: '#10b981' }} />
+            : <ImageOff size={14} style={{ color: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)' }} />
+          }
+          <span style={{
+            fontSize: '11px',
+            fontWeight: 500,
+            color: imageGeneration ? '#10b981' : (isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)')
+          }}>
+            IMG
+          </span>
+        </button>
+      )}
 
       {/* Max Tokens */}
       <div ref={tokenRef} style={{ position: 'relative' }}>

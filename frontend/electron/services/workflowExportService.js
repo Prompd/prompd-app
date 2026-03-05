@@ -21,6 +21,26 @@ const os = require('os')
 const AdmZip = require('adm-zip')
 const { packageWorkflow } = require('./packageWorkflow')
 
+/**
+ * Extract a ZIP archive with ZIP Slip protection.
+ * Throws if any entry would escape the target directory.
+ * @param {string} zipPath - Path to the .pdpkg / ZIP file
+ * @param {string} targetDir - Directory to extract into
+ * @param {boolean} overwrite - Whether to overwrite existing files
+ */
+function safeExtractZip(zipPath, targetDir, overwrite = false) {
+  const zip = new AdmZip(zipPath)
+  const resolvedTarget = path.resolve(targetDir)
+  for (const entry of zip.getEntries()) {
+    if (entry.entryName.endsWith('/')) continue // directory entries are fine
+    const resolvedEntry = path.resolve(targetDir, entry.entryName)
+    if (!resolvedEntry.startsWith(resolvedTarget + path.sep)) {
+      throw new Error(`Security: ZIP entry "${entry.entryName}" would escape target directory`)
+    }
+  }
+  zip.extractAllTo(targetDir, overwrite)
+}
+
 class WorkflowExportService {
   constructor(getPrompdCli) {
     this.getPrompdCli = getPrompdCli
@@ -79,8 +99,7 @@ class WorkflowExportService {
 
       // 2. Extract package to output directory (contains prompd.json with integrity hashes)
       console.log('[WorkflowExport] Extracting package to:', outputDir)
-      const zip = new AdmZip(packageResult.packagePath)
-      zip.extractAllTo(outputDir, false)
+      safeExtractZip(packageResult.packagePath, outputDir, false)
 
       const generatedFiles = []
       const workflowRelativePath = packageResult.workflowRelativePath
@@ -706,8 +725,7 @@ For issues with Prompd workflows, visit:
 
       // 2. Extract package to output directory (contains prompd.json with integrity hashes)
       console.log('[WorkflowExport] Extracting package to:', outputDir)
-      const zip = new AdmZip(packageResult.packagePath)
-      zip.extractAllTo(outputDir, false)
+      safeExtractZip(packageResult.packagePath, outputDir, false)
 
       const generatedFiles = []
       const workflowRelativePath = packageResult.workflowRelativePath

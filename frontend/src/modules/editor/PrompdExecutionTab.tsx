@@ -19,6 +19,7 @@ import { useAuthenticatedUser } from '../auth/ClerkWrapper'
 import { ExecutionResultModal, type ExecutionResult } from './ExecutionResultModal'
 import { GenerationControls, type GenerationMode } from '../components/GenerationControls'
 import { CompiledPreview } from './CompiledPreview'
+import { modelSupportsImageGeneration } from '../services/executionService'
 
 // Re-export GenerationMode for external consumers
 export type { GenerationMode }
@@ -50,6 +51,7 @@ export interface ExecutionConfig {
   maxTokens?: number      // Max tokens to generate (default: 4096)
   temperature?: number    // Temperature 0-2 (default: 0.7)
   mode?: GenerationMode   // Generation mode (default: 'default')
+  imageGeneration?: boolean  // Enable image generation (default: true when model supports it)
   // Workspace context for package resolution
   workspacePath?: string  // Root workspace path
 }
@@ -249,6 +251,9 @@ export function PrompdExecutionTab({
                   onModeChange={(mode) => onConfigChange({ mode })}
                   theme={theme}
                   provider={config.provider}
+                  imageGeneration={config.imageGeneration ?? true}
+                  onImageGenerationChange={(enabled) => onConfigChange({ imageGeneration: enabled })}
+                  modelSupportsImageGeneration={modelSupportsImageGeneration(config.provider, config.model)}
                 />
 
                 <button
@@ -317,6 +322,22 @@ export function PrompdExecutionTab({
               }}>
                 <XCircle size={16} />
                 <span>Missing required parameters: {missingParams.join(', ')}</span>
+              </div>
+            )}
+
+            {/* First-time guidance */}
+            {config.executionHistory.length === 0 && !isExecuting && (
+              <div style={{
+                padding: '10px 16px',
+                background: 'rgba(99, 102, 241, 0.06)',
+                border: '1px solid rgba(99, 102, 241, 0.15)',
+                borderRadius: '6px',
+                marginBottom: '12px',
+                fontSize: '12px',
+                color: 'var(--text-secondary)',
+                lineHeight: 1.5
+              }}>
+                Fill in any required parameters below, then click <strong>Execute</strong> (or press <strong>F5</strong>) to run this prompt. Results will appear here.
               </div>
             )}
 
@@ -599,6 +620,7 @@ export function PrompdExecutionTab({
             theme={theme}
             onClose={() => setShowExecutionResult(false)}
             onRunAgain={onExecute}
+            isExecuting={isExecuting}
           />
         )}
       </div>

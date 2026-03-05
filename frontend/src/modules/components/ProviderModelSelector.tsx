@@ -11,7 +11,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Check, Zap, DollarSign, FileText, Key, Eye, Wrench, ImageIcon } from 'lucide-react'
+import { ChevronDown, Check, Zap, DollarSign, FileText, Key, Eye, Wrench, ImageIcon, Brain } from 'lucide-react'
 import type { ProviderWithPricing, ModelWithPricing } from '../../stores/uiStore'
 import { formatPricePerMillion } from '../lib/formatters'
 
@@ -600,6 +600,11 @@ export function ProviderModelSelector({
                       {model.supportsImageGeneration && (
                         <span title="Supports image generation" style={{ color: '#f59e0b', display: 'flex' }}>
                           <ImageIcon size={13} />
+                        </span>
+                      )}
+                      {model.supportsThinking && (
+                        <span title="Supports extended thinking" style={{ color: '#f59e0b', display: 'flex' }}>
+                          <Brain size={13} />
                         </span>
                       )}
                     </div>

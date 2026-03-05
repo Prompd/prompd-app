@@ -28,12 +28,16 @@ function getAutoUpdater() {
 const { McpIpcRegistration } = require('./ipc/McpIpcRegistration')
 const { McpServerIpcRegistration } = require('./ipc/McpServerIpcRegistration')
 const { TemplateIpcRegistration } = require('./ipc/TemplateIpcRegistration')
+const { ResourceIpcRegistration } = require('./ipc/ResourceIpcRegistration')
+const { SkillIpcRegistration } = require('./ipc/SkillIpcRegistration')
 const mcpService = require('./services/mcpService')
 const { mcpServerService } = require('./services/mcpServerService')
 const ipcModules = [
   new McpIpcRegistration(),
   new McpServerIpcRegistration(),
   new TemplateIpcRegistration(),
+  new ResourceIpcRegistration(),
+  new SkillIpcRegistration(),
 ]
 
 // Tray and trigger services for background workflow execution
@@ -371,6 +375,15 @@ function createMenu() {
             }
           }
         },
+        {
+          label: 'New Project...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-new-project')
+            }
+          }
+        },
+        { type: 'separator' },
         {
           label: 'Open File...',
           accelerator: 'CmdOrCtrl+O',
@@ -875,7 +888,7 @@ app.whenReady().then(() => {
   // Initialize deployment service (package-based workflow deployment)
   try {
     const dbPath = path.join(app.getPath('userData'), 'scheduler', 'schedules.db')
-    const deploymentsPath = path.join(app.getPath('home'), '.prompd', 'workflows')
+    const deploymentsPath = path.join(app.getPath('home'), '.prompd', 'deployments')
 
     // Create deployment executor wrapper
     const executeDeployedWorkflow = async (deployment, trigger, context) => {
@@ -1376,6 +1389,15 @@ ipcMain.handle('dialog:openFolder', async () => {
   return filePaths[0]
 })
 
+ipcMain.handle('dialog:selectDirectory', async (event, title) => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: title || 'Select Directory',
+    properties: ['openDirectory', 'createDirectory']
+  })
+  if (canceled) return null
+  return filePaths[0]
+})
+
 ipcMain.handle('dialog:saveFile', async (event, defaultPath) => {
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
     defaultPath,
@@ -1440,6 +1462,33 @@ ipcMain.handle('dialog:selectFileFromWorkspace', async (event, workspacePath, ti
   }
 })
 
+/**
+ * Check whether a filesystem path is within an allowed root for mutating operations
+ * (write, delete, rename). Allowed roots are:
+ *   - The currently open workspace (currentWorkspacePath)
+ *   - The user-level Prompd data directory (~/.prompd/)
+ *
+ * Read-only operations (readFile, readBinaryFile) are not restricted here because
+ * the editor must be able to open any user-selected file.
+ *
+ * @param {string} targetPath - The path to validate (may be absolute or relative)
+ * @returns {boolean}
+ */
+function isAllowedMutablePath(targetPath) {
+  const resolved = path.resolve(targetPath)
+  const prompdHome = path.resolve(os.homedir(), '.prompd')
+  if (resolved.startsWith(prompdHome + path.sep) || resolved === prompdHome) {
+    return true
+  }
+  if (currentWorkspacePath) {
+    const resolvedWs = path.resolve(currentWorkspacePath)
+    if (resolved.startsWith(resolvedWs + path.sep) || resolved === resolvedWs) {
+      return true
+    }
+  }
+  return false
+}
+
 ipcMain.handle('fs:readFile', async (event, filePath) => {
   try {
     const content = await fs.promises.readFile(filePath, 'utf-8')
@@ -1462,6 +1511,9 @@ ipcMain.handle('fs:readBinaryFile', async (event, filePath) => {
 
 ipcMain.handle('fs:writeFile', async (event, filePath, content) => {
   try {
+    if (!isAllowedMutablePath(filePath)) {
+      return { success: false, error: 'Path is outside the allowed workspace or .prompd directory' }
+    }
     await fs.promises.writeFile(filePath, content, 'utf-8')
     return { success: true }
   } catch (error) {
@@ -1511,8 +1563,9 @@ ipcMain.handle('generated:saveImage', async (_event, base64Data, mimeType) => {
       return { success: false, error: 'Invalid base64 data' }
     }
 
-    // Determine file extension from mime type
-    const ext = (mimeType || 'image/png').split('/')[1]?.replace(/\+.*/, '') || 'png'
+    // Determine file extension from mime type and sanitize to alphanumeric only
+    const rawExt = (mimeType || 'image/png').split('/')[1]?.replace(/\+.*/, '') || 'png'
+    const ext = rawExt.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10) || 'bin'
 
     // Compute truncated SHA256 hash for content-addressable filename
     const crypto = require('crypto')
@@ -1615,7 +1668,8 @@ ipcMain.handle('generated:saveText', async (_event, content, ext) => {
       return { success: false, error: 'Invalid content' }
     }
 
-    const fileExt = ext || 'md'
+    // Sanitize extension to alphanumeric characters only
+    const fileExt = (ext || 'md').replace(/[^a-zA-Z0-9]/g, '').substring(0, 10) || 'md'
     const crypto = require('crypto')
     const hash = crypto.createHash('sha256').update(content).digest('hex').substring(0, 16)
 
@@ -1644,9 +1698,8 @@ ipcMain.handle('generated:saveText', async (_event, content, ext) => {
 
 ipcMain.handle('fs:rename', async (event, oldPath, newPath) => {
   try {
-    // Security: Prevent path traversal attacks
-    if (oldPath.includes('..') || newPath.includes('..')) {
-      return { success: false, error: 'Invalid path: parent directory references not allowed' }
+    if (!isAllowedMutablePath(oldPath) || !isAllowedMutablePath(newPath)) {
+      return { success: false, error: 'Path is outside the allowed workspace or .prompd directory' }
     }
     await fs.promises.rename(oldPath, newPath)
     return { success: true }
@@ -1657,9 +1710,8 @@ ipcMain.handle('fs:rename', async (event, oldPath, newPath) => {
 
 ipcMain.handle('fs:delete', async (event, targetPath, options = {}) => {
   try {
-    // Security: Prevent path traversal attacks
-    if (targetPath.includes('..')) {
-      return { success: false, error: 'Invalid path: parent directory references not allowed' }
+    if (!isAllowedMutablePath(targetPath)) {
+      return { success: false, error: 'Path is outside the allowed workspace or .prompd directory' }
     }
 
     // Check if deleting a workflow file - if so, remove associated deployments
@@ -1774,6 +1826,86 @@ ipcMain.handle('env:getFiltered', async (_event, prefix) => {
   return filtered
 })
 
+// Streaming API request handler - sends response body chunks incrementally via IPC events
+// Unlike api:request which buffers the entire response, this forwards each data chunk as it arrives
+ipcMain.handle('api:streamRequest', async (event, url, options, streamId) => {
+  try {
+    return new Promise((resolve) => {
+      const request = net.request({
+        method: options.method || 'GET',
+        url: url
+      })
+
+      // Set headers
+      if (options.headers) {
+        Object.entries(options.headers).forEach(([key, value]) => {
+          request.setHeader(key, value)
+        })
+      }
+
+      // Handle response - resolve with headers immediately, then stream body chunks
+      request.on('response', (response) => {
+        const headers = {}
+        const rawHeaders = response.rawHeaders
+        for (let i = 0; i < rawHeaders.length; i += 2) {
+          headers[rawHeaders[i].toLowerCase()] = rawHeaders[i + 1]
+        }
+
+        // Resolve with headers right away (don't wait for body)
+        resolve({
+          success: true,
+          status: response.statusCode,
+          statusText: response.statusMessage,
+          headers: headers,
+          ok: response.statusCode >= 200 && response.statusCode < 300
+        })
+
+        // Forward data chunks incrementally to renderer
+        response.on('data', (chunk) => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('api:stream-chunk', streamId, chunk.toString('utf8'))
+          }
+        })
+
+        response.on('end', () => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('api:stream-end', streamId)
+          }
+        })
+
+        response.on('error', (err) => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('api:stream-error', streamId, err.message)
+          }
+        })
+      })
+
+      // Handle request errors
+      request.on('error', (error) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('api:stream-error', streamId, error.message)
+        }
+        resolve({
+          success: false,
+          error: error.message
+        })
+      })
+
+      // Send body if present
+      if (options.body) {
+        request.write(typeof options.body === 'string' ? options.body : JSON.stringify(options.body))
+      }
+
+      request.end()
+    })
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message
+    }
+  }
+})
+
 // API request handler - bypasses CORS by making requests from main process
 ipcMain.handle('api:request', async (_event, url, options) => {
   try {
@@ -1845,6 +1977,117 @@ ipcMain.handle('api:request', async (_event, url, options) => {
       success: false,
       error: error.message
     }
+  }
+})
+
+// ============================================================================
+// Direct Registry Publish Handler
+// ============================================================================
+
+/**
+ * Publish a .pdpkg file to the registry via @prompd/cli RegistryClient
+ */
+ipcMain.handle('package:publish', async (_event, options) => {
+  const { filePath, registryUrl, authToken, metadataOverrides } = options
+
+  try {
+    console.log('[Electron] Publishing package:', filePath, 'metadataOverrides:', metadataOverrides)
+
+    if (!filePath || !registryUrl || !authToken) {
+      return { success: false, error: 'Missing required parameters (filePath, registryUrl, authToken)' }
+    }
+
+    if (!fs.existsSync(filePath)) {
+      return { success: false, error: `Package file not found: ${filePath}` }
+    }
+
+    // Find registry name from config matching the URL
+    const globalPath = getGlobalConfigPath()
+    const config = await readConfigFile(globalPath) || {}
+    const registries = config.registry?.registries || {}
+    const normalizedUrl = registryUrl.replace(/\/$/, '')
+
+    let registryName = null
+    for (const [name, reg] of Object.entries(registries)) {
+      if (reg.url && reg.url.replace(/\/$/, '') === normalizedUrl) {
+        registryName = name
+        break
+      }
+    }
+
+    if (!registryName) {
+      return { success: false, error: `No registry configured for URL: ${registryUrl}. Check ~/.prompd/config.yaml` }
+    }
+
+    console.log(`[Electron] Using registry: ${registryName} (${normalizedUrl})`)
+
+    // Read the .pdpkg and extract metadata
+    const fileBuffer = fs.readFileSync(filePath)
+    console.log(`[Electron] Package file read: ${fileBuffer.length} bytes`)
+
+    const AdmZip = require('adm-zip')
+    const zip = new AdmZip(fileBuffer)
+
+    const manifestEntry = zip.getEntry('prompd.json') || zip.getEntry('manifest.json')
+    if (!manifestEntry) {
+      return { success: false, error: 'Package missing prompd.json' }
+    }
+
+    const metadata = JSON.parse(manifestEntry.getData().toString('utf8'))
+
+    // Apply metadata overrides from the UI (e.g., scoped name, version)
+    // The registry server re-extracts metadata from the archive's prompd.json,
+    // so we must rebuild the archive with updated prompd.json inside it.
+    let uploadBuffer = fileBuffer
+    if (metadataOverrides && typeof metadataOverrides === 'object') {
+      const scopedName = metadataOverrides.name // e.g., "@pikles/loop"
+
+      // Registry extracts metadata from the archive's prompd.json and uses
+      // `id || name` as the package identifier. Set id to the scoped name
+      // so the registry sees it. Keep name as the friendly display name.
+      if (scopedName) metadata.id = scopedName
+      if (metadataOverrides.version) metadata.version = metadataOverrides.version
+      if (metadataOverrides.description) metadata.description = metadataOverrides.description
+
+      // Rebuild the ZIP with updated prompd.json
+      const manifestName = manifestEntry.entryName
+      const newZip = new AdmZip()
+      for (const entry of zip.getEntries()) {
+        if (entry.entryName === manifestName) {
+          newZip.addFile(manifestName, Buffer.from(JSON.stringify(metadata, null, 2), 'utf8'))
+        } else {
+          newZip.addFile(entry.entryName, entry.getData(), entry.comment, entry.attr)
+        }
+      }
+      uploadBuffer = newZip.toBuffer()
+      console.log('[Electron] Rebuilt archive with overrides, new size:', uploadBuffer.length, 'bytes')
+
+      // For RegistryClient.uploadPackageBuffer: name must be the scoped identifier
+      // because it's used in the URL path (/packages/@scope/name)
+      if (scopedName) metadata.name = scopedName
+    }
+
+    console.log('[Electron] Final metadata name:', metadata.name, 'version:', metadata.version)
+
+    if (!metadata.name) {
+      return { success: false, error: 'Package name missing from prompd.json' }
+    }
+
+    // Publish via CLI RegistryClient
+    const { RegistryClient } = await import('@prompd/cli')
+    const client = new RegistryClient({ registryName })
+
+    await client.uploadPackageBuffer(uploadBuffer, metadata, {
+      access: 'public',
+      tag: 'latest',
+      authToken
+    })
+
+    console.log(`[Electron] Published: ${metadata.name}@${metadata.version}`)
+    return { success: true, data: { name: metadata.name, version: metadata.version } }
+  } catch (error) {
+    console.error('[Electron] Publish error:', error.message)
+    return { success: false, error: error.message }
   }
 })
 
@@ -2166,12 +2409,26 @@ ipcMain.handle('git:runCommand', async (event, args, cwd) => {
 })
 
 // Handle app protocol for deep linking
-// In production, the NSIS installer registers the protocol pointing to Prompd.exe.
-// We only call setAsDefaultProtocolClient in production as a fallback.
-// In dev mode, process.execPath is electron.exe which would register "Electron"
-// as the protocol handler name in Windows, causing "Open Electron?" dialogs.
-if (!process.defaultApp) {
+// In dev mode, process.execPath is electron.exe so we must pass the app path
+// as an argument so Windows can relaunch the dev app from a protocol URL.
+if (process.defaultApp) {
+  app.setAsDefaultProtocolClient('prompd', process.execPath, [path.resolve(process.argv[1])])
+} else {
   app.setAsDefaultProtocolClient('prompd')
+}
+
+// Electron writes "URL:prompd" as the registry display name — override to "Prompd"
+// so browser dialogs show "Open Prompd?" instead of "Open URL:prompd?"
+if (process.platform === 'win32') {
+  try {
+    const { execSync } = require('child_process')
+    execSync('reg add "HKCU\\Software\\Classes\\prompd" /ve /d "Prompd" /f', {
+      windowsHide: true,
+      stdio: 'ignore'
+    })
+  } catch (_) {
+    // Non-critical — protocol handler still works
+  }
 }
 
 // Handle protocol URLs (prompd://)
@@ -3376,12 +3633,52 @@ Use parameters like this: {{input}}`
 
 // Default config values (lowest priority)
 const DEFAULT_CONFIG = {
+  // LLM provider defaults
   default_provider: '',
   default_model: '',
-  api_keys: {},
+
+  // API keys for LLM providers (or set via environment variables)
+  // Supported: openai, anthropic, google, groq, mistral, cohere, together, perplexity, deepseek, ollama
+  api_keys: {
+    openai: '',
+    anthropic: '',
+    google: '',
+    groq: '',
+    mistral: '',
+    cohere: '',
+    together: '',
+    perplexity: '',
+    deepseek: ''
+  },
+
+  // Custom OpenAI-compatible providers
+  // custom_providers:
+  //   my-provider:
+  //     display_name: "My Provider"
+  //     base_url: "https://api.my-provider.ai/v1"
+  //     api_key: ""
+  //     type: "openai-compatible"
+  //     enabled: true
+  //     models:
+  //       - "model-name"
   custom_providers: {},
+
+  // Per-provider settings (temperature, max_tokens, etc.)
   provider_configs: {},
-  services: {},
+
+  // Providers to hide from the UI
+  disabled_providers: [],
+
+  // System services
+  services: {
+    mcp_server: {
+      auto_start: false,
+      port: 3100,
+      api_key: ''
+    }
+  },
+
+  // Package registry configuration
   registry: {
     default: 'prompdhub',
     current_namespace: '',
@@ -3393,7 +3690,11 @@ const DEFAULT_CONFIG = {
       }
     }
   },
+
+  // Scope-to-registry mappings (e.g., @my-org -> my-registry)
   scopes: {},
+
+  // Request settings
   timeout: 30,
   max_retries: 3,
   verbose: false
@@ -3929,6 +4230,36 @@ function getDefaultModelsForProvider(provider) {
 // Shares the same logic as the /compile slash command
 // =============================================================================
 
+// Walk up the directory tree to find the Prompd project root.
+// A project root is a directory containing a prompd.json with both 'name' and 'version' fields.
+// Falls back to startDir if no project root is found.
+function findPrompdProjectRoot(startDir) {
+  let dir = path.resolve(startDir)
+  const root = path.parse(dir).root
+
+  while (true) {
+    const candidate = path.join(dir, 'prompd.json')
+    if (fs.existsSync(candidate)) {
+      try {
+        const content = JSON.parse(fs.readFileSync(candidate, 'utf8'))
+        if (content.name && content.version) {
+          return dir
+        }
+      } catch {
+        // Invalid JSON, skip
+      }
+    }
+
+    const parent = path.dirname(dir)
+    if (parent === dir || dir === root) {
+      break
+    }
+    dir = parent
+  }
+
+  return path.resolve(startDir)
+}
+
 // Shared compilation function - used by both IPC handlers and slash commands
 // This ensures consistent behavior across all compilation paths
 async function compilePrompt(content, options = {}) {
@@ -3943,8 +4274,9 @@ async function compilePrompt(content, options = {}) {
     workspaceRoot = currentWorkspacePath
     console.log('[Compiler] Using workspace root:', workspaceRoot)
   } else if (fullFilePath && fs.existsSync(path.dirname(fullFilePath))) {
-    workspaceRoot = path.dirname(fullFilePath)
-    console.log('[Compiler] No workspace set, using file directory:', workspaceRoot)
+    // Walk up from file directory to find project root (prompd.json with name + version)
+    workspaceRoot = findPrompdProjectRoot(path.dirname(fullFilePath))
+    console.log('[Compiler] No workspace set, auto-detected project root:', workspaceRoot)
   }
 
   const filePath = fullFilePath ? fullFilePath.replace(/\\/g, '/') : null
@@ -4243,7 +4575,7 @@ ipcMain.handle('compiler:getDiagnostics', async (_event, content, options = {}) 
       parameters: options.parameters || {},
       fileSystem,
       registryUrl: options.registryUrl || 'http://localhost:4000',
-      workspaceRoot: options.workspaceRoot || (options.filePath ? path.dirname(options.filePath) : null),
+      workspaceRoot: options.workspaceRoot || (options.filePath ? findPrompdProjectRoot(path.dirname(options.filePath)) : null),
       verbose: false
     })
 
@@ -4470,8 +4802,9 @@ ipcMain.handle('package:installAll', async (_event, workspacePath) => {
 })
 
 // Install a single package by reference (e.g. "@prompd/core@0.0.1" or "@prompd/core")
-ipcMain.handle('package:install', async (_event, packageRef, workspacePath) => {
-  console.log('[Package] Installing single package:', packageRef, 'to:', workspacePath)
+ipcMain.handle('package:install', async (_event, packageRef, workspacePath, options) => {
+  const installOptions = options || {}
+  console.log('[Package] Installing single package:', packageRef, 'to:', workspacePath, installOptions.global ? '(global)' : '')
 
   if (!packageRef || typeof packageRef !== 'string') {
     return { success: false, error: 'No package reference provided' }
@@ -4484,8 +4817,9 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath) => {
     const { RegistryClient } = await import('@prompd/cli')
     const client = new RegistryClient()
     await client.install(packageRef, {
-      workspaceRoot: workspacePath,
-      skipCache: false
+      workspaceRoot: installOptions.global ? os.homedir() : workspacePath,
+      skipCache: false,
+      type: installOptions.type || undefined
     })
 
     console.log('[Package] Installed:', packageRef)
@@ -4512,108 +4846,130 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath) => {
       }
     }
 
-    const cacheDir = path.join(workspacePath, '.prompd', 'cache')
+    // The CLI installs packages to .prompd/{typeDir}/{name}/{version}/ based on
+    // the type field in the package's internal prompd.json/manifest.json.
+    // We need to find the installed package to read its manifest for MCP deps
+    // and to determine the resolved version if not specified in the ref.
+    const TYPE_DIRS = { 'package': 'packages', 'workflow': 'workflows', 'node-template': 'templates', 'skill': 'skills' }
+    const installRoot = installOptions.global
+      ? path.join(os.homedir(), '.prompd')
+      : path.join(workspacePath, '.prompd')
 
-    // If no version in ref, find it from the installed cache directory
-    if (!pkgVersion && fs.existsSync(cacheDir)) {
+    let installedPath = null
+    let installedType = installOptions.type || 'package'
+    let installedManifest = null
+
+    // Search the CLI's install directories to find the installed package
+    // Priority: check the hinted type first, then scan all type directories
+    const typesToCheck = installOptions.type
+      ? [installOptions.type, ...Object.keys(TYPE_DIRS).filter(t => t !== installOptions.type)]
+      : Object.keys(TYPE_DIRS)
+
+    for (const type of typesToCheck) {
+      const typeDir = TYPE_DIRS[type]
+      if (!typeDir) continue
+
+      // CLI structure: .prompd/{typeDir}/{packageName}/{version}/
+      const pkgDir = path.join(installRoot, typeDir, pkgName || packageRef)
+      if (!fs.existsSync(pkgDir)) continue
+
       try {
-        if (pkgName.startsWith('@')) {
-          // Scoped: cache structure is .prompd/cache/@scope/name@version/
-          const [scope, name] = pkgName.split('/')
-          const scopeDir = path.join(cacheDir, scope)
-          if (fs.existsSync(scopeDir)) {
-            const match = fs.readdirSync(scopeDir).find(e => e.startsWith(name + '@'))
-            if (match) pkgVersion = match.substring(name.length + 1)
+        const versions = fs.readdirSync(pkgDir).filter(v => {
+          try { return fs.statSync(path.join(pkgDir, v)).isDirectory() } catch { return false }
+        })
+        if (versions.length === 0) continue
+
+        // Use specified version or the latest installed version
+        const targetVersion = pkgVersion || versions.sort().pop()
+        const versionPath = path.join(pkgDir, targetVersion)
+        if (!fs.existsSync(versionPath)) continue
+
+        installedPath = versionPath
+        installedType = type
+        if (!pkgVersion) pkgVersion = targetVersion
+
+        // Read manifest from installed location
+        const manifestPath = path.join(versionPath, 'prompd.json')
+        if (!fs.existsSync(manifestPath)) {
+          const legacyPath = path.join(versionPath, 'manifest.json')
+          if (fs.existsSync(legacyPath)) {
+            installedManifest = JSON.parse(fs.readFileSync(legacyPath, 'utf8'))
           }
         } else {
-          const match = fs.readdirSync(cacheDir).find(e => e.startsWith(pkgName + '@'))
-          if (match) pkgVersion = match.substring(pkgName.length + 1)
+          installedManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
         }
-      } catch (lookupErr) {
-        console.warn('[Package] Cache version lookup failed:', lookupErr.message)
+
+        // Determine type: manifest > frontend hint > directory found in
+        if (installedManifest && installedManifest.type) {
+          installedType = installedManifest.type
+        } else if (installOptions.type) {
+          installedType = installOptions.type
+        } else {
+          installedType = type
+        }
+        break
+      } catch (scanErr) {
+        console.warn(`[Package] Failed to scan ${typeDir}/:`, scanErr.message)
       }
     }
 
-    // Update prompd.json with the dependency
-    if (pkgName && pkgVersion) {
-      try {
-        const prompdJsonPath = path.join(workspacePath, 'prompd.json')
-        let prompdJson = { dependencies: {} }
+    console.log(`[Package] Resolved: type=${installedType}, path=${installedPath || 'not found'}`)
 
-        if (fs.existsSync(prompdJsonPath)) {
-          const content = fs.readFileSync(prompdJsonPath, 'utf8')
-          if (content && content.trim() !== '') {
-            prompdJson = JSON.parse(content)
-          }
-        }
-
-        if (!prompdJson.dependencies) {
-          prompdJson.dependencies = {}
-        }
-
-        prompdJson.dependencies[pkgName] = pkgVersion
-
-        fs.writeFileSync(prompdJsonPath, JSON.stringify(prompdJson, null, 2) + '\n')
-        console.log('[Package] Updated prompd.json with dependency:', pkgName, '@', pkgVersion)
-      } catch (depErr) {
-        console.warn('[Package] Failed to update prompd.json (non-fatal):', depErr.message)
-      }
-    } else {
-      console.warn('[Package] Could not determine package name/version for prompd.json update')
-    }
+    // prompd.json dependency tracking is handled by the CLI's RegistryClient.install()
 
     // Check installed package for MCP dependencies
     let missingMcps = []
-    try {
-      if (fs.existsSync(cacheDir)) {
-        // For scoped packages, build the cache path: @scope/name@version
-        let matchingCachePath
-        if (pkgName && pkgVersion) {
-          if (pkgName.startsWith('@')) {
-            const [scope, name] = pkgName.split('/')
-            matchingCachePath = path.join(cacheDir, scope, `${name}@${pkgVersion}`)
-          } else {
-            matchingCachePath = path.join(cacheDir, `${pkgName}@${pkgVersion}`)
-          }
+    if (installedManifest && Array.isArray(installedManifest.mcps) && installedManifest.mcps.length > 0) {
+      try {
+        const mcpConfig = mcpService.loadMcpConfig()
+        const configuredNames = new Set(Object.keys(mcpConfig.mcpServers || {}))
+        missingMcps = installedManifest.mcps.filter(name => !configuredNames.has(name))
+        if (missingMcps.length > 0) {
+          console.log('[Package] Package requires MCP servers not yet configured:', missingMcps)
         }
-
-        // Fallback: scan top-level entries (original approach for non-scoped)
-        if (!matchingCachePath || !fs.existsSync(matchingCachePath)) {
-          const entries = fs.readdirSync(cacheDir)
-          const fallbackName = pkgName || packageRef
-          const matchingDir = entries.find(e => e.startsWith(fallbackName + '@') || e === fallbackName)
-          if (matchingDir) {
-            matchingCachePath = path.join(cacheDir, matchingDir)
-          }
-        }
-
-        if (matchingCachePath && fs.existsSync(matchingCachePath)) {
-          const pkgJsonPath = path.join(matchingCachePath, 'prompd.json')
-          if (fs.existsSync(pkgJsonPath)) {
-            const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'))
-            if (pkgJson.mcps && Array.isArray(pkgJson.mcps) && pkgJson.mcps.length > 0) {
-              const mcpConfig = mcpService.loadMcpConfig()
-              const configuredNames = new Set(Object.keys(mcpConfig.mcpServers || {}))
-              missingMcps = pkgJson.mcps.filter(name => !configuredNames.has(name))
-              if (missingMcps.length > 0) {
-                console.log('[Package] Package requires MCP servers not yet configured:', missingMcps)
-              }
-            }
-          }
-        }
+      } catch (mcpErr) {
+        console.warn('[Package] MCP dependency check failed (non-fatal):', mcpErr.message)
       }
-    } catch (mcpCheckErr) {
-      console.warn('[Package] MCP dependency check failed (non-fatal):', mcpCheckErr.message)
     }
 
     return {
       success: true,
       name: packageRef,
+      type: installedType,
+      installedPath,
       missingMcps: missingMcps.length > 0 ? missingMcps : undefined
     }
   } catch (error) {
     console.error('[Package] Install failed:', packageRef, error.message)
     return { success: false, error: error.message || 'Installation failed' }
+  }
+})
+
+// Uninstall a package by name, removing installed files and prompd.json dependency
+ipcMain.handle('package:uninstall', async (_event, packageName, workspacePath, options) => {
+  const uninstallOptions = options || {}
+  console.log('[Package] Uninstalling:', packageName, 'from:', workspacePath, uninstallOptions.global ? '(global)' : '')
+
+  if (!packageName || typeof packageName !== 'string') {
+    return { success: false, error: 'No package name provided' }
+  }
+  if (!workspacePath || typeof workspacePath !== 'string') {
+    return { success: false, error: 'No workspace folder open' }
+  }
+
+  try {
+    const { RegistryClient } = await import('@prompd/cli')
+    const client = new RegistryClient()
+    await client.uninstall(packageName, {
+      workspaceRoot: uninstallOptions.global ? os.homedir() : workspacePath,
+      global: uninstallOptions.global || false
+    })
+
+    console.log('[Package] Uninstalled:', packageName)
+    return { success: true, name: packageName }
+  } catch (error) {
+    console.error('[Package] Uninstall failed:', packageName, error.message)
+    return { success: false, error: error.message || 'Uninstall failed' }
   }
 })
 
@@ -6437,8 +6793,22 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               'curl', 'wget',
             ]
 
-            // Merge with workflow-specific custom commands passed from renderer
-            const workflowCustomCommands = (options?.customCommands || []).map(c => c.toLowerCase())
+            // Executables that must never appear in custom command lists from the renderer
+            const blockedExecutables = [
+              'powershell', 'powershell.exe', 'pwsh', 'pwsh.exe',
+              'bash', 'sh', 'zsh', 'fish', 'dash',
+              'cmd', 'cmd.exe', 'command.com',
+              'wscript', 'cscript', 'mshta', 'msiexec',
+              'reg', 'regedit', 'regedt32',
+              'sc', 'net', 'netsh', 'ipconfig',
+              'taskkill', 'tasklist', 'schtasks',
+              'certutil', 'bitsadmin', 'rundll32', 'regsvr32',
+            ]
+
+            // Custom commands from the renderer — strip any that are blocked or overlap with builtins
+            const workflowCustomCommands = (options?.customCommands || [])
+              .map(c => c.toLowerCase().trim())
+              .filter(c => c.length > 0 && !blockedExecutables.includes(c))
             const allowedExecutables = [...new Set([...builtinExecutables, ...workflowCustomCommands])]
 
             if (!allowedExecutables.includes(executable)) {
@@ -6462,6 +6832,15 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               for (const char of dangerousChars) {
                 if (arg.includes(char)) {
                   return { success: false, result: `Shell metacharacter '${char}' not allowed in arguments`, error: `Shell metacharacter '${char}' not allowed` }
+                }
+              }
+              // Block eval/exec flags for interpreter executables — these allow arbitrary code
+              // execution without any shell metacharacters (e.g. node -e "require('child_process')...")
+              const interpreters = ['node', 'python', 'python3', 'perl', 'ruby']
+              if (interpreters.includes(executable)) {
+                const evalFlags = ['-e', '-c', '--eval', '--exec', '--interactive', '-i']
+                if (evalFlags.includes(arg.toLowerCase())) {
+                  return { success: false, result: `Flag '${arg}' not allowed for interpreter '${executable}'`, error: `Eval flag not allowed` }
                 }
               }
             }

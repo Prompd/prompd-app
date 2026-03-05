@@ -4,8 +4,9 @@
  * Handles: template:save, template:list, template:delete, template:insert
  *
  * Saves and restores workflow node templates as .pdpkg archives in:
- * - <workspace>/.prompd/templates/ (project-specific)
- * - ~/.prompd/templates/ (user-level, shared across workspaces)
+ * - <workspace>/.prompd/templates/local/ (project-specific, user-created)
+ * - ~/.prompd/templates/local/ (user-level, user-created)
+ * Registry-installed templates live at the root: .prompd/templates/@scope/name/version/
  */
 
 const { BaseIpcRegistration } = require('./IpcRegistration')
@@ -43,6 +44,64 @@ function getTemplatesDir(workspacePath, scope) {
 }
 
 /**
+ * Resolve the local templates directory (for user-created exports).
+ * @param {string} workspacePath
+ * @param {'workspace'|'user'} scope
+ * @returns {string}
+ */
+function getLocalTemplatesDir(workspacePath, scope) {
+  return path.join(getTemplatesDir(workspacePath, scope), 'local')
+}
+
+/**
+ * Read a node-template list item from a .pdpkg archive.
+ * @param {string} filePath - Absolute path to the .pdpkg file
+ * @param {string} fileName - The .pdpkg filename
+ * @param {string} scope - 'workspace' or 'user'
+ * @param {string} origin - 'local' or 'registry'
+ * @returns {Promise<object|null>} Template list item or null
+ */
+async function readTemplatePdpkg(filePath, fileName, scope, origin) {
+  try {
+    const zipBuffer = await fs.readFile(filePath)
+    const zip = await JSZip.loadAsync(zipBuffer)
+
+    const manifestFile = zip.file('prompd.json')
+    if (!manifestFile) return null
+
+    const manifestText = await manifestFile.async('string')
+    const manifest = JSON.parse(manifestText)
+
+    const ntSection = manifest['node-template']
+    if (!ntSection?.node) return null
+
+    return {
+      fileName,
+      name: manifest.name || fileName.replace('.pdpkg', ''),
+      description: manifest.description,
+      nodeType: ntSection.node.nodeType,
+      nodeTypeLabel: ntSection.nodeTypeLabel || ntSection.node.nodeType,
+      scope,
+      origin,
+      createdAt: manifest.createdAt || '',
+    }
+  } catch (err) {
+    console.warn('[Template IPC] Failed to read template:', fileName, err.message)
+    return null
+  }
+}
+
+/**
+ * Resolve the node-template section from a template manifest.
+ * @param {object} template - The template manifest
+ * @returns {{ node: object, section: object }} - node data and section reference
+ */
+function resolveNodeTemplateSection(template) {
+  const section = template['node-template']
+  return { node: section?.node || null, section: section || null }
+}
+
+/**
  * Collect file paths from a node template that reference .prmd/.pdflow files.
  * Scans the root nodeData and all children.
  * @param {object} template - The NodeTemplate manifest
@@ -50,7 +109,7 @@ function getTemplatesDir(workspacePath, scope) {
  */
 function collectFilePaths(template) {
   const files = []
-  const node = template.node
+  const { node } = resolveNodeTemplateSection(template)
   if (!node) return files
 
   // Check root node
@@ -111,7 +170,7 @@ function adjustNodeDataPaths(nodeType, nodeData, convertPath) {
  * @param {(p: string) => string} convertPath - Path conversion function
  */
 function convertTemplateFilePaths(template, convertPath) {
-  const node = template.node
+  const { node } = resolveNodeTemplateSection(template)
   if (!node) return
 
   adjustNodeDataPaths(node.nodeType, node.nodeData, convertPath)
@@ -139,11 +198,17 @@ class TemplateIpcRegistration extends BaseIpcRegistration {
         if (!workspacePath || !template) {
           return { success: false, error: 'Workspace path and template data are required' }
         }
-        if (!template.name || !template.node?.nodeType) {
-          return { success: false, error: 'Template name and node.nodeType are required' }
+        const { node: templateNode, section: templateSection } = resolveNodeTemplateSection(template)
+        if (!template.name || !templateNode?.nodeType || !templateSection) {
+          return { success: false, error: 'Template name and node-template section with node.nodeType are required' }
         }
 
-        console.log('[Template IPC] Saving template:', template.name, 'scope:', scope)
+        // Ensure an id field exists (slugified package identifier)
+        if (!template.id) {
+          template.id = slugify(template.name)
+        }
+
+        console.log('[Template IPC] Saving template:', template.name, '(id:', template.id + ')', 'scope:', scope)
 
         // Convert workflow-file-relative paths in nodeData to workspace-relative
         // so that dependency tracing and file bundling work correctly.
@@ -155,7 +220,7 @@ class TemplateIpcRegistration extends BaseIpcRegistration {
             console.log('[Template IPC] Path conversion (save):', wfRelPath, '->', wsRel)
             return wsRel
           })
-          template.pathsConverted = true
+          templateSection.pathsConverted = true
           console.log('[Template IPC] Converted node paths from workflow-relative to workspace-relative')
         } else {
           // No workflowFilePath — try to resolve workflow-relative paths to workspace-relative
@@ -178,8 +243,8 @@ class TemplateIpcRegistration extends BaseIpcRegistration {
             return wfRelPath
           })
           // Only mark as converted if ALL file paths were successfully resolved
-          template.pathsConverted = hasFilePaths && allConverted
-          if (template.pathsConverted) {
+          templateSection.pathsConverted = hasFilePaths && allConverted
+          if (templateSection.pathsConverted) {
             console.log('[Template IPC] Fallback resolution converted all paths to workspace-relative')
           } else if (hasFilePaths) {
             console.log('[Template IPC] Fallback resolution failed — template may not be portable')
@@ -214,9 +279,14 @@ class TemplateIpcRegistration extends BaseIpcRegistration {
         // Add manifest
         zip.file('prompd.json', JSON.stringify(template, null, 2))
 
-        // Add traced files
+        // Add traced files (validate each stays within workspace before reading)
+        const resolvedWorkspace = path.resolve(workspacePath)
         for (const relPath of tracedFiles) {
-          const absPath = path.join(workspacePath, relPath)
+          const absPath = path.resolve(workspacePath, relPath)
+          if (!absPath.startsWith(resolvedWorkspace + path.sep) && absPath !== resolvedWorkspace) {
+            console.warn('[Template IPC] File escapes workspace, skipping:', relPath)
+            continue
+          }
           if (await fs.pathExists(absPath)) {
             const fileContent = await fs.readFile(absPath)
             zip.file(relPath, fileContent)
@@ -225,8 +295,8 @@ class TemplateIpcRegistration extends BaseIpcRegistration {
           }
         }
 
-        // 4. Write .pdpkg to templates directory
-        const templatesDir = getTemplatesDir(workspacePath, scope)
+        // 4. Write .pdpkg to local/ subdirectory (user-created exports)
+        const templatesDir = getLocalTemplatesDir(workspacePath, scope)
         await fs.ensureDir(templatesDir)
 
         const fileName = `${slugify(template.name)}.pdpkg`
@@ -257,32 +327,24 @@ class TemplateIpcRegistration extends BaseIpcRegistration {
         for (const { scope, dir } of scopes) {
           if (!await fs.pathExists(dir)) continue
 
-          const files = await fs.readdir(dir)
-          const pdpkgFiles = files.filter(f => f.endsWith('.pdpkg'))
+          const entries = await fs.readdir(dir)
 
-          for (const fileName of pdpkgFiles) {
-            try {
-              const filePath = path.join(dir, fileName)
-              const zipBuffer = await fs.readFile(filePath)
-              const zip = await JSZip.loadAsync(zipBuffer)
+          // Scan root for registry-installed .pdpkg files
+          const rootPdpkgs = entries.filter(f => f.endsWith('.pdpkg'))
+          for (const fileName of rootPdpkgs) {
+            const item = await readTemplatePdpkg(path.join(dir, fileName), fileName, scope, 'registry')
+            if (item) templates.push(item)
+          }
 
-              const manifestFile = zip.file('prompd.json')
-              if (!manifestFile) continue
+          // Scan local/ subdirectory for user-created templates
+          const localDir = path.join(dir, 'local')
+          if (await fs.pathExists(localDir)) {
+            const localFiles = await fs.readdir(localDir)
+            const localPdpkgs = localFiles.filter(f => f.endsWith('.pdpkg'))
 
-              const manifestText = await manifestFile.async('string')
-              const manifest = JSON.parse(manifestText)
-
-              templates.push({
-                fileName,
-                name: manifest.name || fileName.replace('.pdpkg', ''),
-                description: manifest.description,
-                nodeType: manifest.node?.nodeType || manifest.nodeType,
-                nodeTypeLabel: manifest.nodeTypeLabel || manifest.node?.nodeType || manifest.nodeType,
-                scope,
-                createdAt: manifest.createdAt || '',
-              })
-            } catch (err) {
-              console.warn('[Template IPC] Failed to read template:', fileName, err.message)
+            for (const fileName of localPdpkgs) {
+              const item = await readTemplatePdpkg(path.join(localDir, fileName), fileName, scope, 'local')
+              if (item) templates.push(item)
             }
           }
         }
@@ -301,13 +363,22 @@ class TemplateIpcRegistration extends BaseIpcRegistration {
           return { success: false, error: 'fileName and scope are required' }
         }
 
+        // Sanitize fileName: must not contain path separators or traversal sequences
+        if (fileName.includes('/') || fileName.includes('\\') || fileName.includes('..')) {
+          return { success: false, error: 'Invalid file name' }
+        }
+
         const templatesDir = getTemplatesDir(workspacePath, scope)
-        const filePath = path.join(templatesDir, fileName)
+
+        // Check local/ first, then fall back to root for backward compat
+        const localPath = path.join(templatesDir, 'local', fileName)
+        const rootPath = path.join(templatesDir, fileName)
+        const filePath = (await fs.pathExists(localPath)) ? localPath : rootPath
 
         // Security: ensure path is within templates directory
         const resolvedPath = path.resolve(filePath)
         const resolvedDir = path.resolve(templatesDir)
-        if (!resolvedPath.startsWith(resolvedDir)) {
+        if (!resolvedPath.startsWith(resolvedDir + path.sep) && resolvedPath !== resolvedDir) {
           return { success: false, error: 'Invalid file path' }
         }
 
@@ -331,13 +402,22 @@ class TemplateIpcRegistration extends BaseIpcRegistration {
           return { success: false, error: 'fileName and scope are required' }
         }
 
+        // Sanitize fileName: must not contain path separators or traversal sequences
+        if (fileName.includes('/') || fileName.includes('\\') || fileName.includes('..')) {
+          return { success: false, error: 'Invalid file name' }
+        }
+
         const templatesDir = getTemplatesDir(workspacePath, scope)
-        const filePath = path.join(templatesDir, fileName)
+
+        // Check local/ first, then fall back to root for backward compat
+        const localPath = path.join(templatesDir, 'local', fileName)
+        const rootPath = path.join(templatesDir, fileName)
+        const filePath = (await fs.pathExists(localPath)) ? localPath : rootPath
 
         // Security: ensure path is within templates directory
         const resolvedPath = path.resolve(filePath)
         const resolvedDir = path.resolve(templatesDir)
-        if (!resolvedPath.startsWith(resolvedDir)) {
+        if (!resolvedPath.startsWith(resolvedDir + path.sep) && resolvedPath !== resolvedDir) {
           return { success: false, error: 'Invalid file path' }
         }
 
@@ -396,7 +476,9 @@ class TemplateIpcRegistration extends BaseIpcRegistration {
         // Only convert if paths were explicitly marked as workspace-relative during save.
         // pathsConverted === true means save converted workflow-relative -> workspace-relative.
         // pathsConverted === false or undefined means paths are workflow-relative (no conversion needed).
-        const shouldConvertPaths = template.pathsConverted === true
+        const ntInsertSection = template['node-template']
+        const pathsConverted = ntInsertSection?.pathsConverted
+        const shouldConvertPaths = pathsConverted === true
         if (shouldConvertPaths && workflowFilePath) {
           const workflowDir = path.dirname(workflowFilePath)
           convertTemplateFilePaths(template, (wsRelPath) => {
@@ -419,7 +501,7 @@ class TemplateIpcRegistration extends BaseIpcRegistration {
             return wfRel
           })
           console.log('[Template IPC] Added ./ prefix to workspace-relative paths (no workflow file path)')
-        } else if (template.pathsConverted === false) {
+        } else if (pathsConverted === false) {
           console.log('[Template IPC] Skipping path conversion — template paths are already workflow-relative')
         }
 

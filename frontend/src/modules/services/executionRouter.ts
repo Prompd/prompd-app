@@ -54,6 +54,8 @@ export interface ExecutionOptions {
 export interface ExecutionRouterResult {
   success: boolean
   response?: string
+  /** Thinking content from models with extended thinking (e.g., Claude) */
+  thinking?: string
   error?: string
   compiledPrompt?: string
   usage: {
@@ -196,10 +198,14 @@ class ExecutionRouterService {
         }
 
         let fullResponse = ''
+        let fullThinking = ''
         let finalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
 
         for await (const chunk of localExecutor.stream(localOptions)) {
           fullResponse += chunk.content
+          if (chunk.thinking) {
+            fullThinking += chunk.thinking
+          }
           if (chunk.usage) {
             finalUsage = chunk.usage
           }
@@ -218,7 +224,8 @@ class ExecutionRouterService {
             model: options.model,
             duration,
             executionMode: 'local',
-            compiledLocally
+            compiledLocally,
+            ...(fullThinking ? { thinking: fullThinking } : {})
           }
         }
       } else {
@@ -278,6 +285,7 @@ class ExecutionRouterService {
     return {
       success: result.success,
       response: result.response,
+      thinking: result.thinking,
       error: result.error,
       compiledPrompt,
       usage: result.usage,

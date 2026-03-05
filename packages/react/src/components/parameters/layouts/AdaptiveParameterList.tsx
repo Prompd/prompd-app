@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { clsx } from 'clsx'
 import type { ParameterListProps, PrompdParameter } from '../utils/types'
-import { isFullWidthType, isArrayType, isNumericType, isBooleanType, isEnumType, isEmptyValue } from '../utils/typeUtils'
+import { isFullWidthType, isArrayType, isNumericType, isBooleanType, isEnumType, isFileType, isJsonType, isBase64Type, isJwtType, isEmptyValue } from '../utils/typeUtils'
 import { ParameterCard } from '../cards/ParameterCard'
 import { StringInput } from '../inputs/StringInput'
 import { NumberInput } from '../inputs/NumberInput'
@@ -20,6 +20,10 @@ import { EnumInput } from '../inputs/EnumInput'
 import { TextInput } from '../inputs/TextInput'
 import { ObjectInput } from '../inputs/ObjectInput'
 import { ArrayPillInput } from '../inputs/ArrayPillInput'
+import { FileInput, type FileValue } from '../inputs/FileInput'
+import { JsonInput } from '../inputs/JsonInput'
+import { Base64Input } from '../inputs/Base64Input'
+import { JwtInput } from '../inputs/JwtInput'
 
 interface AdaptiveParameterListProps extends ParameterListProps {
   columns?: 1 | 2 | 3
@@ -182,11 +186,11 @@ function ParameterCardWithInput({
 
     // Array types - check BEFORE enum to prevent array values hitting <select>
     if (isArrayType(param.type)) {
-      // Handle default array values
+      // Handle default array values - stringify any object items
       const arrayValue = Array.isArray(effectiveValue)
-        ? effectiveValue
+        ? effectiveValue.map(item => typeof item === 'object' && item !== null ? JSON.stringify(item) : String(item))
         : effectiveValue
-          ? [String(effectiveValue)]
+          ? [typeof effectiveValue === 'object' ? JSON.stringify(effectiveValue) : String(effectiveValue)]
           : []
       return (
         <ArrayPillInput
@@ -243,6 +247,48 @@ function ParameterCardWithInput({
       )
     }
 
+    // JSON type - accepts any valid JSON (objects, arrays, primitives)
+    if (isJsonType(param.type)) {
+      return (
+        <JsonInput
+          value={effectiveValue as Record<string, unknown> | unknown[] | string | number | boolean | null | undefined}
+          onChange={handleInputChange}
+          defaultValue={param.default as Record<string, unknown> | unknown[] | string | number | boolean | null | undefined}
+          placeholder={param.description}
+        />
+      )
+    }
+
+    // File type - drag & drop file picker
+    if (isFileType(param.type)) {
+      return (
+        <FileInput
+          value={effectiveValue as FileValue | undefined}
+          onChange={handleInputChange}
+        />
+      )
+    }
+
+    // Base64 type - base64-encoded content with preview
+    if (isBase64Type(param.type)) {
+      return (
+        <Base64Input
+          value={(effectiveValue as string) ?? undefined}
+          onChange={handleInputChange}
+        />
+      )
+    }
+
+    // JWT type - token with decoded header/payload display
+    if (isJwtType(param.type)) {
+      return (
+        <JwtInput
+          value={(effectiveValue as string) ?? undefined}
+          onChange={handleInputChange}
+        />
+      )
+    }
+
     // Text/textarea type
     if (param.type?.toLowerCase() === 'text' || param.type?.toLowerCase() === 'textarea') {
       return (
@@ -278,14 +324,30 @@ function ParameterCardWithInput({
 /**
  * Format a value for readonly display
  */
-function formatDisplayValue(value: unknown, _type: string): string {
+function formatDisplayValue(value: unknown, type: string): string {
   if (value === undefined || value === null) {
     return '(not set)'
   }
 
+  // File type - show filename
+  if (isFileType(type) && typeof value === 'object' && value !== null) {
+    const fileVal = value as Record<string, unknown>
+    return typeof fileVal.name === 'string' ? fileVal.name : '[file]'
+  }
+
+  // Base64 - show size info
+  if (isBase64Type(type) && typeof value === 'string') {
+    const len = value.length
+    if (len < 1024) return `${len} chars encoded`
+    return `${(len / 1024).toFixed(1)} KB encoded`
+  }
+
   if (Array.isArray(value)) {
     if (value.length === 0) return '(empty)'
-    return value.join(', ')
+    // Stringify each item to avoid [object Object]
+    return value.map(item =>
+      typeof item === 'object' && item !== null ? JSON.stringify(item) : String(item)
+    ).join(', ')
   }
 
   if (typeof value === 'object') {

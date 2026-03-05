@@ -164,7 +164,7 @@ export function ArrayPillInput({
               'animate-fade-in'
             )}
           >
-            <span className="max-w-[200px] truncate">{item}</span>
+            <span className="max-w-[200px] truncate">{typeof item === 'object' && item !== null ? JSON.stringify(item) : item}</span>
             {!disabled && (
               <button
                 type="button"

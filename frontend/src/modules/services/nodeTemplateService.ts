@@ -179,21 +179,25 @@ export function extractTemplateData(
   const uniqueFiles = [...new Set(allFiles)]
   const uniquePackages = [...new Set(allPackages)]
 
+  const nodeData_ = {
+    nodeType: node.type,
+    nodeData,
+    originalId: node.id,
+    dimensions,
+    children: children && children.length > 0 ? children : undefined,
+    edges: edges && edges.length > 0 ? edges : undefined,
+  }
+
   return {
     version: '1.0',
     type: 'node-template',
     name: (node.data as { label?: string }).label || registry?.label || node.type,
-    nodeTypeLabel: registry?.label || node.type,
     createdAt: new Date().toISOString(),
     files: uniqueFiles.length > 0 ? uniqueFiles : undefined,
     packages: uniquePackages.length > 0 ? uniquePackages : undefined,
-    node: {
-      nodeType: node.type,
-      nodeData,
-      originalId: node.id,
-      dimensions,
-      children: children && children.length > 0 ? children : undefined,
-      edges: edges && edges.length > 0 ? edges : undefined,
+    'node-template': {
+      nodeTypeLabel: registry?.label || node.type,
+      node: nodeData_,
     },
   }
 }

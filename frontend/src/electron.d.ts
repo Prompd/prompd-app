@@ -107,6 +107,12 @@ export interface ElectronAPI {
   // API requests (bypasses CORS by using main process)
   apiRequest: (url: string, options: ApiRequestOptions) => Promise<ApiRequestResponse>
 
+  // Streaming API requests - sends body chunks incrementally via IPC events
+  apiStreamRequest: (url: string, options: ApiRequestOptions, streamId: string) => Promise<ApiRequestResponse>
+  onApiStreamChunk: (callback: (streamId: string, data: string) => void) => () => void
+  onApiStreamEnd: (callback: (streamId: string) => void) => () => void
+  onApiStreamError: (callback: (streamId: string, error: string) => void) => () => void
+
   // Connection testing (for workflow connections)
   testSSHConnection?: (config: { host: string; port?: number; username?: string }) => Promise<{ success: boolean; message: string }>
   testDatabaseConnection?: (config: { host?: string; port?: number; type?: string; connectionString?: string }) => Promise<{ success: boolean; message: string }>
@@ -137,6 +143,8 @@ export interface ElectronAPI {
   onMenuSchedulerService: (callback: () => void) => () => void
   // Project menu
   onMenuNewFile: (callback: () => void) => () => void
+  onMenuNewProject: (callback: () => void) => () => void
+  selectDirectory: (title?: string) => Promise<string | null>
   onMenuOpenFile: (callback: (filePath: string) => void) => () => void
   onMenuOpenFolder: (callback: (folderPath: string) => void) => () => void
   onMenuCloseFolder: (callback: () => void) => () => void
@@ -316,10 +324,36 @@ export interface ElectronAPI {
     ) => Promise<CreatePackageResult>
 
     // Install a single package by reference (e.g. "@prompd/core@0.0.1")
-    install: (packageRef: string, workspacePath: string) => Promise<{ success: boolean; name?: string; error?: string; missingMcps?: string[] }>
+    install: (packageRef: string, workspacePath: string, options?: {
+      global?: boolean
+      type?: 'package' | 'workflow' | 'node-template' | 'skill'
+    }) => Promise<{
+      success: boolean
+      name?: string
+      type?: string
+      installedPath?: string
+      error?: string
+      missingMcps?: string[]
+    }>
 
     // Install all dependencies from prompd.json
     installAll: (workspacePath: string) => Promise<InstallAllResult>
+
+    // Uninstall a package by name, removing files and prompd.json dependency
+    uninstall: (packageName: string, workspacePath: string, options?: {
+      global?: boolean
+    }) => Promise<{
+      success: boolean
+      name?: string
+      error?: string
+    }>
+
+    // Direct registry publish
+    publish: (options: {
+      filePath: string
+      registryUrl: string
+      authToken: string
+    }) => Promise<{ success: boolean; data?: unknown; error?: string }>
   }
 
   // Node template management - save/restore workflow node configurations
@@ -361,6 +395,50 @@ export interface ElectronAPI {
       template?: Record<string, unknown>
       extractedFiles?: string[]
       skippedFiles?: string[]
+      error?: string
+    }>
+  }
+
+  // Resource management - scan/manage installed resources across type directories
+  resource?: {
+    listInstalled: (workspacePath: string) => Promise<{
+      success: boolean
+      resources: Array<{
+        name: string
+        version: string
+        type: string
+        scope: 'workspace' | 'user'
+        path: string
+        description?: string
+        tools?: string[]
+        mcps?: string[]
+        main?: string
+      }>
+      error?: string
+    }>
+    delete: (resourcePath: string) => Promise<{ success: boolean; error?: string }>
+    getManifest: (resourcePath: string) => Promise<{
+      success: boolean
+      manifest?: Record<string, unknown>
+      error?: string
+    }>
+  }
+
+  // Skill discovery - scan installed skills for workflow SkillNode usage
+  skill?: {
+    list: (workspacePath: string) => Promise<{
+      success: boolean
+      skills: Array<{
+        name: string
+        version: string
+        description?: string
+        tools?: string[]
+        main?: string
+        path: string
+        scope: 'workspace' | 'user'
+        parameters?: Record<string, unknown>
+        allowedTools?: string[]
+      }>
       error?: string
     }>
   }
@@ -788,6 +866,7 @@ export interface CompileOptions {
   format?: 'markdown' | 'openai' | 'anthropic' | 'json'
   parameters?: Record<string, unknown>
   filePath?: string  // Full disk path to source file
+  workspaceRoot?: string  // Project root directory (for package resolution)
   registryUrl?: string
   verbose?: boolean
 }
@@ -1115,6 +1194,7 @@ export interface CustomProviderModelConfig {
   supports_vision?: boolean
   supports_image_generation?: boolean
   supports_tools?: boolean
+  supports_thinking?: boolean
   context_window?: number
 }
 

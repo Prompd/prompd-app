@@ -33,6 +33,8 @@ import {
   Database,
   TableProperties,
   Search,
+  Group,
+  Sparkles,
 } from 'lucide-react'
 import type { WorkflowNodeType, BaseNodeData } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
@@ -71,6 +73,8 @@ const NODE_TYPE_ICONS: Record<WorkflowNodeType, React.ComponentType<{ style?: Re
   output: FileOutput,
   'web-search': Search,
   'database-query': TableProperties,
+  'node-group': Group,
+  skill: Sparkles,
 }
 
 // ============================================================================

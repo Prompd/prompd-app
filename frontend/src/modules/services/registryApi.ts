@@ -489,7 +489,13 @@ class RegistryApiClient {
       exports: pkg.exports || {},
       parameters: this.extractParameters(pkg),
       downloads: pkg.downloads,
-      stars: pkg.stars
+      stars: pkg.stars,
+      type: pkg.type,
+      license: pkg.license,
+      publishedAt: pkg.publishedAt,
+      updatedAt: pkg.updatedAt,
+      owner: pkg.owner,
+      namespace: pkg.namespace,
     }))
 
     return {
@@ -640,7 +646,13 @@ class RegistryApiClient {
       downloads: pkg.downloads,
       stars: pkg.stars,
       files: pkg.files || [],
-      fileCount: pkg.fileCount
+      fileCount: pkg.fileCount,
+      type: pkg.type,
+      license: pkg.license,
+      publishedAt: pkg.publishedAt,
+      updatedAt: pkg.updatedAt,
+      owner: pkg.owner,
+      namespace: pkg.namespace,
     }))
   }
 

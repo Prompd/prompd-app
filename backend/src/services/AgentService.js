@@ -160,12 +160,20 @@ export class AgentService {
       ...messages
     ]
 
-    const response = await client.chat.completions.create({
+    // OpenAI reasoning models (o1, o3, etc.) use max_completion_tokens and don't support temperature
+    const isReasoningModel = /^o\d/.test(model)
+    const completionParams = {
       model,
-      messages: messagesWithSystem,
-      max_tokens: options.maxTokens || 4000,
-      temperature: options.temperature || 0.7
-    })
+      messages: messagesWithSystem
+    }
+    if (isReasoningModel) {
+      completionParams.max_completion_tokens = options.maxTokens || 4000
+    } else {
+      completionParams.max_tokens = options.maxTokens || 4000
+      completionParams.temperature = options.temperature || 0.7
+    }
+
+    const response = await client.chat.completions.create(completionParams)
 
     return response.choices[0]?.message?.content || ''
   }

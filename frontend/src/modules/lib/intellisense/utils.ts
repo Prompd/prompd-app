@@ -60,14 +60,17 @@ export function extractParametersWithMetadata(content: string): ExtractedParamet
   }
 
   // Extract loop variables from {% for VAR in COLLECTION %} or {%- for VAR in COLLECTION %} blocks (Nunjucks/Jinja2 syntax)
-  // This handles patterns like: {% for record in csv_data %} or {%- for record in csv_data %} -> record is a valid variable
+  // Also handles tuple unpacking: {% for key, value in dict %} -> both key and value are valid variables
   // The hyphen is for whitespace trimming
-  const forLoopMatches = Array.from(content.matchAll(/\{%-?\s*for\s+(\w+)\s+in\s+(\w+)/g))
+  const forLoopMatches = Array.from(content.matchAll(/\{%-?\s*for\s+([\w,\s]+?)\s+in\s+(\w+)/g))
   for (const match of forLoopMatches) {
-    const loopVar = match[1]
-    loopVariables.add(loopVar)
-    if (!parameters.includes(loopVar)) {
-      parameters.push(loopVar)
+    // Split on comma to handle tuple unpacking (e.g., "service, owner")
+    const vars = match[1].split(',').map(v => v.trim()).filter(Boolean)
+    for (const loopVar of vars) {
+      loopVariables.add(loopVar)
+      if (!parameters.includes(loopVar)) {
+        parameters.push(loopVar)
+      }
     }
   }
 

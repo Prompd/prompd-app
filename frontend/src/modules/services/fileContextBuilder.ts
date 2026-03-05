@@ -7,10 +7,17 @@
 
 import { parsePrompd } from '../lib/prompdParser'
 
+export interface ValidationIssue {
+  message: string
+  line?: number
+  severity?: string
+}
+
 export interface FileContext {
   fileName: string | null
   content: string
   cursorPosition?: { line: number; column: number }
+  errors?: ValidationIssue[]
 }
 
 export interface ContextMessage {
@@ -24,7 +31,7 @@ export interface ContextMessage {
  * syntax hints for other file types.
  */
 export function buildFileContextMessages(context: FileContext): ContextMessage[] {
-  const { fileName, content, cursorPosition } = context
+  const { fileName, content, cursorPosition, errors } = context
 
   if (!content || typeof content !== 'string') {
     return []
@@ -129,10 +136,21 @@ When modifying this file:
     ? `\n\n**IMPORTANT**: When using edit_file or write_file for this file, use path: \`${filePath}\``
     : ''
 
+  // Build validation issues section if errors are present
+  let validationSection = ''
+  if (errors && errors.length > 0) {
+    const issueLines = errors.map(e => {
+      const loc = e.line ? `Line ${e.line}` : 'Unknown'
+      const sev = e.severity ? `[${e.severity}]` : '[ERROR]'
+      return `- ${loc}: ${sev} ${e.message}`
+    })
+    validationSection = `\n\n### Validation Issues\n${issueLines.join('\n')}`
+  }
+
   // Build final context message
   const contextContent = fileTypeInstructions
-    ? `## Context File: ${filePath}${pathInstructions}${cursorInfo}\n\n${fileTypeInstructions}${metadataContext}\n\n\`\`\`${syntaxHint}\n${numberedContent}\n\`\`\``
-    : `## Current File: ${filePath}${pathInstructions}${cursorInfo}${metadataContext}\n\n\`\`\`${syntaxHint}\n${numberedContent}\n\`\`\``
+    ? `## Context File: ${filePath}${pathInstructions}${cursorInfo}\n\n${fileTypeInstructions}${metadataContext}${validationSection}\n\n\`\`\`${syntaxHint}\n${numberedContent}\n\`\`\``
+    : `## Current File: ${filePath}${pathInstructions}${cursorInfo}${metadataContext}${validationSection}\n\n\`\`\`${syntaxHint}\n${numberedContent}\n\`\`\``
 
   messages.push({
     role: 'system' as const,

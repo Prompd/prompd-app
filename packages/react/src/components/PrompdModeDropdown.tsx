@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { clsx } from 'clsx'
-import { Sparkles, Pencil, Search, MessageCircle, Check, type LucideIcon } from 'lucide-react'
+import { Sparkles, Pencil, Search, MessageCircle, Lightbulb, Check, type LucideIcon } from 'lucide-react'
 import type { PrompdChatMode } from '../types'
 
 // Map icon names to Lucide components
@@ -8,7 +8,8 @@ const iconMap: Record<string, LucideIcon> = {
   Sparkles,
   Pencil,
   Search,
-  MessageCircle
+  MessageCircle,
+  Lightbulb
 }
 
 function ModeIcon({ name, size = 18 }: { name: string; size?: number }) {

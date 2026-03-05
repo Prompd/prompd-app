@@ -18,6 +18,7 @@
     "electron:dev": "concurrently \"cross-env BROWSER=none npm run dev\" \"wait-on tcp:127.0.0.1:5173 -t 60000 && cross-env ELECTRON_START_URL=http://localhost:5173 electron .\"",
     "electron:build": "npm run clean && npm run generate-icons && npm run build && electron-builder",
     "electron:build:win": "npm run clean && npm run generate-icons && npm run build && electron-builder --win",
+    "electron:release:win": "npm run clean && npm run generate-icons && npm run build && electron-builder --win --publish always",
     "electron:build:mac": "npm run clean && npm run generate-icons && npm run build && electron-builder --mac",
     "electron:build:linux": "npm run clean && npm run generate-icons && npm run build && electron-builder --linux",
     "test": "vitest run",
@@ -77,8 +78,8 @@
     "publish": {
       "provider": "github",
       "owner": "Prompd",
-      "repo": "prompd.app",
-      "releaseType": "release"
+      "repo": "prompd-app",
+      "releaseType": "prerelease"
     },
     "win": {
       "target": [
@@ -150,7 +151,7 @@
         "description": "Prompd Package Archive",
         "mimeType": "application/x-prompd-package",
         "role": "Viewer",
-        "icon": "public/logo.ico"
+        "icon": "public/pdpkg.ico"
       }
     ]
   },

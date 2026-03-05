@@ -4,6 +4,11 @@
  * Resolves the context window size for a given provider/model combination.
  * Checks dynamic provider data (from API/uiStore) first, falls back to
  * KNOWN_PROVIDERS static data, then to a conservative default.
+ *
+ * Also provides `resolveEffectiveContextWindow` which caps the context
+ * window at a practical limit for compaction and UI display. Even models
+ * with 1M+ token windows see degraded response quality at extreme lengths,
+ * and showing "1% of 1M" is not useful to users.
  */
 
 import { KNOWN_PROVIDERS } from './providers/types'
@@ -13,7 +18,16 @@ import type { ProviderWithPricing } from '../../stores/uiStore'
 const DEFAULT_CONTEXT_WINDOW = 128000
 
 /**
- * Resolve context window size for the current provider/model.
+ * Maximum effective context window for compaction and UI display.
+ * Models with 1M+ token windows technically support huge contexts, but
+ * response quality degrades and compaction would never trigger.
+ * Cap at 128K to keep compaction and the % display meaningful.
+ */
+const MAX_EFFECTIVE_CONTEXT_WINDOW = 128000
+
+/**
+ * Resolve the raw context window size for the current provider/model.
+ * Returns the actual model limit without any capping.
  *
  * @param provider - Provider ID (e.g., 'anthropic', 'openai')
  * @param model    - Model ID (e.g., 'claude-3-5-sonnet-20241022')
@@ -47,6 +61,24 @@ export function resolveContextWindowSize(
 
   // 3. Fallback
   return DEFAULT_CONTEXT_WINDOW
+}
+
+/**
+ * Resolve an effective context window capped at a practical limit.
+ * Used for compaction thresholds and UI percentage display.
+ *
+ * Models like GPT-4.1 Nano (1M tokens) or Gemini (2M tokens) have massive
+ * windows that make percentage-based compaction useless — the 75% threshold
+ * would require 750K+ tokens. This function caps at 128K so compaction
+ * triggers at a reasonable conversation length.
+ */
+export function resolveEffectiveContextWindow(
+  provider: string,
+  model: string,
+  configuredProviders?: ProviderWithPricing[] | null
+): number {
+  const raw = resolveContextWindowSize(provider, model, configuredProviders)
+  return Math.min(raw, MAX_EFFECTIVE_CONTEXT_WINDOW)
 }
 
 /**

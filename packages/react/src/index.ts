@@ -37,6 +37,11 @@ export {
   EnumInput,
   TextInput,
   ObjectInput,
+  FileInput,
+  type FileValue,
+  JsonInput,
+  Base64Input,
+  JwtInput,
   ParameterCard,
 } from './components/parameters'
 export { PrompdExecutionResult, type PrompdExecutionResultProps, type PrompdExecutionResultData } from './components/PrompdExecutionResult'

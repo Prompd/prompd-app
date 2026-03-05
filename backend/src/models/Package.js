@@ -197,6 +197,11 @@ const PackageSchema = new mongoose.Schema({
     enum: ['ai-tools', 'templates', 'utilities', 'integrations', 'examples', 'other'],
     default: 'other'
   },
+  type: {
+    type: String,
+    enum: ['package', 'workflow', 'node-template', 'skill'],
+    default: 'package'
+  },
   isPrivate: {
     type: Boolean,
     default: false
@@ -219,6 +224,7 @@ const PackageSchema = new mongoose.Schema({
 PackageSchema.index({ name: 1 }, { unique: true })
 PackageSchema.index({ name: 'text', description: 'text', displayName: 'text' })
 PackageSchema.index({ category: 1, isPrivate: 1 })
+PackageSchema.index({ type: 1, isPrivate: 1 })
 PackageSchema.index({ 'statistics.totalDownloads': -1 })
 PackageSchema.index({ 'statistics.stars': -1 })
 PackageSchema.index({ updatedAt: -1 })
@@ -316,16 +322,18 @@ PackageSchema.methods.canUserModify = function(userId) {
 
 // Static methods
 PackageSchema.statics.search = function(query, options = {}) {
-  const { 
-    limit = 20, 
-    skip = 0, 
-    category = null, 
+  const {
+    limit = 20,
+    skip = 0,
+    category = null,
+    type = null,
     sortBy = 'relevance',
-    includePrivate = false 
+    includePrivate = false
   } = options
-  
+
   const searchQuery = {
     ...(category && { category }),
+    ...(type && { type }),
     ...(includePrivate === false && { isPrivate: false }),
     isDeprecated: false
   }

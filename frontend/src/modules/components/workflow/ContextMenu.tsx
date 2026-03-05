@@ -10,7 +10,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import {
   Copy, Scissors, Clipboard, Files, Power, PowerOff, Trash2,
-  Unlink, Plus, Zap, Settings, ChevronRight, Save,
+  Unlink, Plus, Zap, Settings, ChevronRight, Save, Group,
 } from 'lucide-react'
 import type { WorkflowNodeType } from '../../services/workflowTypes'
 import type { TemplateListItem, TemplateScope } from '../../services/nodeTemplateTypes'
@@ -44,6 +44,9 @@ export interface ContextMenuProps {
   // Templates
   templates?: TemplateListItem[]
 
+  // Multi-selection context
+  selectedNodeCount?: number
+
   // Actions
   onCopy?: () => void
   onCut?: () => void
@@ -53,6 +56,7 @@ export interface ContextMenuProps {
   onDelete?: () => void
   onUndock?: () => void
   onSaveAsTemplate?: () => void
+  onGroupSelected?: () => void
   onAddNode?: (nodeType: WorkflowNodeType) => void
   onInsertTemplate?: (fileName: string, scope: TemplateScope) => void
   onHighlightPath?: () => void
@@ -62,6 +66,7 @@ export interface ContextMenuProps {
 interface MenuItem {
   id: string
   label: string
+  description?: string
   icon?: React.ComponentType<{ style?: React.CSSProperties }>
   nodeType?: WorkflowNodeType
   onClick?: () => void
@@ -79,7 +84,7 @@ const NODE_TYPE_GROUPS = NODE_TYPE_CATEGORIES.map(cat => ({
   label: cat.label,
   types: cat.types.map(t => {
     const entry = NODE_TYPE_REGISTRY[t]
-    return { type: t, label: entry.label, icon: entry.icon }
+    return { type: t, label: entry.label, icon: entry.icon, description: entry.description }
   }),
 }))
 
@@ -96,6 +101,7 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
     isNodeDisabled,
     isNodeDocked,
     canPaste,
+    selectedNodeCount,
     onCopy,
     onCut,
     onPaste,
@@ -104,6 +110,7 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
     onDelete,
     onUndock,
     onSaveAsTemplate,
+    onGroupSelected,
     onAddNode,
     onInsertTemplate,
     onHighlightPath,
@@ -198,6 +205,17 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
       menuItems.push({ id: 'sep2', label: '', separator: true })
     }
 
+    // Group selected nodes
+    if (selectedNodeCount && selectedNodeCount > 1 && onGroupSelected) {
+      menuItems.push({
+        id: 'group-selected',
+        label: `Group ${selectedNodeCount} Nodes`,
+        icon: Group,
+        onClick: onGroupSelected,
+      })
+      menuItems.push({ id: 'sep-group', label: '', separator: true })
+    }
+
     // Add node submenu
     const submenu: MenuItem[] = []
     NODE_TYPE_GROUPS.forEach((group, groupIdx) => {
@@ -205,6 +223,7 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
         submenu.push({
           id: `add-${nodeType.type}`,
           label: nodeType.label,
+          description: nodeType.description,
           icon: nodeType.icon,
           nodeType: nodeType.type,
           onClick: () => onAddNode?.(nodeType.type)
@@ -373,6 +392,7 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
                   return (
                     <button
                       key={sub.id}
+                      title={sub.description}
                       onClick={() => {
                         sub.onClick?.()
                         onClose()

@@ -37,6 +37,7 @@ import {
   Eye,
   EyeOff,
   Search,
+  Sparkles,
 } from 'lucide-react'
 import { useWorkflowStore } from '../../../stores/workflowStore'
 import { useEditorStore } from '../../../stores/editorStore'
@@ -75,6 +76,7 @@ import type {
   GuardrailNodeData,
   WebSearchNodeData,
   DatabaseQueryNodeData,
+  SkillNodeData,
 } from '../../services/workflowTypes'
 
 // Import all property editors from node files
@@ -104,6 +106,7 @@ import { MemoryNodeProperties } from './nodes/MemoryNode'
 import { GuardrailNodeProperties } from './nodes/GuardrailNode'
 import { WebSearchNodeProperties } from './nodes/WebSearchNode'
 import { DatabaseQueryNodeProperties } from './nodes/DatabaseQueryNode'
+import { SkillNodeProperties } from './nodes/SkillNodeProperties'
 // --- Add new node property imports here ---
 
 export function WorkflowPropertiesPanel() {
@@ -274,6 +277,8 @@ export function WorkflowPropertiesPanel() {
         return <MessagesSquare style={{ ...iconStyle, color: 'var(--node-indigo)' }} />
       case 'database-query':
         return <TableProperties style={{ ...iconStyle, color: 'var(--node-teal)' }} />
+      case 'skill':
+        return <Sparkles style={{ ...iconStyle, color: 'var(--node-violet)' }} />
       // --- Add new node icon cases here ---
       default:
         return null
@@ -618,6 +623,14 @@ export function WorkflowPropertiesPanel() {
           <McpToolNodeProperties
             data={selectedNode.data as McpToolNodeData}
             onChange={handleDataChange}
+          />
+        )}
+
+        {selectedNode.type === 'skill' && (
+          <SkillNodeProperties
+            data={selectedNode.data as SkillNodeData}
+            onChange={handleDataChange}
+            nodeId={selectedNode.id}
           />
         )}
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { RefreshCw, Trash2, Copy, ChevronDown, ChevronRight, X, FolderOpen, CheckSquare, Square, Check } from 'lucide-react'
+import { RefreshCw, Trash2, Copy, ChevronDown, ChevronRight, ChevronLeft, X, FolderOpen, CheckSquare, Square, Check } from 'lucide-react'
 import { SidebarPanelHeader } from './SidebarPanelHeader'
 import type { GeneratedResource } from '../../electron'
 
@@ -188,7 +188,8 @@ export function ResourcePanel({ onCollapse }: ResourcePanelProps) {
     return texts.slice(0, visibleCount)
   }, [filtered, visibleCount])
 
-  const totalImages = filtered.filter(r => isImageType(r.type)).length
+  const allImages = useMemo(() => filtered.filter(r => isImageType(r.type)), [filtered])
+  const totalImages = allImages.length
   const totalText = filtered.filter(r => !isImageType(r.type)).length
   const hasMore = visibleCount < totalImages || visibleCount < totalText
 
@@ -438,6 +439,8 @@ export function ResourcePanel({ onCollapse }: ResourcePanelProps) {
       {lightboxResource && createPortal(
         <ImageLightbox
           resource={lightboxResource}
+          allImages={allImages}
+          onNavigate={setLightboxResource}
           onClose={() => setLightboxResource(null)}
           onCopy={() => handleCopy(lightboxResource)}
           onDelete={() => {
@@ -633,23 +636,41 @@ function ImageResource({
 
 function ImageLightbox({
   resource,
+  allImages,
+  onNavigate,
   onClose,
   onCopy,
   onDelete
 }: {
   resource: GeneratedResource
+  allImages: GeneratedResource[]
+  onNavigate: (resource: GeneratedResource) => void
   onClose: () => void
   onCopy: () => void
   onDelete: () => void
 }) {
-  // Close on Escape
+  const currentIndex = allImages.findIndex(r => r.relativePath === resource.relativePath)
+  const hasPrev = currentIndex > 0
+  const hasNext = currentIndex < allImages.length - 1
+
+  const goPrev = useCallback(() => {
+    if (hasPrev) onNavigate(allImages[currentIndex - 1])
+  }, [hasPrev, currentIndex, allImages, onNavigate])
+
+  const goNext = useCallback(() => {
+    if (hasNext) onNavigate(allImages[currentIndex + 1])
+  }, [hasNext, currentIndex, allImages, onNavigate])
+
+  // Keyboard: Escape to close, Arrow keys to navigate
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
+      else if (e.key === 'ArrowLeft') goPrev()
+      else if (e.key === 'ArrowRight') goNext()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
+  }, [onClose, goPrev, goNext])
 
   return (
     <div
@@ -670,7 +691,7 @@ function ImageLightbox({
         onClick={(e) => e.stopPropagation()}
         style={{
           position: 'absolute',
-          top: '16px',
+          top: '52px',
           right: '16px',
           display: 'flex',
           gap: '8px',
@@ -681,6 +702,22 @@ function ImageLightbox({
         <LightboxButton icon={<Trash2 size={16} />} title="Delete" onClick={onDelete} />
         <LightboxButton icon={<X size={16} />} title="Close (Esc)" onClick={onClose} />
       </div>
+
+      {/* Prev button */}
+      {hasPrev && (
+        <LightboxNavButton
+          side="left"
+          onClick={(e) => { e.stopPropagation(); goPrev() }}
+        />
+      )}
+
+      {/* Next button */}
+      {hasNext && (
+        <LightboxNavButton
+          side="right"
+          onClick={(e) => { e.stopPropagation(); goNext() }}
+        />
+      )}
 
       {/* File info */}
       <div
@@ -697,6 +734,11 @@ function ImageLightbox({
         }}
       >
         {resource.fileName} &middot; {formatBytes(resource.size)}
+        {allImages.length > 1 && (
+          <span style={{ marginLeft: '8px' }}>
+            ({currentIndex + 1} / {allImages.length})
+          </span>
+        )}
       </div>
 
       {/* Image */}
@@ -714,6 +756,47 @@ function ImageLightbox({
         }}
       />
     </div>
+  )
+}
+
+function LightboxNavButton({
+  side,
+  onClick
+}: {
+  side: 'left' | 'right'
+  onClick: (e: React.MouseEvent) => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  const isLeft = side === 'left'
+
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      title={isLeft ? 'Previous' : 'Next'}
+      style={{
+        position: 'absolute',
+        [side]: '12px',
+        top: '50%',
+        transform: 'translateY(-50%)',
+        width: '40px',
+        height: '64px',
+        background: hovered ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+        border: `1px solid rgba(255, 255, 255, ${hovered ? 0.3 : 0.2})`,
+        borderRadius: '8px',
+        cursor: 'pointer',
+        color: '#fff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: hovered ? 1 : 0.3,
+        transition: 'opacity 0.2s, background 0.15s, border-color 0.15s',
+        zIndex: 2
+      }}
+    >
+      {isLeft ? <ChevronLeft size={22} /> : <ChevronRight size={22} />}
+    </button>
   )
 }
 
