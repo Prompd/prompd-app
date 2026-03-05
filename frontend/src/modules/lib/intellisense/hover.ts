@@ -345,6 +345,14 @@ export function registerHoverProvider(
                 packageVersion = rest
               }
               resolvedPackage = `${packageName}@${packageVersion}`
+            } else {
+              // No version specifier: @scope/name/path/to/file.prmd
+              const parts = inheritsRef.split('/')
+              if (parts.length >= 3) {
+                packageName = `${parts[0]}/${parts[1]}` // @scope/name
+                subPath = parts.slice(2).join('/')
+                resolvedPackage = packageName
+              }
             }
           }
           // Local relative path
@@ -364,21 +372,74 @@ export function registerHoverProvider(
             const ns = packageName.substring(1, nsSlash) // strip @
             const name = packageName.substring(nsSlash + 1)
 
-            // Try workspace .prompd/cache/ first (where compiler installs packages)
+            const electronAPI = (window as unknown as Record<string, unknown>).electronAPI as {
+              readFile?: (p: string) => Promise<{ success: boolean; content?: string }>
+              readDir?: (p: string) => Promise<{ success: boolean; files?: { name: string; isDirectory: boolean }[] }>
+              getHomePath?: () => Promise<string>
+            } | undefined
+
+            // Helper: try to find file inside a cache base, scanning for versions if needed
+            const tryResolveInDir = async (cacheBase: string, sep: string): Promise<string | null> => {
+              const pkgDir = [cacheBase, `@${ns}`, name].join(sep)
+
+              // If we have a specific version, try that directly
+              if (packageVersion) {
+                const filePath = [pkgDir, packageVersion, subPath].join(sep)
+                if (electronAPI?.readFile) {
+                  const check = await electronAPI.readFile(filePath)
+                  if (check.success) return filePath
+                }
+              }
+
+              // No version or version not found — scan for available versions
+              if (electronAPI?.readDir) {
+                try {
+                  const result = await electronAPI.readDir(pkgDir)
+                  if (result.success && result.files) {
+                    const versionDirs = result.files
+                      .filter(e => e.isDirectory)
+                      .map(e => e.name)
+                      .sort()
+                      .reverse()
+
+                    for (const ver of versionDirs) {
+                      const filePath = [pkgDir, ver, subPath].join(sep)
+                      if (electronAPI.readFile) {
+                        const check = await electronAPI.readFile(filePath)
+                        if (check.success) {
+                          // Update packageVersion for display in hover tooltip
+                          if (!packageVersion) packageVersion = ver
+                          return filePath
+                        }
+                      }
+                    }
+                  }
+                } catch {
+                  // Directory doesn't exist
+                }
+              }
+
+              return null
+            }
+
+            // Try workspace .prompd/cache/ and .prompd/packages/
             const wsPath = getWorkspacePath()
             if (wsPath) {
               const sep = wsPath.includes('\\') ? '\\' : '/'
-              resolvedFilePath = [wsPath, '.prompd', 'cache', `@${ns}`, name, packageVersion, subPath].join(sep)
+              resolvedFilePath = await tryResolveInDir([wsPath, '.prompd', 'cache'].join(sep), sep)
+              if (!resolvedFilePath) {
+                resolvedFilePath = await tryResolveInDir([wsPath, '.prompd', 'packages'].join(sep), sep)
+              }
             }
 
-            // Fall back to global ~/.prompd/cache/
-            if (!resolvedFilePath) {
+            // Fall back to global ~/.prompd/cache/ and ~/.prompd/packages/
+            if (!resolvedFilePath && electronAPI?.getHomePath) {
               try {
-                const electronAPI = (window as { electronAPI?: { getHomePath: () => Promise<string> } }).electronAPI
-                if (electronAPI) {
-                  const homePath = await electronAPI.getHomePath()
-                  const sep = homePath.includes('\\') ? '\\' : '/'
-                  resolvedFilePath = [homePath, '.prompd', 'cache', `@${ns}`, name, packageVersion, subPath].join(sep)
+                const homePath = await electronAPI.getHomePath()
+                const sep = homePath.includes('\\') ? '\\' : '/'
+                resolvedFilePath = await tryResolveInDir([homePath, '.prompd', 'cache'].join(sep), sep)
+                if (!resolvedFilePath) {
+                  resolvedFilePath = await tryResolveInDir([homePath, '.prompd', 'packages'].join(sep), sep)
                 }
               } catch {
                 // Can't resolve home path

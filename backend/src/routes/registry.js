@@ -28,6 +28,7 @@ const searchQuerySchema = Joi.object({
   size: Joi.number().integer().min(1).max(50).default(20),
   from: Joi.number().integer().min(0).default(0),
   category: Joi.string().max(50).optional(),
+  type: Joi.string().valid('package', 'workflow', 'node-template', 'skill').optional(),
   sortBy: Joi.string().valid('relevance', 'downloads', 'updated', 'created', 'name').default('relevance')
 })
 
@@ -40,13 +41,14 @@ router.use(registryRateLimit)
  */
 router.get('/search', searchRateLimit, optionalAuth, validateQuery(searchQuerySchema), async (req, res, next) => {
   try {
-    const { q, query, size, from, category, sortBy } = req.query
+    const { q, query, size, from, category, type, sortBy } = req.query
     const searchQuery = q || query || ''
 
     const options = {
       size: parseInt(size),
       from: parseInt(from),
       category,
+      type,
       sortBy
     }
 
@@ -189,10 +191,13 @@ router.get('/recent', optionalAuth, async (req, res, next) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 10, 50)
     const category = req.query.category
+    const validTypes = ['package', 'workflow', 'node-template', 'skill']
+    const type = validTypes.includes(req.query.type) ? req.query.type : undefined
 
     const packages = await registryClient.getRecentPackages({
       limit,
-      category
+      category,
+      type
     })
 
     res.json({

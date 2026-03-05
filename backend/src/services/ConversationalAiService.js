@@ -335,14 +335,22 @@ ${metadata.clarificationRound >= this.MAX_CLARIFICATIONS ? 'This is the FINAL cl
       ...history
     ]
 
-    const stream = await client.chat.completions.create({
+    // OpenAI reasoning models (o1, o3, etc.) use max_completion_tokens and don't support temperature
+    const isReasoningModel = providerName === 'openai' && /^o\d/.test(model)
+    const completionParams = {
       model,
       messages,
-      max_tokens: options.maxTokens || 4000,
-      temperature: options.temperature || 0.7,
       stream: true,
       stream_options: { include_usage: true }
-    })
+    }
+    if (isReasoningModel) {
+      completionParams.max_completion_tokens = options.maxTokens || 4000
+    } else {
+      completionParams.max_tokens = options.maxTokens || 4000
+      completionParams.temperature = options.temperature || 0.7
+    }
+
+    const stream = await client.chat.completions.create(completionParams)
 
     // Yield conversation ID first
     yield { type: 'conversation_id', conversationId }

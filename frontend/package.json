@@ -151,7 +151,7 @@
         "description": "Prompd Package Archive",
         "mimeType": "application/x-prompd-package",
         "role": "Viewer",
-        "icon": "public/logo.ico"
+        "icon": "public/pdpkg.ico"
       }
     ]
   },

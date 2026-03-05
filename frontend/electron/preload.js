@@ -40,6 +40,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // API requests (bypasses CORS by using main process)
   apiRequest: (url, options) => ipcRenderer.invoke('api:request', url, options),
 
+  // Streaming API requests - sends body chunks incrementally via IPC events
+  // Used by LLM providers for real-time streaming (SSE)
+  apiStreamRequest: (url, options, streamId) => ipcRenderer.invoke('api:streamRequest', url, options, streamId),
+  onApiStreamChunk: (callback) => {
+    const handler = (_event, streamId, data) => callback(streamId, data)
+    ipcRenderer.on('api:stream-chunk', handler)
+    return () => ipcRenderer.removeListener('api:stream-chunk', handler)
+  },
+  onApiStreamEnd: (callback) => {
+    const handler = (_event, streamId) => callback(streamId)
+    ipcRenderer.on('api:stream-end', handler)
+    return () => ipcRenderer.removeListener('api:stream-end', handler)
+  },
+  onApiStreamError: (callback) => {
+    const handler = (_event, streamId, error) => callback(streamId, error)
+    ipcRenderer.on('api:stream-error', handler)
+    return () => ipcRenderer.removeListener('api:stream-error', handler)
+  },
+
   // Custom title bar support
   platform: process.platform,
   triggerMenuAction: (action, ...args) => ipcRenderer.invoke('menu:trigger', action, ...args),

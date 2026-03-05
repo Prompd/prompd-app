@@ -6,6 +6,7 @@ import {
   PrompdChat,
   usePrompdUsage,
   getChatModesArray,
+  CHAT_MODES,
   type PrompdLLMRequest,
   type PrompdLLMResponse,
   type PrompdChatHandle,
@@ -25,7 +26,8 @@ import { createToolExecutor, type IToolExecutor, type ToolCall } from '../servic
 import type { Tab } from '../../stores/types'
 import { useEditorStore } from '../../stores/editorStore'
 import { useUIStore } from '../../stores/uiStore'
-import { Zap, ShieldCheck, ClipboardList, ChevronDown, FileText, MessageCircle, Undo2 } from 'lucide-react'
+import { Zap, ShieldCheck, ClipboardList, ChevronDown, FileText, Undo2, Lightbulb, Brain, Focus } from 'lucide-react'
+import { AskUserPanel } from '../components/AskUserPanel'
 import { SlashCommandMenu, useSlashCommands, type SlashCommand } from '../components/SlashCommandMenu'
 import { executeSlashCommand, SLASH_COMMANDS } from '../services/slashCommands'
 import { prompdSettings } from '../services/prompdSettings'
@@ -33,13 +35,12 @@ import { PlanApprovalDialog } from '../components/PlanApprovalDialog'
 import PlanReviewModal from '../components/PlanReviewModal'
 import { useAgentMode } from '../hooks/useAgentMode'
 import { undoStack } from '../services/toolExecutor'
-import { buildFileContextMessages } from '../services/fileContextBuilder'
+import { buildFileContextMessages, type ValidationIssue } from '../services/fileContextBuilder'
+import { getMonacoMarkers } from '../lib/monacoConfig'
 
 interface ChatTabProps {
   tab: Tab
   onPrompdGenerated?: (prompd: string, filename: string, metadata: Record<string, unknown>) => void
-  getText?: () => string
-  setText?: (text: string) => void
   theme?: 'light' | 'dark'
   workspacePath?: string | null  // Workspace path for tool execution (Electron)
   showNotification?: (message: string, type?: 'info' | 'warning' | 'error') => void
@@ -238,7 +239,7 @@ function WelcomeGradientP({ contextFileName }: { contextFileName: string | null 
   )
 }
 
-export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dark', workspacePath, showNotification, onFileWritten, onAutoSave, onRegisterStop, embedded = false }: ChatTabProps) {
+export function ChatTab({ tab, onPrompdGenerated, theme = 'dark', workspacePath, showNotification, onFileWritten, onAutoSave, onRegisterStop, embedded = false }: ChatTabProps) {
   const { getToken } = useAuthenticatedUser()
   const { trackUsage } = usePrompdUsage()
 
@@ -256,10 +257,11 @@ export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dar
   const chatRef = useRef<PrompdChatHandle>(null)
 
   // Centralized LLM provider state
-  const { llmProvider, initializeLLMProviders } = useUIStore(
+  const { llmProvider, initializeLLMProviders, setLLMGenerationMode } = useUIStore(
     useShallow(state => ({
       llmProvider: state.llmProvider,
-      initializeLLMProviders: state.initializeLLMProviders
+      initializeLLMProviders: state.initializeLLMProviders,
+      setLLMGenerationMode: state.setLLMGenerationMode
     }))
   )
 
@@ -272,10 +274,13 @@ export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dar
     tab.chatConfig?.contextFile !== undefined ? tab.chatConfig.contextFile : activeTabId
   )
 
-  const chatMode = (tab.chatConfig?.mode || 'generate') as 'generate' | 'edit' | 'discuss' | 'explore'
+  const chatMode = (tab.chatConfig?.mode || 'generate') as 'generate' | 'edit' | 'discuss' | 'explore' | 'brainstorm'
 
   // Permission level state for unified agent mode
-  const [permissionLevel, setPermissionLevel] = useState<AgentPermissionLevel>('confirm')
+  // Brainstorm defaults to 'auto' (no approval gate), other modes default to 'confirm'
+  const [permissionLevel, setPermissionLevel] = useState<AgentPermissionLevel>(
+    chatMode === 'brainstorm' ? 'auto' : 'confirm'
+  )
   const [showPermissionMenu, setShowPermissionMenu] = useState(false)
 
   // Derive effective chatMode: when Plan permission is selected, use planner mode
@@ -438,9 +443,21 @@ export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dar
         console.log('[ChatTab] Using fallback modes from @prompd/react')
         const fallbackModes = getChatModesArray().map(mode => ({
           ...mode,
-          systemPrompt: FALLBACK_SYSTEM_PROMPT
+          systemPrompt: CHAT_MODES[mode.id]?.systemPrompt || FALLBACK_SYSTEM_PROMPT
         }))
         setModeConfigsArray(fallbackModes)
+        // Build chatModes record so useAgentMode gets mode-specific system prompts
+        const fallbackChatModes: Record<string, ChatModeConfig> = {}
+        for (const mode of fallbackModes) {
+          fallbackChatModes[mode.id] = {
+            id: mode.id,
+            label: mode.label,
+            icon: mode.icon,
+            description: mode.description,
+            systemPrompt: mode.systemPrompt
+          }
+        }
+        setChatModes(fallbackChatModes)
         setModesError(null)
       }
     }
@@ -462,19 +479,17 @@ export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dar
 
   // For Edit mode, get/set the selected file's content; otherwise use props
   const getSelectedFileText = useCallback(() => {
-    if (chatMode === 'edit' && selectedFileTab) {
+    if (selectedFileTab) {
       return selectedFileTab.text || ''
     }
-    return getText ? getText() : ''
-  }, [chatMode, selectedFileTab, getText])
+    return ''
+  }, [selectedFileTab])
 
   const setSelectedFileText = useCallback((newText: string) => {
-    if (chatMode === 'edit' && selectedFileTabId) {
+    if (selectedFileTabId) {
       updateTab(selectedFileTabId, { text: newText, dirty: true })
-    } else if (setText) {
-      setText(newText)
     }
-  }, [chatMode, selectedFileTabId, updateTab, setText])
+  }, [selectedFileTabId, updateTab])
 
   // Handle slash command selection from menu
   const handleSlashCommandSelect = useCallback(async (command: SlashCommand) => {
@@ -545,20 +560,50 @@ export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dar
       }
     })
 
-    // Build context messages for file content using shared utility
-    let contextMessages: Array<{ role: 'system'; content: string }> = []
+    // Build a getter that returns fresh context on every call.
+    // After edit_file/write_file, the next agent-loop iteration must see the updated content.
+    const getContextMessages = (): Array<{ role: 'system'; content: string }> => {
+      const fileContent = selectedFileTab?.text || ''
+      const fileName = selectedFileTab?.name || tab.name || 'untitled.txt'
 
-    if (selectedFileTab) {
-      const fileContent = selectedFileTab.text || ''
-      const fileName = selectedFileTab.name || 'untitled.txt'
+      if (!fileContent) return []
 
-      if (fileContent) {
-        contextMessages = buildFileContextMessages({
-          fileName,
-          content: fileContent,
-          cursorPosition: undefined // ChatTab doesn't track cursor position
-        })
+      // Gather validation errors from both sources as passive context
+      const errors: ValidationIssue[] = []
+
+      // 1. Build output errors from uiStore (compiler/build errors)
+      const buildOutput = useUIStore.getState().buildOutput
+      if (buildOutput.errors && buildOutput.errors.length > 0) {
+        for (const err of buildOutput.errors) {
+          errors.push({
+            message: err.message,
+            line: err.line,
+            severity: 'ERROR'
+          })
+        }
       }
+
+      // 2. Monaco editor markers (intellisense validation)
+      try {
+        const markers = getMonacoMarkers()
+          .filter(m => m.severity >= 4) // errors + warnings only
+        for (const m of markers) {
+          errors.push({
+            message: m.message,
+            line: m.startLineNumber,
+            severity: m.severity >= 8 ? 'ERROR' : 'WARNING'
+          })
+        }
+      } catch {
+        // Monaco not initialized yet — skip
+      }
+
+      return buildFileContextMessages({
+        fileName,
+        content: fileContent,
+        cursorPosition: undefined,
+        errors: errors.length > 0 ? errors : undefined
+      })
     }
 
     // Wrap base client with context compaction (decorator pattern)
@@ -576,15 +621,19 @@ export function ChatTab({ tab, onPrompdGenerated, getText, setText, theme = 'dar
     )
 
     // Use the shared agent LLM client wrapper
-    return agentActions.createAgentLLMClient(compactingClient, chatRef, contextMessages)
+    return agentActions.createAgentLLMClient(compactingClient, chatRef, getContextMessages)
   }, [llmProvider.provider, llmProvider.model, getToken, selectedFileTab, agentActions])
 
   // Context utilization for status bar display (uses effective/capped context window)
   const contextUtilization = useMemo(() => {
-    if (agentState.lastPromptTokens <= 0) return null
+    const totalIn = agentState.tokenUsage.promptTokens
+    if (totalIn <= 0) return null
     const ctxWindow = resolveEffectiveContextWindow(llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing)
-    return { pct: Math.round((agentState.lastPromptTokens / ctxWindow) * 100), formatted: formatContextWindow(ctxWindow) }
-  }, [agentState.lastPromptTokens, llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing])
+    return {
+      pct: Math.round((totalIn / ctxWindow) * 100),
+      formatted: formatContextWindow(ctxWindow)
+    }
+  }, [agentState.tokenUsage.promptTokens, llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing])
 
   const editorIntegration = useMemo(() => new PrompdEditorIntegration(
     getSelectedFileText,
@@ -762,56 +811,57 @@ Write your prompt content here.
     )
   }
 
-  // Show loading state while providers are being loaded
-  if (llmProvider.isLoading) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-          <div style={{
-            width: '32px',
-            height: '32px',
-            border: '2px solid currentColor',
-            borderTopColor: 'transparent',
-            borderRadius: '50%',
-            margin: '0 auto 8px',
-            animation: 'spin 1s linear infinite'
-          }} />
-          <p style={{ margin: 0 }}>Loading chat providers...</p>
+  // Show loading/error states only for standalone (non-embedded) chat tabs.
+  // When embedded in SplitEditor, the parent handles visibility during mount.
+  if (!embedded) {
+    if (llmProvider.isLoading) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              border: '2px solid currentColor',
+              borderTopColor: 'transparent',
+              borderRadius: '50%',
+              margin: '0 auto 8px',
+              animation: 'spin 1s linear infinite'
+            }} />
+            <p style={{ margin: 0 }}>Loading chat providers...</p>
+          </div>
         </div>
-      </div>
-    )
-  }
+      )
+    }
 
-  // Show error state if modes failed to load
-  if (modesError) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center', color: 'var(--text-muted)', maxWidth: '400px' }}>
-          <p style={{ color: 'var(--error, #ef4444)', marginBottom: '8px' }}>Failed to load chat modes</p>
-          <p style={{ fontSize: '12px', margin: 0 }}>{modesError}</p>
+    if (modesError) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', maxWidth: '400px' }}>
+            <p style={{ color: 'var(--error, #ef4444)', marginBottom: '8px' }}>Failed to load chat modes</p>
+            <p style={{ fontSize: '12px', margin: 0 }}>{modesError}</p>
+          </div>
         </div>
-      </div>
-    )
-  }
+      )
+    }
 
-  // Show loading state if modes haven't loaded yet
-  if (modeConfigsArray.length === 0) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-          <div style={{
-            width: '32px',
-            height: '32px',
-            border: '2px solid currentColor',
-            borderTopColor: 'transparent',
-            borderRadius: '50%',
-            margin: '0 auto 8px',
-            animation: 'spin 1s linear infinite'
-          }} />
-          <p style={{ margin: 0 }}>Loading chat modes...</p>
+    if (modeConfigsArray.length === 0) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              border: '2px solid currentColor',
+              borderTopColor: 'transparent',
+              borderRadius: '50%',
+              margin: '0 auto 8px',
+              animation: 'spin 1s linear infinite'
+            }} />
+            <p style={{ margin: 0 }}>Loading chat modes...</p>
+          </div>
         </div>
-      </div>
-    )
+      )
+    }
   }
 
   return (
@@ -833,12 +883,14 @@ Write your prompt content here.
             initialMessages={currentConversation?.messages}
             emptyStateContent={emptyStateContent}
             currentMode={modeConfigsArray.find(m => m.id === chatMode)}
-            modes={[]}
+            modes={modeConfigsArray}
             onModeChange={handleModeChange}
+            hideModeSelector={false}
             onMessage={handleMessage}
             inputValue={chatInputValue}
             onInputChange={setChatInputValue}
-            inputTheme={permissionLevel}
+            inputTheme={chatMode === 'brainstorm' ? 'brainstorm' : permissionLevel}
+            generationMode={llmProvider.generationMode}
             waitingForUserInput={!!agentState.pendingAskUser}
             onStop={() => agentActions.stop()}
             onBeforeSubmit={async (inputValue) => {
@@ -917,6 +969,14 @@ Write your prompt content here.
                 <button
                   type="button"
                   onClick={() => setShowPermissionMenu(!showPermissionMenu)}
+                  title={
+                    permissionLevel === 'auto'
+                      ? 'Permission: Auto - AI executes changes automatically with guardrails'
+                      : permissionLevel === 'confirm'
+                        ? 'Permission: Confirm - requires your approval before writing files'
+                        : 'Permission: Plan - AI creates a plan for your approval before execution'
+                  }
+                  aria-label="Permission level"
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -938,7 +998,7 @@ Write your prompt content here.
                     if (!showPermissionMenu) e.currentTarget.style.background = 'transparent'
                   }}
                 >
-                  {permissionLevel === 'auto' && <Zap size={14} style={{ color: '#22c55e' }} />}
+                  {permissionLevel === 'auto' && <Zap size={14} style={{ color: chatMode === 'brainstorm' ? '#06b6d4' : '#22c55e' }} />}
                   {permissionLevel === 'confirm' && <ShieldCheck size={14} style={{ color: '#eab308' }} />}
                   {permissionLevel === 'plan' && <ClipboardList size={14} style={{ color: '#6366f1' }} />}
                   <span style={{ textTransform: 'capitalize', fontSize: '16px' }}>{permissionLevel}</span>
@@ -971,6 +1031,7 @@ Write your prompt content here.
                         <button
                           type="button"
                           key={level}
+                          title={desc}
                           onClick={() => {
                             setPermissionLevel(level)
                             setShowPermissionMenu(false)
@@ -1010,6 +1071,88 @@ Write your prompt content here.
                       ))}
                     </div>
                   </>
+                )}
+                {/* Brainstorm toggle - always visible, locks permission to auto when active */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (chatMode === 'brainstorm') {
+                      handleModeChange('agent')
+                    } else {
+                      handleModeChange('brainstorm')
+                      setPermissionLevel('auto')
+                    }
+                  }}
+                  title={chatMode === 'brainstorm' ? 'Exit brainstorm mode' : 'Brainstorm: Collaborate with AI on a working copy you control. Changes are proposed, not applied directly.'}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '6px 8px',
+                    background: chatMode === 'brainstorm' ? 'rgba(6, 182, 212, 0.12)' : 'transparent',
+                    border: chatMode === 'brainstorm' ? '1px solid rgba(6, 182, 212, 0.3)' : '1px solid var(--border)',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    color: chatMode === 'brainstorm' ? '#06b6d4' : 'var(--text-muted)',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (chatMode !== 'brainstorm') {
+                      e.currentTarget.style.background = 'var(--hover)'
+                      e.currentTarget.style.color = '#06b6d4'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (chatMode !== 'brainstorm') {
+                      e.currentTarget.style.background = 'transparent'
+                      e.currentTarget.style.color = 'var(--text-muted)'
+                    }
+                  }}
+                >
+                  <Lightbulb size={14} />
+                </button>
+                {/* Thinking mode toggle - only shown when current model supports thinking */}
+                {(() => {
+                  const currentProvider = llmProvider.providersWithPricing?.find(p => p.providerId === llmProvider.provider)
+                  const currentModel = currentProvider?.models.find(m => m.model === llmProvider.model)
+                  return currentModel?.supportsThinking === true
+                })() && (
+                  <button
+                    type="button"
+                    onClick={() => setLLMGenerationMode(
+                      llmProvider.generationMode === 'thinking' ? 'default' : 'thinking'
+                    )}
+                    title={llmProvider.generationMode === 'thinking'
+                      ? 'Disable extended thinking'
+                      : 'Extended thinking (Anthropic)'}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '6px 8px',
+                      background: llmProvider.generationMode === 'thinking'
+                        ? 'rgba(245, 158, 11, 0.12)' : 'transparent',
+                      border: llmProvider.generationMode === 'thinking'
+                        ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid var(--border)',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      color: llmProvider.generationMode === 'thinking'
+                        ? '#f59e0b' : 'var(--text-muted)',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (llmProvider.generationMode !== 'thinking') {
+                        e.currentTarget.style.background = 'var(--hover)'
+                        e.currentTarget.style.color = '#f59e0b'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (llmProvider.generationMode !== 'thinking') {
+                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.color = 'var(--text-muted)'
+                      }
+                    }}
+                  >
+                    <Brain size={14} />
+                  </button>
                 )}
                 {/* Slash Command Trigger Button */}
                 <button
@@ -1081,131 +1224,54 @@ Write your prompt content here.
                 </button>
               </div>
             }
-            aboveInput={agentState.pendingAskUser ? (
-              <div style={{
-                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%)',
-                borderTop: '2px solid rgba(168, 85, 247, 0.5)',
-                padding: '16px 20px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '50%',
-                    background: 'linear-gradient(135deg, #a855f7 0%, #8b5cf6 100%)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    <MessageCircle size={16} style={{ color: 'white' }} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      color: '#a855f7',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
-                      marginBottom: '4px'
-                    }}>
-                      Agent Needs Your Input
-                    </div>
-                    <div style={{
-                      fontSize: '14px',
-                      color: 'var(--prompd-text)',
-                      lineHeight: 1.5,
-                      marginBottom: '8px'
-                    }}>
-                      {agentState.pendingAskUser.question}
-                    </div>
-                    {agentState.pendingAskUser.options && agentState.pendingAskUser.options.length > 0 && (
-                      <div style={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: '8px',
-                        marginTop: '12px'
-                      }}>
-                        {agentState.pendingAskUser.options.map((opt, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => {
-                              if (chatRef.current) {
-                                chatRef.current.addMessage({
-                                  id: `user-response-${Date.now()}`,
-                                  role: 'user',
-                                  content: opt.label,
-                                  timestamp: new Date().toISOString()
-                                })
-                              }
-                              agentState.pendingAskUser?.resolve(opt.label)
-                              setChatInputValue('')
-                            }}
-                            style={{
-                              padding: opt.description ? '10px 16px' : '8px 16px',
-                              background: 'rgba(168, 85, 247, 0.1)',
-                              border: '1px solid rgba(168, 85, 247, 0.3)',
-                              borderRadius: '8px',
-                              cursor: 'pointer',
-                              textAlign: 'left',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '2px',
-                              transition: 'all 0.15s'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = 'rgba(168, 85, 247, 0.2)'
-                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.5)'
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = 'rgba(168, 85, 247, 0.1)'
-                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.3)'
-                            }}
-                          >
-                            <span style={{ color: '#a855f7', fontWeight: 600, fontSize: '14px' }}>{opt.label}</span>
-                            {opt.description && (
-                              <span style={{ color: 'var(--prompd-muted)', fontSize: '12px' }}>{opt.description}</span>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <div style={{
+            aboveInput={((chatMode === 'brainstorm' && selectedFileTab) || agentState.pendingAskUser) ? (
+              <>
+                {chatMode === 'brainstorm' && selectedFileTab && (
+                  <div
+                    title="Brainstorm is scoped to this file. Changes will only be proposed for this document."
+                    style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '12px'
-                    }}>
-                      <div style={{
-                        fontSize: '12px',
-                        color: 'var(--prompd-muted)',
-                        fontStyle: 'italic'
-                      }}>
-                        {agentState.pendingAskUser.options && agentState.pendingAskUser.options.length > 0
-                          ? 'Or type a custom answer below'
-                          : 'Type your answer below and press Enter to continue'
-                        }
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => agentActions.cancelAskUser()}
-                        style={{
-                          padding: '4px 12px',
-                          background: 'rgba(239, 68, 68, 0.2)',
-                          border: '1px solid rgba(239, 68, 68, 0.4)',
-                          borderRadius: '6px',
-                          color: '#f87171',
-                          fontSize: '12px',
-                          fontWeight: 500,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
+                      gap: '6px',
+                      padding: '4px 0',
+                      marginLeft: '8px',
+                      fontSize: '12px',
+                      color: '#06b6d4',
+                      cursor: 'default'
+                    }}
+                  >
+                    <Focus size={12} style={{ flexShrink: 0 }} />
+                    <code style={{
+                      padding: '2px 6px',
+                      background: 'rgba(6, 182, 212, 0.12)',
+                      border: '1px solid rgba(6, 182, 212, 0.3)',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      color: '#06b6d4',
+                      fontFamily: 'var(--font-mono, monospace)'
+                    }}>{selectedFileTab.name}</code>
                   </div>
-                </div>
-              </div>
+                )}
+                {agentState.pendingAskUser && (
+                  <AskUserPanel
+                    question={agentState.pendingAskUser.question}
+                    options={agentState.pendingAskUser.options}
+                    onSelect={(label) => {
+                      if (chatRef.current) {
+                        chatRef.current.addMessage({
+                          id: `user-response-${Date.now()}`,
+                          role: 'user',
+                          content: label,
+                          timestamp: new Date().toISOString()
+                        })
+                      }
+                      agentState.pendingAskUser?.resolve(label)
+                      setChatInputValue('')
+                    }}
+                    onCancel={() => agentActions.cancelAskUser()}
+                  />
+                )}
+              </>
             ) : undefined}
           />
         </PrompdProvider>
@@ -1216,21 +1282,21 @@ Write your prompt content here.
         <div style={{
           padding: '3px 12px',
           fontSize: '11px',
-          color: theme === 'dark' ? 'var(--text-muted, #6b7280)' : 'rgba(0,0,0,0.4)',
+          color: theme === 'dark' ? 'var(--text-secondary, #9ca3af)' : 'rgba(0,0,0,0.55)',
           borderTop: `1px solid ${theme === 'dark' ? 'var(--border, #2d2d3d)' : '#e2e8f0'}`,
           display: 'flex',
           alignItems: 'center',
           gap: '8px',
           flexShrink: 0,
           fontFamily: 'var(--font-mono, monospace)',
-          background: theme === 'dark' ? 'rgba(255,255,255,0.01)' : 'rgba(0,0,0,0.01)'
+          background: theme === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)'
         }}>
           <span>{agentState.tokenUsage.totalTokens.toLocaleString()} tokens</span>
-          <span style={{ opacity: 0.5 }}>
+          <span style={{ opacity: 0.7 }}>
             ({agentState.tokenUsage.promptTokens.toLocaleString()} in / {agentState.tokenUsage.completionTokens.toLocaleString()} out)
           </span>
           {contextUtilization && (
-            <span style={{ opacity: 0.5, marginLeft: 'auto' }}>
+            <span style={{ opacity: 0.7, marginLeft: 'auto' }}>
               Context: {contextUtilization.pct}% of {contextUtilization.formatted}
             </span>
           )}

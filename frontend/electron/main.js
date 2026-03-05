@@ -1826,6 +1826,86 @@ ipcMain.handle('env:getFiltered', async (_event, prefix) => {
   return filtered
 })
 
+// Streaming API request handler - sends response body chunks incrementally via IPC events
+// Unlike api:request which buffers the entire response, this forwards each data chunk as it arrives
+ipcMain.handle('api:streamRequest', async (event, url, options, streamId) => {
+  try {
+    return new Promise((resolve) => {
+      const request = net.request({
+        method: options.method || 'GET',
+        url: url
+      })
+
+      // Set headers
+      if (options.headers) {
+        Object.entries(options.headers).forEach(([key, value]) => {
+          request.setHeader(key, value)
+        })
+      }
+
+      // Handle response - resolve with headers immediately, then stream body chunks
+      request.on('response', (response) => {
+        const headers = {}
+        const rawHeaders = response.rawHeaders
+        for (let i = 0; i < rawHeaders.length; i += 2) {
+          headers[rawHeaders[i].toLowerCase()] = rawHeaders[i + 1]
+        }
+
+        // Resolve with headers right away (don't wait for body)
+        resolve({
+          success: true,
+          status: response.statusCode,
+          statusText: response.statusMessage,
+          headers: headers,
+          ok: response.statusCode >= 200 && response.statusCode < 300
+        })
+
+        // Forward data chunks incrementally to renderer
+        response.on('data', (chunk) => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('api:stream-chunk', streamId, chunk.toString('utf8'))
+          }
+        })
+
+        response.on('end', () => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('api:stream-end', streamId)
+          }
+        })
+
+        response.on('error', (err) => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('api:stream-error', streamId, err.message)
+          }
+        })
+      })
+
+      // Handle request errors
+      request.on('error', (error) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('api:stream-error', streamId, error.message)
+        }
+        resolve({
+          success: false,
+          error: error.message
+        })
+      })
+
+      // Send body if present
+      if (options.body) {
+        request.write(typeof options.body === 'string' ? options.body : JSON.stringify(options.body))
+      }
+
+      request.end()
+    })
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message
+    }
+  }
+})
+
 // API request handler - bypasses CORS by making requests from main process
 ipcMain.handle('api:request', async (_event, url, options) => {
   try {
@@ -2329,12 +2409,26 @@ ipcMain.handle('git:runCommand', async (event, args, cwd) => {
 })
 
 // Handle app protocol for deep linking
-// In production, the NSIS installer registers the protocol pointing to Prompd.exe.
-// We only call setAsDefaultProtocolClient in production as a fallback.
-// In dev mode, process.execPath is electron.exe which would register "Electron"
-// as the protocol handler name in Windows, causing "Open Electron?" dialogs.
-if (!process.defaultApp) {
+// In dev mode, process.execPath is electron.exe so we must pass the app path
+// as an argument so Windows can relaunch the dev app from a protocol URL.
+if (process.defaultApp) {
+  app.setAsDefaultProtocolClient('prompd', process.execPath, [path.resolve(process.argv[1])])
+} else {
   app.setAsDefaultProtocolClient('prompd')
+}
+
+// Electron writes "URL:prompd" as the registry display name — override to "Prompd"
+// so browser dialogs show "Open Prompd?" instead of "Open URL:prompd?"
+if (process.platform === 'win32') {
+  try {
+    const { execSync } = require('child_process')
+    execSync('reg add "HKCU\\Software\\Classes\\prompd" /ve /d "Prompd" /f', {
+      windowsHide: true,
+      stdio: 'ignore'
+    })
+  } catch (_) {
+    // Non-critical — protocol handler still works
+  }
 }
 
 // Handle protocol URLs (prompd://)
@@ -3539,12 +3633,52 @@ Use parameters like this: {{input}}`
 
 // Default config values (lowest priority)
 const DEFAULT_CONFIG = {
+  // LLM provider defaults
   default_provider: '',
   default_model: '',
-  api_keys: {},
+
+  // API keys for LLM providers (or set via environment variables)
+  // Supported: openai, anthropic, google, groq, mistral, cohere, together, perplexity, deepseek, ollama
+  api_keys: {
+    openai: '',
+    anthropic: '',
+    google: '',
+    groq: '',
+    mistral: '',
+    cohere: '',
+    together: '',
+    perplexity: '',
+    deepseek: ''
+  },
+
+  // Custom OpenAI-compatible providers
+  // custom_providers:
+  //   my-provider:
+  //     display_name: "My Provider"
+  //     base_url: "https://api.my-provider.ai/v1"
+  //     api_key: ""
+  //     type: "openai-compatible"
+  //     enabled: true
+  //     models:
+  //       - "model-name"
   custom_providers: {},
+
+  // Per-provider settings (temperature, max_tokens, etc.)
   provider_configs: {},
-  services: {},
+
+  // Providers to hide from the UI
+  disabled_providers: [],
+
+  // System services
+  services: {
+    mcp_server: {
+      auto_start: false,
+      port: 3100,
+      api_key: ''
+    }
+  },
+
+  // Package registry configuration
   registry: {
     default: 'prompdhub',
     current_namespace: '',
@@ -3556,7 +3690,11 @@ const DEFAULT_CONFIG = {
       }
     }
   },
+
+  // Scope-to-registry mappings (e.g., @my-org -> my-registry)
   scopes: {},
+
+  // Request settings
   timeout: 30,
   max_retries: 3,
   verbose: false
@@ -4092,6 +4230,36 @@ function getDefaultModelsForProvider(provider) {
 // Shares the same logic as the /compile slash command
 // =============================================================================
 
+// Walk up the directory tree to find the Prompd project root.
+// A project root is a directory containing a prompd.json with both 'name' and 'version' fields.
+// Falls back to startDir if no project root is found.
+function findPrompdProjectRoot(startDir) {
+  let dir = path.resolve(startDir)
+  const root = path.parse(dir).root
+
+  while (true) {
+    const candidate = path.join(dir, 'prompd.json')
+    if (fs.existsSync(candidate)) {
+      try {
+        const content = JSON.parse(fs.readFileSync(candidate, 'utf8'))
+        if (content.name && content.version) {
+          return dir
+        }
+      } catch {
+        // Invalid JSON, skip
+      }
+    }
+
+    const parent = path.dirname(dir)
+    if (parent === dir || dir === root) {
+      break
+    }
+    dir = parent
+  }
+
+  return path.resolve(startDir)
+}
+
 // Shared compilation function - used by both IPC handlers and slash commands
 // This ensures consistent behavior across all compilation paths
 async function compilePrompt(content, options = {}) {
@@ -4106,8 +4274,9 @@ async function compilePrompt(content, options = {}) {
     workspaceRoot = currentWorkspacePath
     console.log('[Compiler] Using workspace root:', workspaceRoot)
   } else if (fullFilePath && fs.existsSync(path.dirname(fullFilePath))) {
-    workspaceRoot = path.dirname(fullFilePath)
-    console.log('[Compiler] No workspace set, using file directory:', workspaceRoot)
+    // Walk up from file directory to find project root (prompd.json with name + version)
+    workspaceRoot = findPrompdProjectRoot(path.dirname(fullFilePath))
+    console.log('[Compiler] No workspace set, auto-detected project root:', workspaceRoot)
   }
 
   const filePath = fullFilePath ? fullFilePath.replace(/\\/g, '/') : null
@@ -4406,7 +4575,7 @@ ipcMain.handle('compiler:getDiagnostics', async (_event, content, options = {}) 
       parameters: options.parameters || {},
       fileSystem,
       registryUrl: options.registryUrl || 'http://localhost:4000',
-      workspaceRoot: options.workspaceRoot || (options.filePath ? path.dirname(options.filePath) : null),
+      workspaceRoot: options.workspaceRoot || (options.filePath ? findPrompdProjectRoot(path.dirname(options.filePath)) : null),
       verbose: false
     })
 

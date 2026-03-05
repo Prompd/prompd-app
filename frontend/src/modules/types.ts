@@ -22,7 +22,7 @@ export type AiGenerationMetadata = {
 export type Tab = {
   id: string
   name: string
-  type?: 'file' | 'execution' | 'chat'  // Default is 'file' if not specified (.pdflow files use 'file' type with 'design' viewMode)
+  type?: 'file' | 'execution' | 'chat' | 'brainstorm'  // Default is 'file' if not specified (.pdflow files use 'file' type with 'design' viewMode)
   handle?: any
   text: string
   dirty?: boolean

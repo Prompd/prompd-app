@@ -130,6 +130,7 @@ function PaletteItem({ item, isFavorite, onToggleFavorite }: PaletteItemProps) {
 
 interface CollapsibleSectionProps {
   title: string
+  description?: string
   nodeTypes: WorkflowNodeType[]
   defaultExpanded?: boolean
   filter?: string
@@ -137,7 +138,7 @@ interface CollapsibleSectionProps {
   onToggleFavorite: (type: WorkflowNodeType) => void
 }
 
-function CollapsibleSection({ title, nodeTypes, defaultExpanded = false, filter = '', favorites, onToggleFavorite }: CollapsibleSectionProps) {
+function CollapsibleSection({ title, description, nodeTypes, defaultExpanded = false, filter = '', favorites, onToggleFavorite }: CollapsibleSectionProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
 
   // Filter items based on search term
@@ -162,6 +163,7 @@ function CollapsibleSection({ title, nodeTypes, defaultExpanded = false, filter 
     <div style={{ marginBottom: '8px' }}>
       <button
         onClick={() => !filter && setIsExpanded(!isExpanded)}
+        title={description}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -637,6 +639,7 @@ export function NodePalette() {
           <CollapsibleSection
             key={cat.key}
             title={cat.paletteLabel}
+            description={cat.description}
             nodeTypes={cat.types}
             filter={filter}
             favorites={favorites}

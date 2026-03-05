@@ -207,8 +207,8 @@ export default function TabsBar({ tabs, activeTabId, onActivate, onClose, onClos
                   <Sparkles size={14} style={{ color: 'var(--accent)' }} />
                 </span>
               )}
-              {t.dirty ? <span className="dirty">•</span> : null}
-              <span className="close" onClick={(e) => { e.stopPropagation(); onClose(t.id) }}>✕</span>
+              {t.dirty ? <span className="dirty" title="Unsaved changes">•</span> : null}
+              <button className="close" title="Close tab" aria-label={`Close ${getFileName(t.name)}`} onClick={(e) => { e.stopPropagation(); onClose(t.id) }}>✕</button>
             </div>
           ))}
         </div>
@@ -236,7 +236,7 @@ export default function TabsBar({ tabs, activeTabId, onActivate, onClose, onClos
       {contextMenu && (() => {
         // Find the tab to check its type
         const contextTab = tabs.find(t => t.id === contextMenu.tabId)
-        const isNonSaveableTab = contextTab?.type === 'chat' || contextTab?.type === 'execution'
+        const isNonSaveableTab = contextTab?.type === 'chat' || contextTab?.type === 'execution' || contextTab?.type === 'brainstorm'
 
         return (
         <div

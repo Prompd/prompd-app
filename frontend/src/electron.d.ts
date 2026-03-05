@@ -107,6 +107,12 @@ export interface ElectronAPI {
   // API requests (bypasses CORS by using main process)
   apiRequest: (url: string, options: ApiRequestOptions) => Promise<ApiRequestResponse>
 
+  // Streaming API requests - sends body chunks incrementally via IPC events
+  apiStreamRequest: (url: string, options: ApiRequestOptions, streamId: string) => Promise<ApiRequestResponse>
+  onApiStreamChunk: (callback: (streamId: string, data: string) => void) => () => void
+  onApiStreamEnd: (callback: (streamId: string) => void) => () => void
+  onApiStreamError: (callback: (streamId: string, error: string) => void) => () => void
+
   // Connection testing (for workflow connections)
   testSSHConnection?: (config: { host: string; port?: number; username?: string }) => Promise<{ success: boolean; message: string }>
   testDatabaseConnection?: (config: { host?: string; port?: number; type?: string; connectionString?: string }) => Promise<{ success: boolean; message: string }>
@@ -860,6 +866,7 @@ export interface CompileOptions {
   format?: 'markdown' | 'openai' | 'anthropic' | 'json'
   parameters?: Record<string, unknown>
   filePath?: string  // Full disk path to source file
+  workspaceRoot?: string  // Project root directory (for package resolution)
   registryUrl?: string
   verbose?: boolean
 }
@@ -1187,6 +1194,7 @@ export interface CustomProviderModelConfig {
   supports_vision?: boolean
   supports_image_generation?: boolean
   supports_tools?: boolean
+  supports_thinking?: boolean
   context_window?: number
 }
 

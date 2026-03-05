@@ -52,7 +52,7 @@ export interface ParameterListProps {
  * Parameter type classifications
  */
 export const SIMPLE_TYPES = ['string', 'number', 'integer', 'float', 'boolean'] as const
-export const COMPLEX_TYPES = ['array', 'string[]', 'object', 'text'] as const
+export const COMPLEX_TYPES = ['array', 'string[]', 'object', 'text', 'file', 'json', 'base64', 'jwt'] as const
 export const ENUM_INDICATOR = 'enum' as const
 
 export type SimpleType = typeof SIMPLE_TYPES[number]

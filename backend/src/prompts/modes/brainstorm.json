@@ -1,0 +1,185 @@
+{
+  "id": "brainstorm",
+  "label": "Brainstorm",
+  "icon": "Lightbulb",
+  "description": "Collaborative document editor that iterates with you on a working copy",
+  "responseFormat": "xml",
+  "systemPromptFile": "brainstorm.md",
+  "tools": [
+    {
+      "name": "edit_file",
+      "description": "Apply targeted search/replace edits to the document. Use this for focused changes to specific sections.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Use \"document\" — the system routes to the working copy automatically"
+          },
+          "edits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "search": {
+                  "type": "string",
+                  "description": "Exact text to find (must match exactly, including whitespace)"
+                },
+                "replace": {
+                  "type": "string",
+                  "description": "Text to replace it with"
+                }
+              },
+              "required": ["search", "replace"]
+            },
+            "description": "Array of search/replace operations to apply sequentially"
+          }
+        },
+        "required": ["path", "edits"]
+      },
+      "requiresApproval": false
+    },
+    {
+      "name": "write_file",
+      "description": "Replace the entire document content. Use this for major rewrites or restructuring.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Use \"document\" — the system routes to the working copy automatically"
+          },
+          "content": {
+            "type": "string",
+            "description": "The complete new document content"
+          }
+        },
+        "required": ["path", "content"]
+      },
+      "requiresApproval": false
+    },
+    {
+      "name": "ask_user",
+      "description": "Ask the user a clarifying question, optionally with selectable options",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "The question to ask the user"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "description": "Option text"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Optional explanation of this option"
+                }
+              },
+              "required": ["label"]
+            },
+            "description": "Optional list of selectable options for the user"
+          }
+        },
+        "required": ["question"]
+      },
+      "requiresApproval": false
+    },
+    {
+      "name": "search_registry",
+      "description": "Search the Prompd package registry for templates and components to reference or inherit from",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search terms to find packages"
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Optional tags to filter results"
+          }
+        },
+        "required": ["query"]
+      },
+      "requiresApproval": false,
+      "triggersModal": true
+    },
+    {
+      "name": "list_package_files",
+      "description": "List all files in a registry package (useful for exploring base templates)",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "package_name": {
+            "type": "string",
+            "description": "Package name (e.g. @prompd/public-examples)"
+          },
+          "version": {
+            "type": "string",
+            "description": "Package version (e.g. 1.1.0)"
+          }
+        },
+        "required": ["package_name", "version"]
+      },
+      "requiresApproval": false
+    },
+    {
+      "name": "read_package_file",
+      "description": "Read a specific file from a registry package (useful for resolving inherited templates)",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "package_name": {
+            "type": "string",
+            "description": "Package name (e.g. @prompd/public-examples)"
+          },
+          "version": {
+            "type": "string",
+            "description": "Package version (e.g. 1.1.0)"
+          },
+          "file_path": {
+            "type": "string",
+            "description": "Path to the file within the package"
+          }
+        },
+        "required": ["package_name", "version", "file_path"]
+      },
+      "requiresApproval": false
+    },
+    {
+      "name": "get_document_errors",
+      "description": "Get current validation errors and warnings from the document with line numbers and severity",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      },
+      "requiresApproval": false
+    }
+  ],
+  "settings": {
+    "maxIterations": 15,
+    "streamResponses": true,
+    "permissionLevels": {
+      "auto": {
+        "label": "Auto",
+        "description": "All edits apply directly to the working copy",
+        "requiresApprovalTools": []
+      }
+    },
+    "defaultPermissionLevel": "auto"
+  },
+  "followUpStrategies": {
+    "clear": "Understand the user's intent and make targeted edits to the document",
+    "vague": "Ask a clarifying question using ask_user to understand what the user wants to change",
+    "error": "Explain the issue and suggest an alternative approach",
+    "rejected": "Acknowledge and propose a different approach to the edit"
+  }
+}

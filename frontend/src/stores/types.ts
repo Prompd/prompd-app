@@ -16,7 +16,7 @@ export interface Tab {
   handle?: FileSystemFileHandle
   filePath?: string // Full disk path for file restoration after app restart
   dirty?: boolean
-  type?: 'file' | 'execution' | 'chat'
+  type?: 'file' | 'execution' | 'chat' | 'brainstorm'
   viewMode?: 'wizard' | 'design' | 'code'
   readOnly?: boolean
   executionConfig?: any // ExecutionConfig type
@@ -33,6 +33,12 @@ export interface Tab {
   showPreview?: boolean // Show compiled markdown preview in split view
   showChat?: boolean // Show AI chat pane in split view
   previewParams?: Record<string, unknown> // Parameter values for preview compilation
+  brainstormConfig?: {
+    sourceFilePath: string
+    sourceTabId?: string
+    conversationId?: string
+    editorMode?: 'wysiwyg' | 'code'
+  }
 }
 
 /**
@@ -101,6 +107,7 @@ export interface BuildError {
   message: string
   line?: number
   column?: number
+  severity?: 'error' | 'warning' | 'info' | 'hint'
 }
 
 /**
@@ -116,4 +123,19 @@ export interface BuildOutput {
   fileCount?: number
   size?: number
   timestamp?: number
+}
+
+/**
+ * A single package build record for the Packages tab history
+ */
+export interface PackageBuildRecord {
+  id: string
+  status: 'success' | 'error'
+  message: string
+  fileName?: string
+  outputPath?: string
+  fileCount?: number
+  size?: number
+  timestamp: number
+  errors?: BuildError[]
 }

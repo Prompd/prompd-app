@@ -201,6 +201,45 @@ async function verifySource() {
   }
 }
 
+/**
+ * Generate a Windows .ico from an SVG file.
+ * Requires sharp to rasterize the SVG at multiple resolutions.
+ */
+async function generateIcoFromSvg(svgPath, icoPath, label) {
+  console.log(`\n🪟 Generating ${label} .ico from SVG...`)
+
+  if (!sharp) {
+    console.warn(`⚠️  Sharp required to generate ${label}.ico from SVG - skipping`)
+    return null
+  }
+
+  const sizes = [16, 32, 48, 256]
+  const pngFiles = []
+
+  for (const size of sizes) {
+    const outputPath = path.join(TEMP_DIR, `${label}_${size}x${size}.png`)
+
+    await sharp(svgPath, { density: Math.round(size / 32 * 72 * 2) })
+      .resize(size, size, {
+        fit: 'contain',
+        background: { r: 0, g: 0, b: 0, alpha: 0 }
+      })
+      .png({ compressionLevel: 9 })
+      .toFile(outputPath)
+
+    pngFiles.push(outputPath)
+    console.log(`  ✓ ${size}x${size}`)
+  }
+
+  const icoBuffer = await pngToIco(pngFiles)
+  await fs.writeFile(icoPath, icoBuffer)
+
+  const stats = await fs.stat(icoPath)
+  console.log(`✅ Generated: ${icoPath} (${(stats.size / 1024).toFixed(1)}KB)`)
+
+  return icoPath
+}
+
 async function main() {
   console.log('Prompd - Icon Generation\n')
 
@@ -218,11 +257,31 @@ async function main() {
     await generateIcns()
     await generateIco()
 
+    // Generate file-type icons from SVGs
+    const fileTypeIcons = [
+      { svg: 'icons/pdpkg-color.svg', ico: 'pdpkg.ico', label: 'pdpkg' },
+    ]
+
+    for (const { svg, ico, label } of fileTypeIcons) {
+      const svgPath = path.join(PUBLIC_DIR, svg)
+      try {
+        await fs.access(svgPath)
+        await generateIcoFromSvg(svgPath, path.join(PUBLIC_DIR, ico), label)
+      } catch (err) {
+        if (err.code === 'ENOENT') {
+          console.warn(`⚠️  SVG not found for ${label}: ${svgPath} - skipping`)
+        } else {
+          throw err
+        }
+      }
+    }
+
     console.log('\n✅ All icons generated successfully!')
     console.log('\nGenerated files:')
     console.log('  - public/logo.icns (macOS)')
     console.log('  - public/logo.ico (Windows)')
     console.log('  - public/logo.png (Linux - already exists)')
+    console.log('  - public/pdpkg.ico (Windows file association)')
 
   } catch (err) {
     console.error('\n❌ Error generating icons:', err)

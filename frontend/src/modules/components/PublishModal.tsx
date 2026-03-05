@@ -311,7 +311,7 @@ export function PublishModal({
 
     // Extract namespace from package name (e.g., "@namespace/package-name")
     if (parsedManifest.name && parsedManifest.name.includes('/')) {
-      const extractedNamespace = parsedManifest.name.split('/')[0].replace('@', '')
+      const extractedNamespace = parsedManifest.name.split('/')[0]
       setNamespace(extractedNamespace)
       presetNsRef.current = extractedNamespace
       log(`Pre-selected namespace: ${extractedNamespace}`)
@@ -1510,37 +1510,41 @@ export function PublishModal({
               </div>
             )}
 
-            {/* Package Type */}
-            <div style={{ marginBottom: 20 }}>
+            {/* Package Type (read-only — determined by prompd.json) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
               <label style={{
-                display: 'block',
-                marginBottom: 8,
                 fontWeight: 600,
                 fontSize: '14px',
-                color: colors.text
+                color: colors.text,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                margin: 0,
               }}>
-                <Package size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-                Package Type
+                <Package size={14} />
+                Type
               </label>
-              <select
-                value={packageType}
-                onChange={(e) => setPackageType(e.target.value as typeof packageType)}
+              <div
+                title={{
+                  package: 'Standard prompt package containing .prmd files',
+                  workflow: 'Deployable workflow package containing .pdflow files',
+                  'node-template': 'Reusable node configuration for the workflow canvas',
+                  skill: 'AI agent skill with tool declarations',
+                }[packageType]}
                 style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  background: colors.input,
-                  border: `1px solid ${colors.border}`,
-                  borderRadius: 8,
-                  color: colors.text,
-                  fontSize: '14px',
-                  cursor: 'pointer'
-                }}
-              >
-                <option value="package">Package - Standard prompt package</option>
-                <option value="workflow">Workflow - Deployable workflow package</option>
-                <option value="node-template">Node Template - Reusable node configuration</option>
-                <option value="skill">Skill - AI agent skill with tool declarations</option>
-              </select>
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '3px 10px',
+                  background: theme === 'dark' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.08)',
+                  border: `1px solid ${theme === 'dark' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(59, 130, 246, 0.2)'}`,
+                  borderRadius: 6,
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  color: colors.primary,
+                  cursor: 'default',
+                }}>
+                {{ package: 'Package', workflow: 'Workflow', 'node-template': 'Node Template', skill: 'Skill' }[packageType]}
+              </div>
             </div>
 
             {/* Tools (skill type only) */}

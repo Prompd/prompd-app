@@ -17,6 +17,7 @@ interface ModelRow {
   supports_vision: boolean
   supports_image_generation: boolean
   supports_tools: boolean
+  supports_thinking: boolean
   context_window: string  // string for input binding
 }
 
@@ -27,6 +28,7 @@ const emptyModel = (): ModelRow => ({
   supports_vision: false,
   supports_image_generation: false,
   supports_tools: false,
+  supports_thinking: false,
   context_window: ''
 })
 
@@ -41,6 +43,7 @@ function parseModelEntry(entry: string | CustomProviderModelConfig): ModelRow {
     supports_vision: entry.supports_vision ?? false,
     supports_image_generation: entry.supports_image_generation ?? false,
     supports_tools: entry.supports_tools ?? false,
+    supports_thinking: entry.supports_thinking ?? false,
     context_window: entry.context_window ? String(entry.context_window) : ''
   }
 }
@@ -212,7 +215,8 @@ export function CustomProviderModal({ isOpen, onClose, onSaved, theme, editProvi
           supports_text: m.supports_text,
           supports_vision: m.supports_vision,
           supports_image_generation: m.supports_image_generation,
-          supports_tools: m.supports_tools
+          supports_tools: m.supports_tools,
+          supports_thinking: m.supports_thinking
         }
         const ctxWindow = parseInt(m.context_window, 10)
         if (!isNaN(ctxWindow) && ctxWindow > 0) {
@@ -509,6 +513,12 @@ export function CustomProviderModal({ isOpen, onClose, onSaved, theme, editProvi
                       onChange={(v) => updateModel(index, 'supports_tools', v)}
                       colors={colors}
                     />
+                    <CapabilityToggle
+                      label="Thinking"
+                      checked={model.supports_thinking}
+                      onChange={(v) => updateModel(index, 'supports_thinking', v)}
+                      colors={colors}
+                    />
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <label style={{ fontSize: '11px', color: colors.textMuted }}>Context</label>
                       <input
@@ -563,6 +573,7 @@ const CAPABILITY_COLORS: Record<string, string> = {
   Vision: '#8b5cf6',     // purple (matches Eye icon)
   'Image Gen': '#f59e0b', // amber (matches ImageIcon)
   Tools: '#3b82f6',      // blue (matches Wrench icon)
+  Thinking: '#f59e0b',   // amber (matches Brain icon)
 }
 
 // Small inline toggle for capabilities

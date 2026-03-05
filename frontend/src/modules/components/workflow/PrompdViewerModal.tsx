@@ -10,6 +10,7 @@ import { useUIStore, useEditorStore, selectTheme } from '@/stores'
 import { SplitEditor } from '../../editor/SplitEditor'
 import { PreviewToggle, ChatToggle } from '../../editor/SplitViewToggles'
 import { conversationStorage } from '../../services/conversationStorage'
+import { useConfirmDialog } from '../ConfirmDialog'
 import type { Tab } from '../../../stores/types'
 
 interface PrompdViewerModalProps {
@@ -44,6 +45,7 @@ export function PrompdViewerModal({ isOpen, source, resolvedPath, onClose }: Pro
   const [chatConversationId, setChatConversationId] = useState<string | undefined>(undefined)
   const originalContentRef = useRef<string>('')
   const contentRef = useRef<string>('')
+  const { showConfirm, ConfirmDialogComponent } = useConfirmDialog()
 
   // Stable ID for the modal's chat tab
   const modalTabId = useRef(`prompd-viewer-${Date.now()}`).current
@@ -107,15 +109,20 @@ export function PrompdViewerModal({ isOpen, source, resolvedPath, onClose }: Pro
   }, [dirty, readPath])
 
   // Close with dirty check
-  const handleClose = useCallback(() => {
+  const handleClose = useCallback(async () => {
     if (dirty) {
-      const discard = window.confirm('You have unsaved changes. Discard them?')
+      const discard = await showConfirm({
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. Discard them?',
+        confirmLabel: 'Discard',
+        confirmVariant: 'danger'
+      })
       if (!discard) return
     }
     setContent(null)
     setDirty(false)
     onClose()
-  }, [dirty, onClose])
+  }, [dirty, onClose, showConfirm])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -334,6 +341,7 @@ export function PrompdViewerModal({ isOpen, source, resolvedPath, onClose }: Pro
           )}
         </div>
       </div>
+      <ConfirmDialogComponent />
     </div>
   )
 }

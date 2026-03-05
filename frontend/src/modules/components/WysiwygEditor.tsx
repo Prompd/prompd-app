@@ -30,11 +30,18 @@ function getEditorMarkdown(editor: Editor): string {
  * Un-escape markdown special characters inside Nunjucks expressions.
  * tiptap-markdown's serializer escapes characters like [ ] * _ ~ inside text nodes,
  * which corrupts Nunjucks syntax (e.g. `{%- for x in [items] %}` → `{%- for x in \[items\] %}`).
+ * Also decodes HTML entities (e.g. `&gt;` → `>`) that markdown-it introduces when
+ * Nunjucks tags contain comparison operators like `{% if x | length > 0 %}`.
  * This restores the original characters within {{ }}, {% %}, and {# #} blocks.
  */
 function unescapeNunjucks(markdown: string): string {
   return markdown.replace(/(\{[{%#]-?[\s\S]*?-?[}%#]\})/g, (match) => {
-    return match.replace(/\\([[\]\\*_~`|(){}])/g, '$1')
+    return match
+      .replace(/\\([[\]\\*_~`|(){}])/g, '$1')
+      .replace(/&gt;/g, '>')
+      .replace(/&lt;/g, '<')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
   })
 }
 

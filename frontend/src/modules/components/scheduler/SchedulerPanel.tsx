@@ -15,6 +15,7 @@ import { useState, useEffect } from 'react'
 import { Plus, Play, Pause, Trash2, Edit, Clock, CheckCircle, XCircle, AlertCircle, RefreshCw, Wifi, X } from 'lucide-react'
 import { ScheduleDialog } from './ScheduleDialog'
 import { WebhookSettings } from '../settings/WebhookSettings'
+import { useConfirmDialog } from '../ConfirmDialog'
 import type { ScheduleInfo, ScheduleExecution } from '../../../electron'
 import './SchedulerPanel.css'
 
@@ -34,6 +35,7 @@ export function SchedulerModal({ open, onClose }: SchedulerModalProps) {
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null)
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'schedules' | 'history' | 'webhooks'>('schedules')
+  const { showConfirm, ConfirmDialogComponent } = useConfirmDialog()
 
   // Load schedules on mount
   useEffect(() => {
@@ -119,9 +121,13 @@ export function SchedulerModal({ open, onClose }: SchedulerModalProps) {
   const handleDeleteSchedule = async (scheduleId: string) => {
     if (!window.electronAPI?.scheduler) return
 
-    if (!confirm('Are you sure you want to delete this schedule?')) {
-      return
-    }
+    const confirmed = await showConfirm({
+      title: 'Delete Schedule',
+      message: 'Are you sure you want to delete this schedule?',
+      confirmLabel: 'Delete',
+      confirmVariant: 'danger'
+    })
+    if (!confirmed) return
 
     try {
       const result = await window.electronAPI.scheduler.deleteSchedule(scheduleId)
@@ -152,9 +158,13 @@ export function SchedulerModal({ open, onClose }: SchedulerModalProps) {
   const handleExecuteNow = async (scheduleId: string) => {
     if (!window.electronAPI?.scheduler) return
 
-    if (!confirm('Execute this workflow now?')) {
-      return
-    }
+    const confirmed = await showConfirm({
+      title: 'Execute Workflow',
+      message: 'Execute this workflow now?',
+      confirmLabel: 'Execute',
+      confirmVariant: 'primary'
+    })
+    if (!confirmed) return
 
     try {
       const result = await window.electronAPI.scheduler.executeNow(scheduleId)
@@ -381,6 +391,7 @@ export function SchedulerModal({ open, onClose }: SchedulerModalProps) {
           schedule={editingSchedule}
           onSave={handleSaveSchedule}
         />
+        <ConfirmDialogComponent />
       </div>
     </div>
   )

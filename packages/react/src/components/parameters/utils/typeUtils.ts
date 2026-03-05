@@ -16,8 +16,40 @@ export function isArrayType(type: string): boolean {
 }
 
 /**
+ * Check if a parameter type is a file type
+ */
+export function isFileType(type: string): boolean {
+  if (!type) return false
+  return type.toLowerCase().trim() === 'file'
+}
+
+/**
+ * Check if a parameter type is a JSON type
+ */
+export function isJsonType(type: string): boolean {
+  if (!type) return false
+  return type.toLowerCase().trim() === 'json'
+}
+
+/**
+ * Check if a parameter type is a base64 type
+ */
+export function isBase64Type(type: string): boolean {
+  if (!type) return false
+  return type.toLowerCase().trim() === 'base64'
+}
+
+/**
+ * Check if a parameter type is a JWT type
+ */
+export function isJwtType(type: string): boolean {
+  if (!type) return false
+  return type.toLowerCase().trim() === 'jwt'
+}
+
+/**
  * Check if a parameter type requires full-width display
- * Arrays, objects, and long text need more horizontal space
+ * Arrays, objects, long text, file, json, base64, and jwt need more horizontal space
  */
 export function isFullWidthType(type: string): boolean {
   if (!type) return false
@@ -25,7 +57,11 @@ export function isFullWidthType(type: string): boolean {
   return isArrayType(normalized) ||
          normalized === 'object' ||
          normalized === 'text' ||
-         normalized === 'textarea'
+         normalized === 'textarea' ||
+         normalized === 'file' ||
+         normalized === 'json' ||
+         normalized === 'base64' ||
+         normalized === 'jwt'
 }
 
 /**
@@ -104,8 +140,29 @@ export function formatValuePreview(value: unknown, type: string, maxLength = 30)
     return `${value.length} item${value.length !== 1 ? 's' : ''}`
   }
 
-  if (typeof value === 'object') {
-    return '[object]'
+  // File type - show filename
+  if (isFileType(type) && typeof value === 'object' && value !== null) {
+    const fileVal = value as Record<string, unknown>
+    return typeof fileVal.name === 'string' ? fileVal.name : '[file]'
+  }
+
+  // Base64 - show encoded size
+  if (isBase64Type(type) && typeof value === 'string') {
+    const len = value.length
+    if (len < 1024) return `${len} chars`
+    return `${(len / 1024).toFixed(1)} KB encoded`
+  }
+
+  // JSON - show type indicator
+  if (isJsonType(type)) {
+    if (Array.isArray(value)) return `array[${value.length}]`
+    if (typeof value === 'object' && value !== null) {
+      return `{${Object.keys(value).length} keys}`
+    }
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    return JSON.stringify(value).substring(0, maxLength)
   }
 
   const str = String(value)

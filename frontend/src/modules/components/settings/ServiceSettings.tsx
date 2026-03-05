@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Server, CheckCircle, XCircle, Activity, Settings, ExternalLink, Info, AlertCircle, RefreshCw, Play, Pause } from 'lucide-react'
+import { useConfirmDialog } from '../ConfirmDialog'
 import './ServiceSettings.css'
 
 interface ServiceHealth {
@@ -43,6 +44,7 @@ export function ServiceSettings() {
     dbPath: '~/.prompd/scheduler/schedules.db'
   })
   const [configChanged, setConfigChanged] = useState(false)
+  const { showConfirm, ConfirmDialogComponent } = useConfirmDialog()
 
   // Detect config changes
   useEffect(() => {
@@ -120,9 +122,12 @@ export function ServiceSettings() {
 
       // Prompt for restart if service is running
       if (isConnected) {
-        const shouldRestart = confirm(
-          'Service configuration updated. Restart the service to apply changes?'
-        )
+        const shouldRestart = await showConfirm({
+          title: 'Restart Service',
+          message: 'Service configuration updated. Restart the service to apply changes?',
+          confirmLabel: 'Restart',
+          confirmVariant: 'primary'
+        })
         if (shouldRestart) {
           await handleRestartService()
         }
@@ -516,6 +521,7 @@ export function ServiceSettings() {
           </div>
         </div>
       </div>
+      <ConfirmDialogComponent />
     </div>
   )
 }

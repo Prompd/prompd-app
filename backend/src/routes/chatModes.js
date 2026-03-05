@@ -29,7 +29,8 @@ router.get('/chat-modes', async (req, res) => {
     const modeFiles = [
       { id: 'agent', file: 'agent.json' },
       { id: 'planner', file: 'planner.json' },
-      { id: 'help-chat', file: 'help-chat.json' }
+      { id: 'help-chat', file: 'help-chat.json' },
+      { id: 'brainstorm', file: 'brainstorm.json' }
     ]
 
     for (const { id, file } of modeFiles) {

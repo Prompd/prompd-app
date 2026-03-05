@@ -64,7 +64,8 @@ export function extractParameterDefinitions(
     }
 
     // Check if we've left parameters section (new key at same or lower indent)
-    if (inParametersSection && line.trim() !== '') {
+    // Skip comment lines — they shouldn't trigger section exit
+    if (inParametersSection && line.trim() !== '' && !line.trim().startsWith('#')) {
       const currentIndent = line.search(/\S/)
       if (currentIndent !== -1 && currentIndent <= parametersIndent && !line.match(/^\s*-/)) {
         inParametersSection = false
@@ -72,6 +73,9 @@ export function extractParameterDefinitions(
     }
 
     if (inParametersSection) {
+      // Skip comment lines inside parameters section
+      if (line.trim().startsWith('#')) continue
+
       const currentIndent = line.search(/\S/)
 
       // Set parameter level indent on first parameter encountered
@@ -80,8 +84,10 @@ export function extractParameterDefinitions(
       }
 
       // Array format: "  - name: paramName"
+      // Only match at the parameter level indent to avoid matching nested
+      // "- name:" entries inside complex default values
       const arrayMatch = line.match(/^\s*-\s*name:\s*["']?(\w+)["']?/)
-      if (arrayMatch) {
+      if (arrayMatch && (parameterLevelIndent === -1 || currentIndent === parameterLevelIndent)) {
         const name = arrayMatch[1]
         const lineNumber = fullContent.split('\n').findIndex(l => l.includes(line)) + 1
         const column = line.indexOf(name) + 1
@@ -165,6 +171,82 @@ export function extractParameterDefinitions(
 }
 
 /**
+ * Extract parameter references from YAML frontmatter string values.
+ * Fields like system:, user:, task: can contain {{ param }} template content.
+ */
+function extractFrontmatterParameterReferences(
+  yamlContent: string,
+  fullContent: string
+): ParameterReference[] {
+  const references: ParameterReference[] = []
+
+  // Parse YAML to find string values containing {{ param }} references
+  try {
+    const parsed = parseYAML(yamlContent)
+    if (!parsed || typeof parsed !== 'object') return references
+
+    // Collect all string values from the YAML (excluding the parameters section itself)
+    const stringValues: Array<{ value: string; key: string }> = []
+
+    const collectStrings = (obj: Record<string, unknown>, parentKey = '') => {
+      for (const [key, value] of Object.entries(obj)) {
+        if (key === 'parameters') continue // Skip parameter definitions
+        const fullKey = parentKey ? `${parentKey}.${key}` : key
+        if (typeof value === 'string') {
+          stringValues.push({ value, key: fullKey })
+        } else if (Array.isArray(value)) {
+          for (const item of value) {
+            if (typeof item === 'string') {
+              stringValues.push({ value: item, key: fullKey })
+            } else if (item && typeof item === 'object') {
+              collectStrings(item as Record<string, unknown>, fullKey)
+            }
+          }
+        } else if (value && typeof value === 'object') {
+          collectStrings(value as Record<string, unknown>, fullKey)
+        }
+      }
+    }
+    collectStrings(parsed)
+
+    // Scan each string value for {{ param }} references
+    const templateVarRegex = /\{\{\s*(\w+(?:\.\w+)*)\s*(?:\|[^}]*)?\}\}/g
+    for (const { value } of stringValues) {
+      let match: RegExpExecArray | null
+      while ((match = templateVarRegex.exec(value)) !== null) {
+        const fullRef = match[1]
+        const parts = fullRef.split('.')
+        const rootVar = parts[0]
+
+        // Find approximate line number in the full content
+        const lineNumber = fullContent.split('\n').findIndex(l => l.includes(match![0])) + 1
+
+        references.push({
+          name: rootVar,
+          lineNumber: lineNumber > 0 ? lineNumber : 1,
+          column: 1,
+          context: `frontmatter: ${value.substring(0, 60)}`
+        })
+
+        // workflow.paramName proxies to the parameter
+        if (rootVar === 'workflow' && parts.length > 1) {
+          references.push({
+            name: parts[1],
+            lineNumber: lineNumber > 0 ? lineNumber : 1,
+            column: 1,
+            context: `frontmatter: ${value.substring(0, 60)}`
+          })
+        }
+      }
+    }
+  } catch {
+    // YAML parse error — skip frontmatter scanning
+  }
+
+  return references
+}
+
+/**
  * Extract parameter references from body content
  */
 export function extractParameterReferences(
@@ -209,7 +291,8 @@ export function extractParameterReferences(
   // {% for item in collection %} - collection is used (item is defined by loop)
   // {% set var = expression %} - variables in expression are used (var is defined)
   // {% if condition %} - variables in condition are used
-  const forLoopRegex = /\{%-?\s*for\s+(\w+)\s+in\s+\[?\s*(\w+(?:\.\w+)*)\s*\]?/g
+  // Matches single var and tuple unpacking: {% for key, value in dict %}
+  const forLoopRegex = /\{%-?\s*for\s+[\w,\s]+?\s+in\s+\[?\s*(\w+(?:\.\w+)*)\s*\]?/g
   const setVarRegex = /\{%-?\s*set\s+\w+\s*=\s*(.+?)\s*%\}/g
   const ifRegex = /\{%-?\s*(?:if|elif)\s+(.+?)\s*%\}/g
 
@@ -219,7 +302,7 @@ export function extractParameterReferences(
     // Find for loops - extract the COLLECTION being iterated over (not the loop variable)
     let forMatch: RegExpExecArray | null
     while ((forMatch = forLoopRegex.exec(line)) !== null) {
-      const collection = forMatch[2] // e.g., "items" or "stakeholders"
+      const collection = forMatch[1] // e.g., "items" or "stakeholders"
       const parts = collection.split('.')
       const rootVar = parts[0] // Handle nested like "config.items"
 
@@ -285,7 +368,9 @@ export function extractParameterReferences(
       // Find all variable references in the condition
       // Use negative lookbehind (?<!\.) to avoid matching property names after dots
       // This ensures "team_roles.developer" only matches "team_roles", not "developer"
-      const varMatches = conditionWithoutStrings.matchAll(/(?<!\.)\b([a-zA-Z_]\w*)(?:\.\w+)*/g)
+      // Also skip words after pipe (|) — those are Nunjucks filters, not variables
+      const conditionNoFilters = conditionWithoutStrings.replace(/\|\s*\w+/g, '')
+      const varMatches = conditionNoFilters.matchAll(/(?<!\.)\b([a-zA-Z_]\w*)(?:\.\w+)*/g)
       for (const varMatch of varMatches) {
         const varName = varMatch[1]
         // Skip keywords and operators
@@ -305,11 +390,15 @@ export function extractParameterReferences(
 }
 
 /**
- * Analyze parameter usage and return diagnostics
+ * Analyze parameter usage and return diagnostics.
+ * When inheritedDefinitions are provided (resolved from the parent file),
+ * inherited parameters are treated as defined — just like public members
+ * in an OOP inheritance chain.
  */
 export function analyzeParameterUsage(
   document: string,
-  monaco: typeof monacoEditor
+  monaco: typeof monacoEditor,
+  inheritedDefinitions?: ParameterDefinition[]
 ): ParameterUsageDiagnostic[] {
   const diagnostics: ParameterUsageDiagnostic[] = []
 
@@ -324,12 +413,24 @@ export function analyzeParameterUsage(
   const bodyContent = bodyMatch ? bodyMatch[1] : ''
   const bodyStartLine = document.substring(0, document.indexOf(bodyContent)).split('\n').length
 
+  // Check if file inherits from another
+  const inheritsMatch = yamlContent.match(/^\s*inherits:\s*["']?(.+?)["']?\s*$/m)
+  const hasInherits = !!inheritsMatch
+  const hasResolvedInherited = inheritedDefinitions && inheritedDefinitions.length > 0
+
+  // Also scan YAML frontmatter string values for {{ param }} references
+  // Fields like system:, user:, task: can contain template content
+  const yamlParamRefs = extractFrontmatterParameterReferences(yamlContent, document)
+
   // Extract definitions and references
   const definitions = extractParameterDefinitions(yamlContent, document)
-  const references = extractParameterReferences(bodyContent, bodyStartLine)
+  const bodyReferences = extractParameterReferences(bodyContent, bodyStartLine)
+  const references = [...bodyReferences, ...yamlParamRefs]
 
-  // Create sets for quick lookup
+  // Build the full set of known parameters: local + inherited
   const definedParams = new Set(definitions.map(d => d.name))
+  const inheritedParams = new Set(inheritedDefinitions?.map(d => d.name) ?? [])
+  const allKnownParams = new Set([...definedParams, ...inheritedParams])
   const referencedParams = new Set(references.map(r => r.name))
 
   // Built-in variables that shouldn't be flagged as undefined
@@ -349,46 +450,49 @@ export function analyzeParameterUsage(
   // Template-defined variables (from {% set %} and {% for %})
   const templateDefined = new Set<string>()
   const setVarPattern = /\{%-?\s*set\s+(\w+)\s*=/g
-  const forLoopPattern = /\{%-?\s*for\s+(\w+)\s+in\s+/g
+  // Matches both single var: {% for item in list %} and tuple unpacking: {% for key, value in dict %}
+  const forLoopPattern = /\{%-?\s*for\s+([\w,\s]+?)\s+in\s+/g
 
   for (const match of bodyContent.matchAll(setVarPattern)) {
     templateDefined.add(match[1])
   }
   for (const match of bodyContent.matchAll(forLoopPattern)) {
-    templateDefined.add(match[1])
+    // Split on comma to handle tuple unpacking (e.g., "service, owner")
+    const vars = match[1].split(',').map(v => v.trim()).filter(Boolean)
+    for (const v of vars) {
+      templateDefined.add(v)
+    }
     templateDefined.add('loop') // Loop helpers
   }
 
   // Find unused parameters (defined but never referenced)
-  for (const def of definitions) {
-    // Check if parameter is used in body
-    const isUsed = references.some(ref => ref.name === def.name)
+  // Skip when file inherits — child params are passed to the parent template
+  // during compilation and we can't validate usage without the full chain
+  if (!hasInherits) {
+    for (const def of definitions) {
+      const isUsed = references.some(ref => ref.name === def.name)
 
-    if (!isUsed) {
-      diagnostics.push({
-        severity: monaco.MarkerSeverity.Hint,
-        startLineNumber: def.lineNumber,
-        startColumn: def.column,
-        endLineNumber: def.lineNumber,
-        endColumn: def.column + def.name.length,
-        message: `Parameter '${def.name}' is defined but never used in the prompt body`,
-        code: 'unused-parameter',
-        tags: [monaco.MarkerTag.Unnecessary]
-      })
+      if (!isUsed) {
+        diagnostics.push({
+          severity: monaco.MarkerSeverity.Hint,
+          startLineNumber: def.lineNumber,
+          startColumn: def.column,
+          endLineNumber: def.lineNumber,
+          endColumn: def.column + def.name.length,
+          message: `Parameter '${def.name}' is defined but never used in the prompt body`,
+          code: 'unused-parameter',
+          tags: [monaco.MarkerTag.Unnecessary]
+        })
+      }
     }
   }
 
-  // Find missing parameters (referenced but not defined)
+  // Find missing parameters (referenced but not defined — locally or inherited)
   const seenUndefined = new Set<string>()
 
   for (const ref of references) {
-    // Skip if:
-    // - Already defined in parameters
-    // - Built-in variable
-    // - Template-defined variable ({% set %} or {% for %})
-    // - Already reported
     if (
-      definedParams.has(ref.name) ||
+      allKnownParams.has(ref.name) ||
       builtInVars.has(ref.name) ||
       templateDefined.has(ref.name) ||
       seenUndefined.has(ref.name)
@@ -398,15 +502,33 @@ export function analyzeParameterUsage(
 
     seenUndefined.add(ref.name)
 
-    diagnostics.push({
-      severity: monaco.MarkerSeverity.Error,
-      startLineNumber: ref.lineNumber,
-      startColumn: ref.column,
-      endLineNumber: ref.lineNumber,
-      endColumn: ref.column + ref.name.length + 4, // Include {{ }}
-      message: `Parameter '${ref.name}' is not defined in frontmatter parameters section. Add it to the parameters list.`,
-      code: 'undefined-parameter'
-    })
+    if (hasInherits && !hasResolvedInherited) {
+      // Inherits but we couldn't resolve the parent file — suppress entirely.
+      // We can't verify whether the param exists in the parent, so trust the
+      // inheritance declaration rather than showing noisy false-positive hints.
+      continue
+    } else if (hasInherits && hasResolvedInherited) {
+      // We resolved the parent but this param isn't in local or inherited
+      diagnostics.push({
+        severity: monaco.MarkerSeverity.Warning,
+        startLineNumber: ref.lineNumber,
+        startColumn: ref.column,
+        endLineNumber: ref.lineNumber,
+        endColumn: ref.column + ref.name.length + 4,
+        message: `Parameter '${ref.name}' is not defined locally or in inherited '${inheritsMatch![1]}'.`,
+        code: 'undefined-parameter'
+      })
+    } else {
+      diagnostics.push({
+        severity: monaco.MarkerSeverity.Warning,
+        startLineNumber: ref.lineNumber,
+        startColumn: ref.column,
+        endLineNumber: ref.lineNumber,
+        endColumn: ref.column + ref.name.length + 4,
+        message: `Parameter '${ref.name}' is not defined in frontmatter parameters section. Add it to the parameters list.`,
+        code: 'undefined-parameter'
+      })
+    }
   }
 
   return diagnostics
@@ -440,8 +562,10 @@ export function getParameterUsageStats(document: string): {
   const bodyContent = bodyMatch ? bodyMatch[1] : ''
   const bodyStartLine = document.substring(0, document.indexOf(bodyContent)).split('\n').length
 
+  const yamlParamRefs = extractFrontmatterParameterReferences(yamlContent, document)
   const definitions = extractParameterDefinitions(yamlContent, document)
-  const references = extractParameterReferences(bodyContent, bodyStartLine)
+  const bodyReferences = extractParameterReferences(bodyContent, bodyStartLine)
+  const references = [...bodyReferences, ...yamlParamRefs]
 
   const definedParams = new Set(definitions.map(d => d.name))
   const referencedParams = new Set(references.map(r => r.name))

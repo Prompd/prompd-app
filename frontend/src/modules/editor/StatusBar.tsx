@@ -23,15 +23,21 @@ export default function StatusBar({ fileName, dirty, line, column, issuesCount, 
     <div className="statusbar">
       <div className="item">{fileName}{dirty ? ' *' : ''}</div>
       <div className="item">Ln {line}, Col {column}</div>
-      <div
+      <button
         className="item"
         onClick={handleIssuesClick}
+        title={issuesCount > 0 ? 'Click to view issues in the output panel' : 'No issues found'}
+        aria-label={issuesCount > 0 ? `${issuesCount} ${issuesCount === 1 ? 'issue' : 'issues'} found - click to view` : 'No issues'}
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: '4px',
           color: issuesCount > 0 ? '#f59e0b' : '#10b981',
-          cursor: issuesCount > 0 ? 'pointer' : 'default'
+          cursor: issuesCount > 0 ? 'pointer' : 'default',
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          font: 'inherit'
         }}
       >
         {issuesCount > 0 ? (
@@ -45,7 +51,7 @@ export default function StatusBar({ fileName, dirty, line, column, issuesCount, 
             <span>No issues</span>
           </>
         )}
-      </div>
+      </button>
       {language && <div className="item">{language.charAt(0).toUpperCase() + language.slice(1)}</div>}
       <div style={{ flex: 1 }} />
       <div

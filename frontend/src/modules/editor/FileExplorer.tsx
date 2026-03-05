@@ -22,7 +22,8 @@ import {
   Link,
   Download,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  Lightbulb
 } from 'lucide-react'
 import { SidebarPanelHeader } from '../components/SidebarPanelHeader'
 import { useConfirmDialog } from '../components/ConfirmDialog'
@@ -48,7 +49,7 @@ type Props = {
   setEntriesExternal?: (list: FileEntry[]) => void
   onOpenPublish?: () => void
   // TabManager integration callbacks
-  onFileRenamed?: (oldPath: string, newPath: string, newHandle?: FileSystemFileHandle) => void
+  onFileRenamed?: (oldPath: string, newPath: string, newFilePath?: string, newHandle?: FileSystemFileHandle) => void
   onFileDeleted?: (filePath: string) => void
   onFilesRefreshed?: (entries: { name: string; path: string; handle?: FileSystemFileHandle }[]) => void
   // Local package opening callback
@@ -67,9 +68,11 @@ type Props = {
   onOpenPrompdJson?: () => void
   // Install all dependencies from prompd.json
   onInstallDependencies?: () => void
+  // Open a brainstorm tab for collaborative editing
+  onBrainstorm?: (filePath: string, content: string, sourceTabId?: string) => void
 }
 
-export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewPrompd, onAddToContentField, dirHandleExternal, setDirHandleExternal, entriesExternal, setEntriesExternal, onOpenPublish, onFileRenamed, onFileDeleted, onFilesRefreshed, onOpenLocalPackage, onWorkspacePathChanged, onAddIgnorePattern, ignorePatterns: externalIgnorePatterns = [], onCollapse, onOpenProjects, onOpenPrompdJson, onInstallDependencies }: Props) {
+export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewPrompd, onAddToContentField, dirHandleExternal, setDirHandleExternal, entriesExternal, setEntriesExternal, onOpenPublish, onFileRenamed, onFileDeleted, onFilesRefreshed, onOpenLocalPackage, onWorkspacePathChanged, onAddIgnorePattern, ignorePatterns: externalIgnorePatterns = [], onCollapse, onOpenProjects, onOpenPrompdJson, onInstallDependencies, onBrainstorm }: Props) {
   const [dirHandleState, setDirHandleState] = useState<any>(null)
   const [entriesState, setEntriesState] = useState<FileEntry[]>([])
   const dirHandle = dirHandleExternal !== undefined ? dirHandleExternal : dirHandleState
@@ -80,6 +83,24 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set<string>(['']))
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; entry: FileEntry | TreeNode; type: 'file' | 'folder' } | null>(null)
+  const contextMenuRef = useRef<HTMLDivElement>(null)
+  // Clamp context menu to viewport after it renders
+  useEffect(() => {
+    const el = contextMenuRef.current
+    if (!el || !contextMenu) return
+    const rect = el.getBoundingClientRect()
+    const pad = 8
+    let x = contextMenu.x
+    let y = contextMenu.y
+    if (rect.right > window.innerWidth - pad) x = window.innerWidth - rect.width - pad
+    if (rect.bottom > window.innerHeight - pad) y = window.innerHeight - rect.height - pad
+    if (x < pad) x = pad
+    if (y < pad) y = pad
+    if (x !== contextMenu.x || y !== contextMenu.y) {
+      el.style.left = `${x}px`
+      el.style.top = `${y}px`
+    }
+  }, [contextMenu])
   const [showAddToSubmenu, setShowAddToSubmenu] = useState(false)
   const [showIgnoreSubmenu, setShowIgnoreSubmenu] = useState(false)
   const [clipboardData, setClipboardData] = useState<{ path: string; content?: string; type: 'file' | 'folder' } | null>(null)
@@ -1043,7 +1064,7 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
               close: async () => {}
             })
           }
-          onFileRenamed(sourceFilePath, newPath, pseudoHandle as any)
+          onFileRenamed(sourceFilePath, newPath, targetFullPath, pseudoHandle as any)
         }
       } else {
         // Browser File System Access API mode
@@ -1072,7 +1093,7 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
         // Notify TabManager of file move
         const newPath = targetFolderPath ? `${targetFolderPath}/${fileName}` : fileName
         if (onFileRenamed) {
-          onFileRenamed(sourceFilePath, newPath, newFileHandle)
+          onFileRenamed(sourceFilePath, newPath, undefined, newFileHandle)
         }
       }
 
@@ -1218,7 +1239,10 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
         {entries.length === 0 ? (
           <div className="pv-empty" style={{ padding: '12px 16px', textAlign: 'center' }}>
             {dirHandle ? (
-              <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>No files</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>This folder is empty</span>
+                <span style={{ color: 'var(--muted)', fontSize: '11px' }}>Right-click to create a new file</span>
+              </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center', padding: '8px 0' }}>
                 <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>No workspace open</span>
@@ -1296,6 +1320,7 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
       ) : null}
       {contextMenu ? (
         <div
+          ref={contextMenuRef}
           style={{
             position: 'fixed',
             left: contextMenu.x,
@@ -1331,6 +1356,35 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
                 <span className="icon"><Clipboard size={14} /></span>
                 <span className="name">Copy Contents</span>
               </div>
+
+              {/* Brainstorm - collaborative editing with AI */}
+              {onBrainstorm && (
+                <>
+                  <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+                  <div className="fe-item" onClick={async () => {
+                    try {
+                      const entry = entries.find(e => e.path === contextMenu.entry.path)
+                      if (entry?.handle?._electronPath && window.electronAPI?.isElectron) {
+                        const fullPath = entry.handle._electronPath
+                        const result = await window.electronAPI.readFile(fullPath)
+                        if (result?.success && result.content) {
+                          onBrainstorm(fullPath, result.content)
+                        }
+                      } else if (entry?.handle && typeof (entry.handle as FileSystemFileHandle).getFile === 'function') {
+                        const file = await (entry.handle as FileSystemFileHandle).getFile()
+                        const text = await file.text()
+                        onBrainstorm(entry.path, text)
+                      }
+                    } catch (err) {
+                      console.error('Failed to open brainstorm:', err)
+                    }
+                    setContextMenu(null)
+                  }}>
+                    <span className="icon"><Lightbulb size={14} /></span>
+                    <span className="name">Brainstorm</span>
+                  </div>
+                </>
+              )}
 
               {/* Install Dependencies - only for prompd.json files */}
               {onInstallDependencies && contextMenu.entry.name === 'prompd.json' && (
@@ -1511,7 +1565,7 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
                               close: async () => {}
                             })
                           }
-                          onFileRenamed(oldPath, newPath, pseudoHandle as any)
+                          onFileRenamed(oldPath, newPath, newFullPath, pseudoHandle as any)
                         }
                       } else {
                         // Browser File System Access API mode
@@ -1527,7 +1581,7 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
                         // Notify TabManager of file rename
                         const newPath = parentPath ? `${parentPath}/${newName}` : newName
                         if (onFileRenamed) {
-                          onFileRenamed(oldPath, newPath, newFileHandle)
+                          onFileRenamed(oldPath, newPath, undefined, newFileHandle)
                         }
                       }
 
@@ -1781,7 +1835,18 @@ function iconFor(name: string, isIgnored = false) {
     )
   }
   if (lower.endsWith('.pdpkg')) {
-    return <Package size={16} color={isIgnored ? ignoredColor : "#C586C0"} />
+    return (
+      <img
+        src="./icons/pdpkg-color.svg"
+        alt="pdpkg"
+        style={{
+          width: 20,
+          height: 20,
+          opacity: isIgnored ? 0.5 : 1,
+          filter: isIgnored ? 'grayscale(100%)' : 'none'
+        }}
+      />
+    )
   }
 
   // Common file types with VS Code colors

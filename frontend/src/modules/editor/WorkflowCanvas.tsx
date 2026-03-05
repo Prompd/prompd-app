@@ -1472,6 +1472,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
           return {
             success: true,
             response: result.response || '',
+            thinking: result.thinking,
           }
         } catch (error) {
           return {
@@ -1487,6 +1488,24 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
     try {
       const result = await executor.execute()
       setExecutionResult(result)
+
+      // Archive to execution history
+      {
+        const wfState = useWorkflowStore.getState()
+        const edState = useEditorStore.getState()
+        const wfName = (activeTabId ? edState.tabs.find(t => t.id === activeTabId)?.name : null) || 'Workflow'
+        wfState.addToExecutionHistory({
+          id: `exec-${Date.now()}`,
+          workflowName: wfName.replace(/\.pdflow$/, ''),
+          status: result.success ? 'success' : 'error',
+          timestamp: Date.now(),
+          duration: result.metrics?.totalDuration || 0,
+          result: { ...result, trace: (result as unknown as { trace?: ExecutionTrace }).trace },
+          checkpoints: [...wfState.checkpoints],
+          promptsSent: [...wfState.promptsSent],
+        })
+      }
+
       // Preserve nodeStates from last progress update so debug footers persist
       const currentState = useWorkflowStore.getState().executionState
       setExecutionState({
@@ -1715,6 +1734,30 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
             selectionKeyCode="Shift"
             multiSelectionKeyCode={['Meta', 'Control']}
           >
+            {/* Empty canvas guidance for new users */}
+            {nodes.length === 0 && !readOnly && (
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                textAlign: 'center',
+                pointerEvents: 'none',
+                zIndex: 1,
+                maxWidth: '360px'
+              }}>
+                <div style={{ fontSize: '18px', fontWeight: 600, color: 'var(--foreground)', marginBottom: '8px', opacity: 0.7 }}>
+                  Start Building Your Workflow
+                </div>
+                <div style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: '12px' }}>
+                  Right-click on the canvas to add nodes, or drag them from the Node Palette on the left.
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                  Every workflow begins with a Trigger node and ends with an Output node.
+                </div>
+              </div>
+            )}
+
             {/* Background grid */}
             {showGrid && (
               <Background

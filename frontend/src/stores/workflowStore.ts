@@ -510,6 +510,7 @@ interface WorkflowStoreState {
   setCheckpoints: (checkpoints: CheckpointEvent[]) => void
   setPromptsSent: (prompts: PromptSentInfo[]) => void
   clearExecutionState: () => void
+  addToExecutionHistory: (entry: ExecutionHistoryEntry) => void
   loadExecutionFromHistory: (id: string) => void
   clearExecutionHistory: () => void
 
@@ -2604,6 +2605,15 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         state.checkpoints = []
         state.promptsSent = []
         state.executionState = null
+      })
+    },
+
+    addToExecutionHistory: (entry) => {
+      set(state => {
+        state.executionHistory.unshift(entry)
+        if (state.executionHistory.length > 50) {
+          state.executionHistory = state.executionHistory.slice(0, 50)
+        }
       })
     },
 

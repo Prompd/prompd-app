@@ -175,6 +175,20 @@ export function SplitEditor({
   // Right pane is visible when either preview or chat is shown
   const showRightPane = showPreview || showChat
 
+  // Defer right pane width by one frame so mount starts at 0 width and transitions in.
+  // Content fade-in uses a CSS animation (splitPaneReveal) instead of inline transitions
+  // because React re-renders during mount create new style objects that reset in-progress
+  // CSS transitions, causing repeated flashes. The animation is immune to re-renders.
+  const [rightPaneReady, setRightPaneReady] = useState(showRightPane)
+  useEffect(() => {
+    if (showRightPane) {
+      const raf = requestAnimationFrame(() => setRightPaneReady(true))
+      return () => cancelAnimationFrame(raf)
+    } else {
+      setRightPaneReady(false)
+    }
+  }, [showRightPane])
+
   // Split position as percentage (0-100)
   const [splitPosition, setSplitPosition] = useState(50)
   const [isDragging, setIsDragging] = useState(false)
@@ -232,11 +246,11 @@ export function SplitEditor({
     }
   }, [isDragging, handleMouseMove, handleMouseUp])
 
-  // Calculate widths
-  const editorWidth = showRightPane
+  // Calculate widths — use rightPaneReady (deferred by 1 frame) so the pane transitions in smoothly
+  const editorWidth = rightPaneReady
     ? (isRightPaneMaximized ? 0 : splitPosition)
     : 100
-  const rightPaneWidth = showRightPane
+  const rightPaneWidth = rightPaneReady
     ? (isRightPaneMaximized ? 100 : 100 - splitPosition)
     : 0
 
@@ -326,6 +340,9 @@ export function SplitEditor({
             display: 'flex',
             flexDirection: 'column',
             flexShrink: 0,
+            // Pure CSS animation: starts invisible, waits 0.3s for width transition +
+            // async init to settle, then fades in over 0.2s. Immune to React re-renders.
+            animation: 'splitPaneReveal 0.2s ease-out 0.3s both',
             transition: isDragging ? 'none' : 'width 0.15s ease',
             borderLeft: isRightPaneMaximized ? 'none' : undefined
           }}
@@ -430,8 +447,13 @@ export function SplitEditor({
                   fontSize: '11px',
                   fontWeight: 600,
                   color: theme === 'dark' ? 'var(--text-secondary)' : 'rgba(0,0,0,0.6)',
-                  flex: 1
-                }}>AI Chat</span>
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  AI Chat
+                </span>
                 <button
                   onClick={() => {
                     if (onNewChat) onNewChat()
@@ -549,8 +571,6 @@ export function SplitEditor({
                 <ChatTab
                   key={chatTab.chatConfig?.conversationId || chatTab.id}
                   tab={chatTab}
-                  getText={() => value}
-                  setText={onChange}
                   theme={theme}
                   workspacePath={chatWorkspacePath}
                   onPrompdGenerated={onChatGenerated}

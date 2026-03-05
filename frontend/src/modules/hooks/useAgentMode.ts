@@ -63,7 +63,7 @@ export interface AgentState {
   /** Pending ask_user question waiting for user input */
   pendingAskUser: {
     question: string
-    options?: Array<{ label: string; description?: string }>
+    options?: Array<{ label: string; description?: string } | string>
     resolve: (answer: string) => void
   } | null
   /** Pending plan approval waiting for user decision */
@@ -124,7 +124,7 @@ export interface AgentChatActions {
   createAgentLLMClient: (
     baseClient: AgentCompatibleLLMClient,
     chatRef: React.RefObject<PrompdChatHandle>,
-    contextMessages?: Array<{ role: 'system'; content: string }>
+    contextMessages?: Array<{ role: 'system'; content: string }> | (() => Array<{ role: 'system'; content: string }>)
   ) => AgentCompatibleLLMClient
   // Cancel pending ask_user
   cancelAskUser: () => void
@@ -139,6 +139,18 @@ export interface AgentChatActions {
   reject: (reason?: string) => void
   stop: () => void
 }
+
+// Simple string hash for duplicate-write detection (djb2)
+function hashString(str: string): number {
+  let hash = 5381
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0
+  }
+  return hash
+}
+
+/** Max consecutive duplicate writes before the loop is stopped */
+const MAX_DUPLICATE_WRITES = 2
 
 // ============================================================================
 // Hook
@@ -197,9 +209,13 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
   const chatModeOverrideRef = useRef<string | null>(null)
   // Ref to track repeated tool failures on the same file (loop detection)
   const lastFailedToolRef = useRef<{ tool: string; path: string; count: number } | null>(null)
+  // Total iteration counter for current agent loop (enforces maxIterations)
+  const agentLoopIterationRef = useRef(0)
+  // Track last write_file content to detect duplicate-write loops
+  const lastWriteContentRef = useRef<{ path: string; hash: number } | null>(null)
+  const duplicateWriteCountRef = useRef(0)
   // Ref for per-session token accumulation (avoids stale closures in send())
   const tokenUsageRef = useRef({ promptTokens: 0, completionTokens: 0, totalTokens: 0 })
-
   // Sync refs with props — skip when an override is active (plan execution in progress)
   useEffect(() => {
     if (planOverrideRef.current === null) {
@@ -371,7 +387,7 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
         })
 
         // Wait for user response via Promise that will be resolved by the UI
-        const askOptions = call.params.options as Array<{ label: string; description?: string }> | undefined
+        const askOptions = call.params.options as Array<{ label: string; description?: string } | string> | undefined
         const answer = await new Promise<string>((resolve) => {
           setState(s => ({ ...s, pendingAskUser: { question, options: askOptions, resolve } }))
         })
@@ -789,7 +805,7 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
   const createAgentLLMClient = useCallback((
     baseClient: AgentCompatibleLLMClient,
     chatRef: React.RefObject<PrompdChatHandle>,
-    contextMessages?: Array<{ role: 'system'; content: string }>
+    contextMessages?: Array<{ role: 'system'; content: string }> | (() => Array<{ role: 'system'; content: string }>)
   ): AgentCompatibleLLMClient => {
     // Helper to restore overrides and clean up agent loop state
     const restoreOverridesAndCleanup = () => {
@@ -806,7 +822,17 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
         chatModeOverrideRef.current = null
       }
       lastFailedToolRef.current = null
-      setState(s => ({ ...s, isAgentLoopActive: false }))
+      agentLoopIterationRef.current = 0
+      lastWriteContentRef.current = null
+      duplicateWriteCountRef.current = 0
+      setState(s => ({ ...s, isAgentLoopActive: false, iteration: 0 }))
+    }
+
+    // Get maxIterations from current mode config (default 15)
+    const getMaxIterations = (): number => {
+      const modes = chatModesRef.current
+      const modeConfig = modes?.[chatModeRef.current]
+      return modeConfig?.settings?.maxIterations ?? 15
     }
 
     // Helper to process a parsed agent response
@@ -834,28 +860,77 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
         }
       }
 
-      // Check if done
-      if (parsed.done) {
-        console.log('[useAgentMode] Agent signaled done - resetting state')
-        restoreOverridesAndCleanup()
-
-        return {
-          ...response,
-          content: parsed.message,
-          metadata: {
-            ...response.metadata,
-            suggestion: parsed.suggestion || null,
-            toolCalls: [],
-            done: true
-          }
-        }
-      }
-
-      // Handle tool calls
+      // Handle tool calls first — if the LLM returned tool calls, execute them
+      // regardless of the done flag (LLMs sometimes incorrectly set done=true
+      // alongside tool calls, which would short-circuit execution)
       if (parsed.toolCalls.length > 0) {
         agentLoopActiveRef.current = true
         agentLoopRetryCountRef.current = 0
-        setState(s => ({ ...s, isAgentLoopActive: true }))
+
+        // Enforce maxIterations — stop the loop before it runs away
+        agentLoopIterationRef.current++
+        const maxIter = getMaxIterations()
+        setState(s => ({ ...s, isAgentLoopActive: true, iteration: agentLoopIterationRef.current }))
+
+        if (agentLoopIterationRef.current > maxIter) {
+          console.log(`[useAgentMode] Max iterations reached (${agentLoopIterationRef.current}/${maxIter}) - stopping agent loop`)
+          restoreOverridesAndCleanup()
+
+          const stopMsg = parsed.message
+            ? parsed.message + '\n\n*Reached maximum iterations. Stopping to avoid an infinite loop.*'
+            : '*Reached maximum iterations. Stopping to avoid an infinite loop.*'
+
+          chatRef.current?.addMessage({
+            id: `max_iter_${Date.now()}`,
+            role: 'assistant',
+            content: stopMsg,
+            timestamp: new Date().toISOString(),
+            metadata: { type: 'system-stop' }
+          })
+
+          return {
+            ...response,
+            content: stopMsg,
+            metadata: { ...response.metadata, done: true, messageAlreadyRendered: true }
+          }
+        }
+
+        // Detect duplicate write_file loops (same path + same content)
+        const writeCall = parsed.toolCalls.find(tc => tc.tool === 'write_file')
+        if (writeCall) {
+          const writePath = String(writeCall.params?.path || '')
+          const writeContent = String(writeCall.params?.content || '')
+          const contentHash = hashString(writeContent)
+          const last = lastWriteContentRef.current
+
+          if (last && last.path === writePath && last.hash === contentHash) {
+            duplicateWriteCountRef.current++
+            if (duplicateWriteCountRef.current >= MAX_DUPLICATE_WRITES) {
+              console.log(`[useAgentMode] Duplicate write detected ${duplicateWriteCountRef.current}x to "${writePath}" - stopping loop`)
+              restoreOverridesAndCleanup()
+
+              const stopMsg = (parsed.message || '') +
+                '\n\n*Stopped: repeated identical writes detected. The same content was being written multiple times.*'
+
+              chatRef.current?.addMessage({
+                id: `dup_write_${Date.now()}`,
+                role: 'assistant',
+                content: stopMsg,
+                timestamp: new Date().toISOString(),
+                metadata: { type: 'system-stop' }
+              })
+
+              return {
+                ...response,
+                content: stopMsg,
+                metadata: { ...response.metadata, done: true, messageAlreadyRendered: true }
+              }
+            }
+          } else {
+            duplicateWriteCountRef.current = 0
+          }
+          lastWriteContentRef.current = { path: writePath, hash: contentHash }
+        }
 
         // Add agent's message to chat BEFORE tool execution so it appears first in the UI
         if (parsed.message) {
@@ -871,7 +946,7 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
         }
 
         // Execute tool calls
-        console.log('[useAgentMode] Processing', parsed.toolCalls.length, 'tool calls')
+        console.log(`[useAgentMode] Processing ${parsed.toolCalls.length} tool calls (iteration ${agentLoopIterationRef.current}/${maxIter})`)
         const toolResults = await executeToolCalls(parsed.toolCalls, chatRef)
 
         // Check if any were rejected
@@ -977,21 +1052,30 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
         }
       }
 
-      // No tool calls - return as conversational response
+      // No tool calls — check if agent signaled done and clean up
+      if (parsed.done) {
+        console.log('[useAgentMode] Agent signaled done (no tool calls) - resetting state')
+        restoreOverridesAndCleanup()
+      }
+
       return {
         ...response,
         content: parsed.message,
         metadata: {
           ...response.metadata,
-          suggestion: parsed.suggestion || null
+          suggestion: parsed.suggestion || null,
+          done: parsed.done || undefined
         }
       }
     }
 
     const send = async (request: PrompdLLMRequest): Promise<PrompdLLMResponse> => {
-      // Reset abort flag only for fresh user messages (not agent loop continuations)
+      // Reset abort flag and iteration counter for fresh user messages (not agent loop continuations)
       if (!agentLoopActiveRef.current) {
         abortRef.current = false
+        agentLoopIterationRef.current = 0
+        lastWriteContentRef.current = null
+        duplicateWriteCountRef.current = 0
       }
 
       // Check if abort was requested (by stop())
@@ -1020,8 +1104,12 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
       }
 
       // Add any context messages (file content, etc.)
-      if (contextMessages) {
-        systemMessages.push(...contextMessages)
+      // When a getter function is provided, call it to get fresh content each iteration
+      const resolvedContext = typeof contextMessages === 'function'
+        ? contextMessages()
+        : contextMessages
+      if (resolvedContext && resolvedContext.length > 0) {
+        systemMessages.push(...resolvedContext)
       }
 
       // Combine with request messages
@@ -1256,11 +1344,15 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
       chatModeOverrideRef.current = null
     }
     lastFailedToolRef.current = null
+    agentLoopIterationRef.current = 0
+    lastWriteContentRef.current = null
+    duplicateWriteCountRef.current = 0
     setState(s => ({
       ...s,
       isRunning: false,
       isPaused: false,
       isAgentLoopActive: false,
+      iteration: 0,
       pendingAskUser: null,
       pendingPlanApproval: null,
       pendingPlanReview: null

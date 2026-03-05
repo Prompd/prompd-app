@@ -3,6 +3,7 @@
  */
 import type * as monacoEditor from 'monaco-editor'
 import { fixObjectParamsToArray } from './utils'
+import { getCurrentFilePath, setCurrentFilePath } from './validation'
 import { logger } from '../logger'
 
 // Scoped logger for code actions (can be disabled in production)
@@ -21,6 +22,8 @@ export const CODE_ACTION_IDS = {
   ADD_FRONTMATTER: 'prompd.add-frontmatter',
   ADD_REQUIRED_FIELD: 'prompd.add-required-field',
   CONVERT_TO_KEBAB_CASE: 'prompd.convert-to-kebab-case',
+  FIX_ID_TO_MATCH_FILENAME: 'prompd.fix-id-to-match-filename',
+  RENAME_FILE_TO_MATCH_ID: 'prompd.rename-file-to-match-id',
   ADD_PACKAGE_VERSION: 'prompd.add-package-version',
   // Parameter fixes
   DEFINE_PARAMETER: 'prompd.define-parameter',
@@ -299,6 +302,49 @@ export function registerCodeActionProvider(
 ): monacoEditor.IDisposable {
   log.log('Registering code action provider for language:', languageId)
 
+  // Register command: rename file to match id
+  // Guard against duplicate fires (code actions can trigger multiple times)
+  let renameInProgress = false
+  monaco.editor.registerCommand(CODE_ACTION_IDS.RENAME_FILE_TO_MATCH_ID, async (_accessor, filePath: string, newId: string) => {
+    if (renameInProgress) return
+    renameInProgress = true
+    try {
+      const electronAPI = (window as { electronAPI?: {
+        rename: (oldPath: string, newPath: string) => Promise<{ success: boolean; error?: string }>
+        readFile: (path: string) => Promise<{ success: boolean; content?: string }>
+      } }).electronAPI
+      if (!electronAPI?.rename) {
+        log.log('Electron rename API not available')
+        return
+      }
+      const normalized = filePath.replace(/\\/g, '/')
+      const dir = normalized.substring(0, normalized.lastIndexOf('/'))
+      const newPath = `${dir}/${newId}.prmd`
+      const newFileName = `${newId}.prmd`
+      log.log('Renaming file:', normalized, '->', newPath)
+
+      // Dispatch rename event BEFORE the disk rename so TabManager updates
+      // the tab before the file watcher can invalidate it
+      window.dispatchEvent(new CustomEvent('prompd-file-renamed', {
+        detail: { oldPath: normalized, newPath, newFileName }
+      }))
+
+      const result = await electronAPI.rename(normalized, newPath)
+      if (!result.success) {
+        log.log('Rename failed:', result.error)
+        // Revert: dispatch back so tab name is restored
+        window.dispatchEvent(new CustomEvent('prompd-file-renamed', {
+          detail: { oldPath: newPath, newPath: normalized }
+        }))
+      } else {
+        // Update intellisense file path to the new location
+        setCurrentFilePath(newPath)
+      }
+    } finally {
+      renameInProgress = false
+    }
+  })
+
   return monaco.languages.registerCodeActionProvider(
     languageId,
     {
@@ -568,6 +614,55 @@ export function registerCodeActionProvider(
           }
         }
 
+        // Quick-fix: ID/filename mismatch — offer both directions
+        if (marker.code === 'id-filename-mismatch') {
+          // Extract id and filename from message: "ID 'xxx' does not match filename 'yyy'."
+          const mismatchMatch = marker.message.match(/ID '([^']+)' does not match filename '([^']+)'/)
+          if (mismatchMatch) {
+            const currentId = mismatchMatch[1]
+            const fileBaseName = mismatchMatch[2]
+
+            // Option 1: Rename id to match filename (text edit)
+            actions.push({
+              title: `Change id to '${fileBaseName}'`,
+              kind: 'quickfix',
+              diagnostics: [marker],
+              isPreferred: true,
+              edit: {
+                edits: [{
+                  resource: model.uri,
+                  textEdit: {
+                    range: {
+                      startLineNumber: marker.startLineNumber,
+                      startColumn: marker.startColumn,
+                      endLineNumber: marker.endLineNumber,
+                      endColumn: marker.endColumn
+                    },
+                    text: fileBaseName
+                  },
+                  versionId: model.getVersionId()
+                }]
+              }
+            })
+
+            // Option 2: Rename file to match id (command)
+            const filePath = getCurrentFilePath()
+            if (filePath) {
+              actions.push({
+                title: `Rename file to '${currentId}.prmd'`,
+                kind: 'quickfix',
+                diagnostics: [marker],
+                isPreferred: false,
+                command: {
+                  id: CODE_ACTION_IDS.RENAME_FILE_TO_MATCH_ID,
+                  title: `Rename file to '${currentId}.prmd'`,
+                  arguments: [filePath, currentId]
+                }
+              })
+            }
+          }
+        }
+
         // Quick-fix: Add version to package reference
         if (marker.message.includes('should include version')) {
           const pkgMatch = marker.message.match(/Package reference '([^']+)'/)
@@ -598,17 +693,37 @@ export function registerCodeActionProvider(
         }
 
         // Quick-fix: Define undefined parameter
-        if (marker.message.includes('Undefined parameter')) {
-          const paramMatch = marker.message.match(/Undefined parameter '\{(\w+)\}'/)
+        // Matches both validation.ts ("Undefined parameter '{foo}'") and
+        // crossReference.ts ("Parameter 'foo' is not defined") message formats
+        if (
+          marker.message.includes('Undefined parameter') ||
+          marker.message.includes('is not defined') ||
+          (marker as { code?: string }).code === 'undefined-parameter'
+        ) {
+          // Extract parameter name from either message format
+          const paramMatch = marker.message.match(/Undefined parameter '\{(\w+)\}'/) ||
+            marker.message.match(/Parameter '(\w+)' is not defined/)
           if (paramMatch) {
             const paramName = paramMatch[1]
+            const lines = content.split('\n')
 
-            // Find parameters section or create one
-            const paramsMatch = content.match(/^(\s*)parameters:\s*$/m)
+            // Find the parameters section and determine where to insert
+            const paramsSectionLine = lines.findIndex(l => /^\s*parameters:\s*$/.test(l))
 
-            if (paramsMatch) {
-              // Add to existing parameters section
-              const paramLine = content.split('\n').findIndex(l => l.match(/^\s*parameters:\s*$/)) + 1
+            if (paramsSectionLine >= 0) {
+              // Find the end of the parameters block (last line that's indented under parameters:)
+              let insertAfterLine = paramsSectionLine
+              for (let i = paramsSectionLine + 1; i < lines.length; i++) {
+                const line = lines[i]
+                // Stop at blank lines, non-indented lines, or frontmatter end
+                if (line.trim() === '---' || (line.trim() !== '' && !line.startsWith(' ') && !line.startsWith('\t'))) {
+                  break
+                }
+                if (line.trim() !== '') {
+                  insertAfterLine = i
+                }
+              }
+
               actions.push({
                 title: `Define parameter '${paramName}'`,
                 kind: 'quickfix',
@@ -618,16 +733,16 @@ export function registerCodeActionProvider(
                   edits: [{
                     resource: model.uri,
                     textEdit: {
-                      range: { startLineNumber: paramLine + 1, startColumn: 1, endLineNumber: paramLine + 1, endColumn: 1 },
-                      text: `  - name: ${paramName}\n    type: string\n    description: "TODO: Add description"\n    required: true\n`
+                      range: { startLineNumber: insertAfterLine + 2, startColumn: 1, endLineNumber: insertAfterLine + 2, endColumn: 1 },
+                      text: `  - name: ${paramName}\n    type: string\n    description: ""\n`
                     },
                     versionId: model.getVersionId()
                   }]
                 }
               })
             } else {
-              // Create parameters section
-              const frontmatterEnd = content.split('\n').findIndex((l, i) => i > 0 && l.trim() === '---')
+              // No parameters section — create one before the closing ---
+              const frontmatterEnd = lines.findIndex((l, i) => i > 0 && l.trim() === '---')
               if (frontmatterEnd > 0) {
                 actions.push({
                   title: `Define parameter '${paramName}'`,
@@ -638,8 +753,8 @@ export function registerCodeActionProvider(
                     edits: [{
                       resource: model.uri,
                       textEdit: {
-                        range: { startLineNumber: frontmatterEnd, startColumn: 1, endLineNumber: frontmatterEnd, endColumn: 1 },
-                        text: `parameters:\n  - name: ${paramName}\n    type: string\n    description: "TODO: Add description"\n    required: true\n`
+                        range: { startLineNumber: frontmatterEnd + 1, startColumn: 1, endLineNumber: frontmatterEnd + 1, endColumn: 1 },
+                        text: `parameters:\n  - name: ${paramName}\n    type: string\n    description: ""\n`
                       },
                       versionId: model.getVersionId()
                     }]
@@ -650,7 +765,7 @@ export function registerCodeActionProvider(
 
             // Also offer to remove the undefined reference
             actions.push({
-              title: `Remove undefined reference '{${paramName}}'`,
+              title: `Remove reference '${paramName}'`,
               kind: 'quickfix',
               diagnostics: [marker],
               edit: {

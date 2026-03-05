@@ -177,6 +177,7 @@ export interface ExecutionConfig {
   maxTokens?: number      // Max tokens to generate (default: 4096)
   temperature?: number    // Temperature 0-2 (default: 0.7)
   mode?: GenerationMode   // Generation mode (default: 'default')
+  imageGeneration?: boolean  // Enable image generation (default: true when model supports it)
 }
 
 /**

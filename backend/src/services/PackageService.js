@@ -80,6 +80,10 @@ export class PackageService {
         searchQuery.category = options.category
       }
 
+      if (options.type) {
+        searchQuery.type = options.type
+      }
+
       const packages = await Package.find(searchQuery)
         .populate('maintainers.userId', 'username email')
         .sort(this.getSortOptions(options.sortBy))
@@ -677,7 +681,8 @@ export class PackageService {
           description: packageInfo.description,
           versions: [packageInfo],
           tags: { latest: packageInfo.version },
-          category: packageInfo.category || 'other'
+          category: packageInfo.category || 'other',
+          type: packageInfo.type || 'package'
         })
         await newPackage.save()
       }

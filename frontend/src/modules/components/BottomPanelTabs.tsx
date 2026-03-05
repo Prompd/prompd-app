@@ -8,6 +8,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { X, AlertCircle, FileText, Zap, Package, Pin, PinOff, ChevronUp, ChevronDown } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import BuildOutputPanel from './BuildOutputPanel'
+import { PackageBuildHistory } from './PackageBuildHistory'
 import { WorkflowExecutionPanel } from './workflow/WorkflowExecutionPanel'
 import { PrompdSessionHistory, type PrompdExecutionRecord } from './PrompdSessionHistory'
 import type { WorkflowResult } from '@prompd/cli'
@@ -127,9 +128,10 @@ export function BottomPanelTabs({
     }
   }, [showBottomPanel, bottomPanelMinimized, bottomPanelHeight])
 
-  // Check for errors in build output
-  const hasErrors = buildOutput.status === 'error' && (buildOutput.errors?.length || 0) > 0
-  const errorCount = buildOutput.errors?.length || 0
+  // Check for errors/warnings in build output
+  const hasProblems = buildOutput.status === 'error' && (buildOutput.errors?.length || 0) > 0
+  const trueErrorCount = buildOutput.errors?.filter(e => !e.severity || e.severity === 'error').length || 0
+  const warningCount = buildOutput.errors?.filter(e => e.severity === 'warning' || e.severity === 'info' || e.severity === 'hint').length || 0
 
   // Check for workflow execution
   const hasWorkflowExecution = !!workflowResult
@@ -169,8 +171,11 @@ export function BottomPanelTabs({
           >
             <AlertCircle size={14} />
             <span>Errors</span>
-            {hasErrors && (
-              <span className="bottom-panel-tab-badge">{errorCount}</span>
+            {hasProblems && trueErrorCount > 0 && (
+              <span className="bottom-panel-tab-badge">{trueErrorCount}</span>
+            )}
+            {hasProblems && warningCount > 0 && (
+              <span className="bottom-panel-tab-badge warning">{warningCount}</span>
             )}
           </button>
 
@@ -241,7 +246,7 @@ export function BottomPanelTabs({
         <div className="bottom-panel-content">
             {activeBottomTab === 'errors' && (
               <div className="bottom-panel-tab-content">
-                <BuildOutputPanel onOpenFile={onOpenFile} embedded={true} />
+                <BuildOutputPanel onOpenFile={onOpenFile} embedded={true} errorsOnly={true} />
               </div>
             )}
 
@@ -269,7 +274,7 @@ export function BottomPanelTabs({
 
             {activeBottomTab === 'packages' && (
               <div className="bottom-panel-tab-content">
-                <BuildOutputPanel onOpenFile={onOpenFile} embedded={true} />
+                <PackageBuildHistory />
               </div>
             )}
         </div>

@@ -928,7 +928,7 @@ function ExpandableParameterCard({
           {/* Metadata Row */}
           <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
             {param.default !== undefined && (
-              <span>Default: <code className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">{String(param.default)}</code></span>
+              <span>Default: <code className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">{typeof param.default === 'object' ? JSON.stringify(param.default) : String(param.default)}</code></span>
             )}
             {param.required && (
               <span className="text-red-500 font-medium">Required</span>

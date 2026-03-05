@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useRef, useMemo } from 'react'
 import PrompdEditor, { type PendingEdit as EditorPendingEdit } from './editor/PrompdEditor'
 import { SplitEditor } from './editor/SplitEditor'
 import DesignView from './editor/DesignView'
+import { BrainstormTab } from './brainstorm/BrainstormTab'
 import FileExplorer from './editor/FileExplorer'
 import PackagePanel from './editor/PackagePanel'
 import AiChatPanel from './editor/AiChatPanel'
@@ -28,7 +29,7 @@ import { AboutModal } from './components/AboutModal'
 import { DeploymentModal } from './components/deployment/DeploymentModal'
 import { DeployWorkflowModal } from './components/deployment/DeployWorkflowModal'
 import { PrompdPreviewModal } from './components/PrompdPreviewModal'
-import { PrompdIcon } from './components/PrompdIcon'
+import { PrompdIcon, GradientPrompdIcon } from './components/PrompdIcon'
 import LocalPackageModal from './editor/LocalPackageModal'
 import { ExecutionResultModal, type ExecutionResult } from './editor/ExecutionResultModal'
 import PrompdJsonDesignView from './components/PrompdJsonDesignView'
@@ -131,6 +132,9 @@ function MonacoMarkerListener({
       for (const m of rawMarkers) {
         const uri = m.resource.toString()
 
+        // Skip markers from brainstorm working copy models (stale after tab close)
+        if (uri.includes('brainstorm-')) continue
+
         // Skip markers from models that aren't in currently open tabs
         const displayFile = uriToTabName.get(uri)
         if (!displayFile) {
@@ -142,11 +146,20 @@ function MonacoMarkerListener({
         if (seen.has(key)) continue
         seen.add(key)
 
+        // Map Monaco MarkerSeverity to our string severity
+        const severityMap: Record<number, BuildError['severity']> = {
+          8: 'error',    // MarkerSeverity.Error
+          4: 'warning',  // MarkerSeverity.Warning
+          2: 'info',     // MarkerSeverity.Info
+          1: 'hint',     // MarkerSeverity.Hint
+        }
+
         buildErrors.push({
           file: displayFile,
           message: m.message,
           line: m.startLineNumber,
-          column: m.startColumn
+          column: m.startColumn,
+          severity: severityMap[m.severity] || 'error'
         })
       }
 
@@ -581,7 +594,7 @@ export default function App() {
 
       for (const tab of tabs) {
         // Skip non-file tabs, tabs with valid handles, and package-sourced tabs
-        if (tab.type === 'chat' || tab.type === 'execution' || tab.packageSource) continue
+        if (tab.type === 'chat' || tab.type === 'execution' || tab.type === 'brainstorm' || tab.packageSource) continue
         if (tab.handle && typeof tab.handle.createWritable === 'function') continue
 
         // Use stored filePath, or construct from workspace + tab name (for legacy tabs)
@@ -889,6 +902,11 @@ export default function App() {
     }
     // prompd.json doesn't support wizard mode, only design/code
     if (isPrompdJson && mode === 'wizard') {
+      setMode('design')
+      updateTab(activeTabId, { viewMode: 'design' })
+    }
+    // Brainstorm tabs only support design/code (no wizard)
+    if (activeTab.type === 'brainstorm' && mode === 'wizard') {
       setMode('design')
       updateTab(activeTabId, { viewMode: 'design' })
     }
@@ -1355,6 +1373,49 @@ version: 1.0.0
     console.log('Opened chat in new tab:', mode, conversationId)
   }, [addTab])
 
+  // Open a brainstorm tab for collaborative editing with AI
+  const handleOpenBrainstorm = useCallback((filePath: string, fileContent: string, sourceTabId?: string) => {
+    // If a brainstorm tab already exists for this source, activate it
+    const { tabs } = useEditorStore.getState()
+    const existing = tabs.find(t =>
+      t.type === 'brainstorm' && t.brainstormConfig?.sourceTabId === sourceTabId
+    )
+    if (existing) {
+      activateTab(existing.id)
+      return
+    }
+
+    // Inherit view mode from the source tab (default to design)
+    const sourceTab = sourceTabId ? tabs.find(t => t.id === sourceTabId) : undefined
+    const inheritedViewMode = sourceTab?.viewMode === 'code' ? 'code' : 'design'
+
+    const fileName = filePath.split(/[\\/]/).pop() || filePath
+    const newTab: Tab = {
+      id: 'brainstorm-' + Date.now(),
+      name: `Brainstorm: ${fileName}`,
+      text: fileContent,
+      type: 'brainstorm',
+      viewMode: inheritedViewMode,
+      brainstormConfig: {
+        sourceFilePath: filePath,
+        sourceTabId
+      }
+    }
+    addTab(newTab)
+  }, [addTab, activateTab])
+
+  // Listen for open-brainstorm events from agent tool
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { filePath: string; content: string; sourceTabId?: string }
+      if (detail) {
+        handleOpenBrainstorm(detail.filePath, detail.content, detail.sourceTabId)
+      }
+    }
+    window.addEventListener('open-brainstorm', handler)
+    return () => window.removeEventListener('open-brainstorm', handler)
+  }, [handleOpenBrainstorm])
+
   // Toast notifications - declare before handlers that use them
   const addToast = useUIStore(state => state.addToast)
 
@@ -1608,6 +1669,7 @@ version: 1.0.0
   // Note: addToast is declared earlier (before handleSaveToStorage)
   const removeToast = useUIStore(state => state.removeToast)
   const setBuildOutput = useUIStore(state => state.setBuildOutput)
+  const addPackageBuildRecord = useUIStore(state => state.addPackageBuildRecord)
   const setShowBuildPanel = useUIStore(state => state.setShowBuildPanel)
   const setShowBottomPanel = useUIStore(state => state.setShowBottomPanel)
   const setActiveBottomTab = useUIStore(state => state.setActiveBottomTab)
@@ -1621,9 +1683,14 @@ version: 1.0.0
   const openBottomPanelMinimized = useUIStore(state => state.openBottomPanelMinimized)
   useEffect(() => {
     if (monacoMarkers.length > 0) {
+      const errorCount = monacoMarkers.filter(m => !m.severity || m.severity === 'error').length
+      const warnCount = monacoMarkers.filter(m => m.severity === 'warning' || m.severity === 'info' || m.severity === 'hint').length
+      const parts: string[] = []
+      if (errorCount > 0) parts.push(`${errorCount} ${errorCount === 1 ? 'error' : 'errors'}`)
+      if (warnCount > 0) parts.push(`${warnCount} ${warnCount === 1 ? 'warning' : 'warnings'}`)
       setBuildOutput({
         status: 'error',
-        message: `${monacoMarkers.length} ${monacoMarkers.length === 1 ? 'problem' : 'problems'} found`,
+        message: parts.join(', '),
         errors: monacoMarkers,
         timestamp: Date.now()
       })
@@ -1952,6 +2019,7 @@ version: 1.0.0
           ? `Validated ${compilableFiles.length} file${compilableFiles.length > 1 ? 's' : ''}. `
           : ''
 
+        const buildTimestamp = Date.now()
         setBuildOutput({
           status: 'success',
           message: validationInfo + (result.message || 'Package created successfully!'),
@@ -1959,11 +2027,21 @@ version: 1.0.0
           fileName: result.fileName,
           fileCount: result.fileCount,
           size: result.size,
-          timestamp: Date.now(),
+          timestamp: buildTimestamp,
           // Include build log for raw output display
           details: result.log,
           // Explicitly clear error fields from previous failed builds
           errors: undefined
+        })
+        addPackageBuildRecord({
+          id: `build-${buildTimestamp}`,
+          status: 'success',
+          message: result.message || 'Package created successfully!',
+          fileName: result.fileName,
+          outputPath: result.outputPath,
+          fileCount: result.fileCount,
+          size: result.size,
+          timestamp: buildTimestamp,
         })
         // Don't change panel state on success - show toast notification (8s auto-dismiss)
         aiShowNotification('Package created successfully!', 'success', 8000)
@@ -1975,12 +2053,20 @@ version: 1.0.0
         if (errors.length > 0) {
           setBuildErrorMarkers(errors)
         }
+        const errorTimestamp = Date.now()
         setBuildOutput({
           status: 'error',
           message: errors.length > 0 ? `Build failed: ${errors.length} error${errors.length > 1 ? 's' : ''}` : 'Build failed',
           details: result.error,
           errors: errors.length > 0 ? errors : undefined,
-          timestamp: Date.now()
+          timestamp: errorTimestamp
+        })
+        addPackageBuildRecord({
+          id: `build-${errorTimestamp}`,
+          status: 'error',
+          message: errors.length > 0 ? `Build failed: ${errors.length} error${errors.length > 1 ? 's' : ''}` : 'Build failed',
+          timestamp: errorTimestamp,
+          errors: errors.length > 0 ? errors : undefined,
         })
         // Show output panel on error (no toast - panel shows details)
         setShowBottomPanel(true)
@@ -2086,8 +2172,34 @@ version: 1.0.0
     }
 
     window.addEventListener('open-file-from-error', handleOpenFileFromError)
-    return () => window.removeEventListener('open-file-from-error', handleOpenFileFromError)
-  }, [onOpenFile, setMode, setJumpTo])
+
+    // Handle opening a local package from build history
+    const handleOpenLocalPackageEvent = async (e: Event) => {
+      const { outputPath } = (e as CustomEvent).detail
+      if (!outputPath || !window.electronAPI?.readBinaryFile) return
+      try {
+        const result = await window.electronAPI.readBinaryFile(outputPath)
+        if (result.success && result.data) {
+          const binaryString = atob(result.data)
+          const bytes = new Uint8Array(binaryString.length)
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i)
+          }
+          const fileName = outputPath.split(/[/\\]/).pop() || 'package.pdpkg'
+          const blob = new Blob([bytes])
+          handleOpenLocalPackage(blob, fileName)
+        }
+      } catch (err) {
+        console.error('[App] Failed to open package from history:', err)
+      }
+    }
+    window.addEventListener('open-local-package', handleOpenLocalPackageEvent)
+
+    return () => {
+      window.removeEventListener('open-file-from-error', handleOpenFileFromError)
+      window.removeEventListener('open-local-package', handleOpenLocalPackageEvent)
+    }
+  }, [onOpenFile, setMode, setJumpTo, handleOpenLocalPackage])
 
   // Handle opening file from build output panel errors
   const handleOpenBuildErrorFile = useCallback(async (relativePath: string, line?: number) => {
@@ -2817,6 +2929,46 @@ version: 1.0.0
     return () => window.removeEventListener('prompd-open-package', handleOpenPackage)
   }, [])
 
+  // Listen for file renames from code actions and tool executor
+  useEffect(() => {
+    const handleFileRenamed = (e: Event) => {
+      const { oldPath, newPath } = (e as CustomEvent).detail as { oldPath: string; newPath: string }
+      if (!oldPath || !newPath) return
+      console.log('[App] File renamed:', oldPath, '->', newPath)
+
+      // Extract filenames for tab matching (tabs use relative paths)
+      const oldName = oldPath.replace(/\\/g, '/').split('/').pop() || oldPath
+      const newName = newPath.replace(/\\/g, '/').split('/').pop() || newPath
+
+      // Build pseudo-handle so the tab can save to the new path
+      const electronAPI = (window as unknown as Record<string, unknown>).electronAPI as {
+        readFile: (p: string) => Promise<{ content?: string }>
+        writeFile: (p: string, c: string) => Promise<void>
+      } | undefined
+      const pseudoHandle = electronAPI ? {
+        kind: 'file' as const,
+        name: newName,
+        _electronPath: newPath,
+        getFile: async () => ({
+          name: newName,
+          text: async () => {
+            const r = await electronAPI.readFile(newPath)
+            return r.content || ''
+          }
+        }),
+        createWritable: async () => ({
+          write: async (content: string) => { await electronAPI.writeFile(newPath, content) },
+          close: async () => {}
+        })
+      } : undefined
+
+      tabManager.handleFileRenamed(oldName, newName, newPath, pseudoHandle as unknown as FileSystemFileHandle)
+    }
+
+    window.addEventListener('prompd-file-renamed', handleFileRenamed)
+    return () => window.removeEventListener('prompd-file-renamed', handleFileRenamed)
+  }, [tabManager])
+
   // Save As - always shows file picker
   const saveAs = useCallback(async (tabId?: string) => {
     try {
@@ -2824,7 +2976,7 @@ version: 1.0.0
       if (!targetTab) return
 
       // Chat and execution tabs cannot be saved
-      if (targetTab.type === 'chat' || targetTab.type === 'execution') {
+      if (targetTab.type === 'chat' || targetTab.type === 'execution' || targetTab.type === 'brainstorm') {
         console.log('[App.tsx] Skipping Save As for non-saveable tab type:', targetTab.type)
         return
       }
@@ -2936,7 +3088,7 @@ version: 1.0.0
     if (!tab) return
 
     // Chat and execution tabs cannot be saved
-    if (tab.type === 'chat' || tab.type === 'execution') {
+    if (tab.type === 'chat' || tab.type === 'execution' || tab.type === 'brainstorm') {
       console.log('[App.tsx] Skipping save for non-saveable tab type:', tab.type)
       return
     }
@@ -3021,7 +3173,7 @@ version: 1.0.0
 
   // Handle save all and close for CloseWorkspaceDialog
   const handleSaveAllAndClose = useCallback(async () => {
-    const dirtyTabs = tabs.filter(t => t.dirty && t.type !== 'chat' && t.type !== 'execution')
+    const dirtyTabs = tabs.filter(t => t.dirty && t.type !== 'chat' && t.type !== 'execution' && t.type !== 'brainstorm')
 
     console.log('[App] Saving', dirtyTabs.length, 'dirty tabs before closing workspace')
 
@@ -3052,7 +3204,7 @@ version: 1.0.0
 
     for (const tab of tabs) {
       // Skip non-file tabs and tabs without handles
-      if (!tab.handle || tab.type === 'chat' || tab.type === 'execution' || tab.packageSource) {
+      if (!tab.handle || tab.type === 'chat' || tab.type === 'execution' || tab.type === 'brainstorm' || tab.packageSource) {
         continue
       }
 
@@ -3258,7 +3410,7 @@ version: 1.0.0
     const unsubCloseFolder = electronAPI.onMenuCloseFolder?.(() => {
       console.log('[App.tsx] Menu close folder')
       // Check for unsaved files
-      const dirtyTabs = tabs.filter(t => t.dirty && t.type !== 'chat' && t.type !== 'execution')
+      const dirtyTabs = tabs.filter(t => t.dirty && t.type !== 'chat' && t.type !== 'execution' && t.type !== 'brainstorm')
       if (dirtyTabs.length > 0) {
         // Show confirmation dialog
         setShowCloseWorkspaceDialog(true)
@@ -3888,7 +4040,7 @@ version: 1.0.0
           const name = tab.name.toLowerCase()
           return name.endsWith('.prmd') || name.endsWith('.pdflow') || name === 'prompd.json' || name.endsWith('/prompd.json') || name.endsWith('\\prompd.json')
         })()}
-        onExecutePrompd={handleExecutePrompd}
+        onExecutePrompd={getActiveTab()?.type === 'brainstorm' ? undefined : handleExecutePrompd}
         onExecuteWorkflow={() => {
           // Dispatch event for WorkflowCanvas to handle
           window.dispatchEvent(new CustomEvent('execute-workflow'))
@@ -3897,7 +4049,7 @@ version: 1.0.0
         }}
         workspacePath={explorerDirPath}
         showPreview={getActiveTab()?.showPreview || false}
-        onTogglePreview={() => {
+        onTogglePreview={getActiveTab()?.type === 'brainstorm' ? undefined : () => {
           if (activeTabId) {
             const tab = getActiveTab()
             if (tab?.showPreview) {
@@ -3908,7 +4060,7 @@ version: 1.0.0
           }
         }}
         showChat={getActiveTab()?.showChat || false}
-        onToggleChat={() => {
+        onToggleChat={getActiveTab()?.type === 'brainstorm' ? undefined : () => {
           if (activeTabId) {
             const tab = getActiveTab()
             if (tab?.showChat) {
@@ -4082,6 +4234,7 @@ version: 1.0.0
                 })
               }
             }}
+            onBrainstorm={handleOpenBrainstorm}
           />
         </div>
         <div style={{
@@ -4264,10 +4417,16 @@ version: 1.0.0
                     pointerEvents: isActive ? 'auto' : 'none'
                   }}
                 >
-                  {/* Floating Chat Launcher - P icon */}
+                  {/* Floating Brainstorm Launcher - gradient P icon */}
                   {isActive && !tab.showChat && !tab.showPreview && (
                     <button
-                      onClick={() => updateTab(tab.id, { showChat: true, showPreview: false })}
+                      onClick={() => {
+                        updateTab(tab.id, {
+                          showChat: true,
+                          chatConfig: { mode: 'brainstorm', contextFile: tab.id, conversationId: tab.chatConfig?.conversationId }
+                        })
+                        chatMountedTabsRef.current.add(tab.id)
+                      }}
                       style={{
                         position: 'absolute',
                         top: '8px',
@@ -4282,14 +4441,10 @@ version: 1.0.0
                         border: 'none',
                         borderRadius: '6px',
                         cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        color: 'var(--muted)'
                       }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)' }}
-                      title="Open AI Chat"
+                      title="Brainstorm: Collaborate with AI to edit this file on a working copy you control"
                     >
-                      <PrompdIcon size={18} />
+                      <GradientPrompdIcon size={18} />
                     </button>
                   )}
                   <SplitEditor
@@ -4346,19 +4501,21 @@ version: 1.0.0
                       name: 'Chat',
                       text: '',
                       type: 'chat' as const,
-                      chatConfig: { mode: 'agent', contextFile: tab.id, conversationId: tab.chatConfig?.conversationId }
+                      chatConfig: { mode: tab.chatConfig?.mode || 'agent', contextFile: tab.id, conversationId: tab.chatConfig?.conversationId }
                     }}
                     chatWorkspacePath={explorerDirPath}
                     onChatGenerated={onAiGenerated}
                     onNewChat={() => {
+                      const currentMode = tab.chatConfig?.mode || 'agent'
                       const newConv = conversationStorage.createConversation('confirm')
                       updateTab(tab.id, {
-                        chatConfig: { mode: 'agent', contextFile: tab.id, conversationId: newConv.id }
+                        chatConfig: { mode: currentMode, contextFile: tab.id, conversationId: newConv.id }
                       })
                     }}
                     onSelectConversation={(conversationId: string) => {
+                      const currentMode = tab.chatConfig?.mode || 'agent'
                       updateTab(tab.id, {
-                        chatConfig: { mode: 'agent', contextFile: tab.id, conversationId }
+                        chatConfig: { mode: currentMode, contextFile: tab.id, conversationId }
                       })
                     }}
                   />
@@ -4376,12 +4533,6 @@ version: 1.0.0
                   <ChatTab
                     tab={activeTab}
                     onPrompdGenerated={onAiGenerated}
-                    getText={() => activeTab?.text || ''}
-                    setText={(newText) => {
-                      if (activeTabId) {
-                        updateTab(activeTabId, { text: newText, dirty: true })
-                      }
-                    }}
                     theme={theme}
                     workspacePath={explorerDirPath}
                     onAutoSave={async () => {
@@ -4965,6 +5116,35 @@ version: 1.0.0
                 )
               }
 
+              // Brainstorm tab — collaborative editor with working copy + AI chat
+              if (activeTab?.type === 'brainstorm' && activeTab.brainstormConfig) {
+                return (
+                  <BrainstormTab
+                    tab={activeTab}
+                    theme={theme}
+                    workspacePath={explorerDirPath}
+                    onApply={(newText) => {
+                      // Write back to the source file tab if it's open
+                      const sourceTabId = activeTab.brainstormConfig?.sourceTabId
+                      if (sourceTabId) {
+                        const sourceTab = tabs.find(t => t.id === sourceTabId)
+                        if (sourceTab) {
+                          updateTab(sourceTabId, { text: newText, dirty: true })
+                        }
+                      }
+                      // Write to disk via Electron IPC if we have the path
+                      const filePath = activeTab.brainstormConfig?.sourceFilePath
+                      if (filePath && window.electronAPI?.isElectron) {
+                        window.electronAPI.writeFile(filePath, newText)
+                      }
+                      // Update brainstorm tab base text so isDirty resets
+                      updateTab(activeTab.id, { text: newText })
+                    }}
+                    onChatGenerated={onAiGenerated}
+                  />
+                )
+              }
+
               if (mode === 'wizard') {
                 return (
                   <GuidedPromptWizard
@@ -5143,11 +5323,17 @@ version: 1.0.0
 
                   return (
                     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-                      {/* Floating Chat Launcher - P icon (matches ActivityBar color convention) */}
+                      {/* Floating Brainstorm Launcher - gradient P icon */}
                       {!activeTab?.showChat && !activeTab?.showPreview && (
                         <button
                           onClick={() => {
-                            if (activeTabId) updateTab(activeTabId, { showChat: true, showPreview: false })
+                            if (activeTabId) {
+                              updateTab(activeTabId, {
+                                showChat: true,
+                                chatConfig: { mode: 'brainstorm', contextFile: activeTabId, conversationId: activeTab?.chatConfig?.conversationId }
+                              })
+                              chatMountedTabsRef.current.add(activeTabId)
+                            }
                           }}
                           style={{
                             position: 'absolute',
@@ -5163,14 +5349,10 @@ version: 1.0.0
                             border: 'none',
                             borderRadius: '6px',
                             cursor: 'pointer',
-                            transition: 'all 0.2s',
-                            color: 'var(--muted)'
                           }}
-                          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
-                          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)' }}
-                          title="Open AI Chat"
+                          title="Brainstorm: Collaborate with AI to edit this file on a working copy you control"
                         >
-                          <PrompdIcon size={18} />
+                          <GradientPrompdIcon size={18} />
                         </button>
                       )}
                       <SplitEditor
@@ -5232,22 +5414,24 @@ version: 1.0.0
                           name: 'Chat',
                           text: '',
                           type: 'chat' as const,
-                          chatConfig: { mode: 'agent', contextFile: activeTabId, conversationId: activeTab?.chatConfig?.conversationId }
+                          chatConfig: { mode: activeTab?.chatConfig?.mode || 'agent', contextFile: activeTabId, conversationId: activeTab?.chatConfig?.conversationId }
                         } : undefined}
                         chatWorkspacePath={explorerDirPath}
                         onChatGenerated={onAiGenerated}
                         onNewChat={() => {
                           if (activeTabId) {
+                            const currentMode = activeTab?.chatConfig?.mode || 'agent'
                             const newConv = conversationStorage.createConversation('confirm')
                             updateTab(activeTabId, {
-                              chatConfig: { mode: 'agent', contextFile: activeTabId, conversationId: newConv.id }
+                              chatConfig: { mode: currentMode, contextFile: activeTabId, conversationId: newConv.id }
                             })
                           }
                         }}
                         onSelectConversation={(conversationId: string) => {
                           if (activeTabId) {
+                            const currentMode = activeTab?.chatConfig?.mode || 'agent'
                             updateTab(activeTabId, {
-                              chatConfig: { mode: 'agent', contextFile: activeTabId, conversationId }
+                              chatConfig: { mode: currentMode, contextFile: activeTabId, conversationId }
                             })
                           }
                         }}
@@ -5472,7 +5656,7 @@ version: 1.0.0
       <CloseWorkspaceDialog
         isOpen={showCloseWorkspaceDialog}
         unsavedFiles={tabs
-          .filter(t => t.dirty && t.type !== 'chat' && t.type !== 'execution')
+          .filter(t => t.dirty && t.type !== 'chat' && t.type !== 'execution' && t.type !== 'brainstorm')
           .map(t => ({ id: t.id, name: t.name }))
         }
         onSaveAll={handleSaveAllAndClose}
@@ -5536,8 +5720,9 @@ version: 1.0.0
       <NewFileDialog
         isOpen={showNewFileDialog}
         onClose={() => setShowNewFileDialog(false)}
-        onSubmit={async (fileName, content) => {
+        onSubmit={async (fileName, content, options) => {
           setShowNewFileDialog(false)
+          const openBrainstorm = options?.brainstorm
           const electronPath = (explorerDirHandle as unknown as Record<string, unknown>)?._electronPath as string | undefined
           const electronAPI = (window as unknown as Record<string, unknown>).electronAPI as Record<string, unknown> | undefined
           if (electronPath && electronAPI?.writeFile) {
@@ -5547,19 +5732,41 @@ version: 1.0.0
             const result = await writeFile(fullPath, content)
             if (result.success) {
               onOpenFile({ name: fileName, text: content, electronPath: fullPath })
+              // Open brainstorm chat after tab is created
+              if (openBrainstorm) {
+                setTimeout(() => {
+                  const { tabs } = useEditorStore.getState()
+                  const newTab = tabs.find(t => t.name === fileName || t.filePath?.endsWith(fileName))
+                  if (newTab) {
+                    updateTab(newTab.id, {
+                      showChat: true,
+                      chatConfig: { mode: 'brainstorm', contextFile: newTab.id }
+                    })
+                    chatMountedTabsRef.current.add(newTab.id)
+                  }
+                }, 100)
+              }
             }
           } else {
             // No workspace — create unsaved tab
             const viewMode = fileName.endsWith('.prmd') || fileName.endsWith('.pdflow') || fileName === 'prompd.json'
               ? 'design' as const
               : 'code' as const
+            const tabId = 'new-' + Date.now()
             addTab({
-              id: 'new-' + Date.now(),
+              id: tabId,
               name: fileName,
               text: content,
               dirty: true,
-              viewMode
+              viewMode,
+              ...(openBrainstorm ? {
+                showChat: true,
+                chatConfig: { mode: 'brainstorm', contextFile: tabId }
+              } : {})
             })
+            if (openBrainstorm) {
+              chatMountedTabsRef.current.add(tabId)
+            }
           }
         }}
       />
@@ -5570,7 +5777,7 @@ version: 1.0.0
         onProjectCreated={(projectPath) => {
           closeModal()
           // Check for unsaved files in current workspace
-          const dirtyTabs = tabs.filter(t => t.dirty && t.type !== 'chat' && t.type !== 'execution')
+          const dirtyTabs = tabs.filter(t => t.dirty && t.type !== 'chat' && t.type !== 'execution' && t.type !== 'brainstorm')
           if (explorerDirPath && dirtyTabs.length > 0) {
             // Defer opening until save/discard dialog completes
             pendingProjectPathRef.current = projectPath

@@ -43,7 +43,7 @@ export interface TabManager {
   closeOtherTabs: (tabId: string) => void
 
   // File sync operations
-  handleFileRenamed: (oldPath: string, newPath: string, newHandle?: FileSystemFileHandle) => void
+  handleFileRenamed: (oldPath: string, newPath: string, newFilePath?: string, newHandle?: FileSystemFileHandle) => void
   handleFileDeleted: (filePath: string) => void
   handleFilesRefreshed: (entries: { name: string; path: string; handle?: FileSystemFileHandle }[]) => void
 
@@ -302,6 +302,23 @@ export function useTabManager(): TabManager {
       }
     }
 
+    // Clean up Monaco model for brainstorm tabs to prevent stale markers
+    if (closingTab.type === 'brainstorm') {
+      try {
+        const monacoInstance = (window as unknown as Record<string, unknown>).monaco as typeof import('monaco-editor') | undefined
+        if (monacoInstance?.editor) {
+          for (const model of monacoInstance.editor.getModels()) {
+            if (model.uri.toString().includes(tabId)) {
+              monacoInstance.editor.setModelMarkers(model, 'prompd', [])
+              model.dispose()
+            }
+          }
+        }
+      } catch {
+        // Monaco not available — ignore
+      }
+    }
+
     // Remove the tab
     removeTab(tabId)
   }, [removeTab, activateTab, setMode, setText])
@@ -344,6 +361,7 @@ export function useTabManager(): TabManager {
   const handleFileRenamed = useCallback((
     oldPath: string,
     newPath: string,
+    newFilePath?: string,
     newHandle?: FileSystemFileHandle
   ): void => {
     console.log('[TabManager] File renamed:', oldPath, '->', newPath)
@@ -356,8 +374,11 @@ export function useTabManager(): TabManager {
       return
     }
 
-    // Update tab with new path and handle
+    // Update tab with new name, filePath, and handle
     const updates: Partial<Tab> = { name: newPath }
+    if (newFilePath) {
+      updates.filePath = newFilePath
+    }
     if (newHandle) {
       updates.handle = newHandle
     }

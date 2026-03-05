@@ -28,6 +28,12 @@ const INPUT_THEME_COLORS: Record<PrompdInputTheme, { border: string; focus: stri
     focus: '#6366f1',
     glow: 'rgba(99, 102, 241, 0.15)',
     button: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)'
+  },
+  brainstorm: {
+    border: '#06b6d4',
+    focus: '#06b6d4',
+    glow: 'rgba(6, 182, 212, 0.15)',
+    button: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)'
   }
 }
 

@@ -61,17 +61,30 @@ export class LocalLLMClient implements IPrompdLLMClient {
       const modelData = providerData?.models.find(m => m.model === model)
       const enableImageGeneration = modelData?.supportsImageGeneration === true
 
-      // Execute locally
-      const result = await localExecutor.execute({
+      // Only pass thinking mode if the model supports it
+      const supportsThinking = modelData?.supportsThinking === true
+      const effectiveMode = (request.mode === 'thinking' && !supportsThinking)
+        ? 'default'
+        : request.mode as 'default' | 'thinking' | 'json' | undefined
+
+      const execOptions = {
         provider,
         model,
         prompt,
         systemPrompt,
         temperature: request.temperature,
         maxTokens: request.maxTokens,
-        stream: false,
-        enableImageGeneration
-      })
+        enableImageGeneration,
+        mode: effectiveMode
+      }
+
+      // If onChunk callback is provided, use streaming execution
+      if (request.onChunk) {
+        return await this.sendStreaming(request.onChunk, execOptions, provider, model)
+      }
+
+      // Non-streaming path
+      const result = await localExecutor.execute({ ...execOptions, stream: false })
 
       if (!result.success) {
         throw new Error(result.error || 'Execution failed')
@@ -79,12 +92,14 @@ export class LocalLLMClient implements IPrompdLLMClient {
 
       return {
         content: result.response || '',
+        thinking: result.thinking,
         provider,
         model,
         usage: result.usage,
         metadata: {
           executionMode: 'local',
-          duration: result.metadata.duration
+          duration: result.metadata.duration,
+          ...(result.thinking ? { thinking: result.thinking } : {})
         }
       }
     } catch (error) {
@@ -94,6 +109,55 @@ export class LocalLLMClient implements IPrompdLLMClient {
           ? error.message
           : 'Failed to execute LLM request locally'
       )
+    }
+  }
+
+  /**
+   * Streaming execution — calls localExecutor.stream() and delivers chunks via onChunk
+   */
+  private async sendStreaming(
+    onChunk: (chunk: { content?: string; thinking?: string; done: boolean }) => void,
+    execOptions: Record<string, unknown>,
+    provider: string,
+    model: string
+  ): Promise<PrompdLLMResponse> {
+    let fullContent = ''
+    let fullThinking = ''
+    let finalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+    const startTime = Date.now()
+
+    const generator = localExecutor.stream({ ...execOptions, stream: true } as Parameters<typeof localExecutor.stream>[0])
+
+    for await (const chunk of generator) {
+      // Access thinking field (exists at runtime on Anthropic chunks but not in StreamChunk type)
+      const chunkAny = chunk as unknown as { content: string; thinking?: string; done: boolean; usage?: typeof finalUsage }
+      if (chunkAny.content) fullContent += chunkAny.content
+      if (chunkAny.thinking) fullThinking += chunkAny.thinking
+      if (chunkAny.usage) finalUsage = chunkAny.usage
+
+      const thinkingDelta = chunkAny.thinking
+      onChunk({
+        content: chunk.content || undefined,
+        thinking: thinkingDelta || undefined,
+        done: chunk.done
+      })
+    }
+
+    onChunk({ done: true })
+
+    const duration = Date.now() - startTime
+
+    return {
+      content: fullContent,
+      thinking: fullThinking || undefined,
+      provider,
+      model,
+      usage: finalUsage,
+      metadata: {
+        executionMode: 'local',
+        duration,
+        ...(fullThinking ? { thinking: fullThinking } : {})
+      }
     }
   }
 

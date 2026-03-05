@@ -42,10 +42,18 @@ export interface PrompdLLMRequest {
   maxTokens?: number
   stream?: boolean
   signal?: AbortSignal
+  /** Generation mode (e.g., 'default', 'thinking', 'json') - enables extended thinking for supported models */
+  mode?: string
+  /** Streaming callback — called with each chunk during streaming.
+   *  When provided, the client streams internally and calls this for each chunk,
+   *  while still returning the final complete response from send(). */
+  onChunk?: (chunk: { content?: string; thinking?: string; done: boolean }) => void
 }
 
 export interface PrompdLLMResponse {
   content: string
+  /** Thinking content from models with extended thinking (e.g., Claude) */
+  thinking?: string
   provider: LLMProvider
   model: string
   usage?: LLMUsage
@@ -456,7 +464,7 @@ export interface PrompdChatMode {
 /**
  * Input theme for colored accent based on agent permission level
  */
-export type PrompdInputTheme = 'default' | 'auto' | 'confirm' | 'plan'
+export type PrompdInputTheme = 'default' | 'auto' | 'confirm' | 'plan' | 'brainstorm'
 
 export interface PrompdChatProps {
   sessionId?: string
@@ -485,11 +493,15 @@ export interface PrompdChatProps {
   // Input theme for permission-level colored accents
   // 'auto' = green (#22c55e), 'confirm' = yellow (#eab308), 'plan' = purple (#6366f1)
   inputTheme?: PrompdInputTheme
+  // LLM generation mode (e.g., 'default', 'thinking', 'json') - forwarded to LLM client
+  generationMode?: string
   // Force the input to be ready for user input (overrides internal isLoading state)
   // Used when agent is waiting for user input (ask_user tool)
   waitingForUserInput?: boolean
   // Callback fired when the user clicks the stop button during generation
   onStop?: () => void
+  // Hide the mode selector dropdown entirely (e.g. in brainstorm mode)
+  hideModeSelector?: boolean
 }
 
 /**

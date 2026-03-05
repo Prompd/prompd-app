@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { FileText, FileJson } from 'lucide-react'
+import { FileText, FileJson, Lightbulb } from 'lucide-react'
 
 type FileTypeKey = 'prmd' | 'pdflow' | 'prompdjson' | 'custom'
 
@@ -17,7 +17,7 @@ const FILE_TYPES: Array<{ key: FileTypeKey; label: string; ext: string; descript
 interface NewFileDialogProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (fileName: string, content: string) => void
+  onSubmit: (fileName: string, content: string, options?: { brainstorm?: boolean }) => void
 }
 
 function formatFileName(fileName: string): { id: string; name: string } {
@@ -79,6 +79,7 @@ export function NewFileDialog({ isOpen, onClose, onSubmit }: NewFileDialogProps)
   const [fileType, setFileType] = useState<FileTypeKey>('prmd')
   const [inputValue, setInputValue] = useState('untitled.prmd')
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [brainstorm, setBrainstorm] = useState(true)
 
   // Reset state when dialog opens
   useEffect(() => {
@@ -86,14 +87,15 @@ export function NewFileDialog({ isOpen, onClose, onSubmit }: NewFileDialogProps)
       setFileType('prmd')
       setInputValue('untitled.prmd')
       setShowAdvanced(false)
+      setBrainstorm(true)
     }
   }, [isOpen])
 
   const handleSubmit = useCallback(() => {
     if (!inputValue.trim()) return
     const content = getDefaultContent(inputValue.trim())
-    onSubmit(inputValue.trim(), content)
-  }, [inputValue, onSubmit])
+    onSubmit(inputValue.trim(), content, brainstorm ? { brainstorm: true } : undefined)
+  }, [inputValue, brainstorm, onSubmit])
 
   const handleCancel = useCallback(() => {
     onClose()
@@ -205,6 +207,11 @@ export function NewFileDialog({ isOpen, onClose, onSubmit }: NewFileDialogProps)
             else if (e.key === 'Escape') handleCancel()
           }}
           autoFocus
+          onFocus={(e) => {
+            const val = e.target.value
+            const dotIdx = val.lastIndexOf('.')
+            e.target.setSelectionRange(0, dotIdx > 0 ? dotIdx : val.length)
+          }}
           style={{
             width: '100%',
             padding: '10px 12px',
@@ -217,7 +224,36 @@ export function NewFileDialog({ isOpen, onClose, onSubmit }: NewFileDialogProps)
             boxSizing: 'border-box'
           }}
         />
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+          {/* Brainstorm toggle - visible for .prmd files */}
+          {fileType === 'prmd' && (
+            <button
+              onClick={() => setBrainstorm(!brainstorm)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                background: brainstorm
+                  ? 'linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(245, 158, 11, 0.1) 100%)'
+                  : 'transparent',
+                border: brainstorm
+                  ? '1px solid rgba(251, 191, 36, 0.4)'
+                  : '1px solid var(--border)',
+                borderRadius: '6px',
+                color: brainstorm ? '#fbbf24' : 'var(--muted)',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: 500,
+                marginRight: 'auto',
+                transition: 'all 0.15s',
+              }}
+              title="Open with AI brainstorm chat"
+            >
+              <Lightbulb size={14} />
+              Brainstorm
+            </button>
+          )}
           <button
             onClick={handleCancel}
             style={{

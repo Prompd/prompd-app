@@ -13,7 +13,6 @@ import {
   ChevronRight,
   Copy,
   FileText,
-  ExternalLink,
   Braces,
   FileCode2,
 } from 'lucide-react'
@@ -255,12 +254,35 @@ export function PrompdSessionHistory({
                     gap: '10px',
                     cursor: 'pointer'
                   }}
-                  onClick={() => setExpandedId(expandedId === exec.id ? null : exec.id)}
+                  onClick={() => {
+                    if (onViewExecution) {
+                      const index = executions.findIndex(e => e.id === exec.id)
+                      onViewExecution(exec, index)
+                    } else {
+                      setExpandedId(expandedId === exec.id ? null : exec.id)
+                    }
+                  }}
                 >
-                  {expandedId === exec.id
-                    ? <ChevronDown size={14} color={colors.textMuted} />
-                    : <ChevronRight size={14} color={colors.textMuted} />
-                  }
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setExpandedId(expandedId === exec.id ? null : exec.id)
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '2px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      flexShrink: 0
+                    }}
+                    title="Quick preview"
+                  >
+                    {expandedId === exec.id
+                      ? <ChevronDown size={14} color={colors.textMuted} />
+                      : <ChevronRight size={14} color={colors.textMuted} />
+                    }
+                  </div>
                   {exec.success
                     ? <CheckCircle2 size={14} color={colors.success} />
                     : <XCircle size={14} color={colors.error} />
@@ -275,30 +297,6 @@ export function PrompdSessionHistory({
                     <span>{formatDuration(exec.duration)}</span>
                     <span>{formatDate(exec.timestamp)}</span>
                   </span>
-
-                  {onViewExecution && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        const index = executions.findIndex(e => e.id === exec.id)
-                        onViewExecution(exec, index)
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '4px',
-                        background: 'transparent',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        color: colors.textMuted
-                      }}
-                      title="View in modal"
-                    >
-                      <ExternalLink size={12} />
-                    </button>
-                  )}
                 </div>
 
                 {/* Expanded Details */}

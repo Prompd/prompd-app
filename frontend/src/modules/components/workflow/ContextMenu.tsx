@@ -66,6 +66,7 @@ export interface ContextMenuProps {
 interface MenuItem {
   id: string
   label: string
+  description?: string
   icon?: React.ComponentType<{ style?: React.CSSProperties }>
   nodeType?: WorkflowNodeType
   onClick?: () => void
@@ -83,7 +84,7 @@ const NODE_TYPE_GROUPS = NODE_TYPE_CATEGORIES.map(cat => ({
   label: cat.label,
   types: cat.types.map(t => {
     const entry = NODE_TYPE_REGISTRY[t]
-    return { type: t, label: entry.label, icon: entry.icon }
+    return { type: t, label: entry.label, icon: entry.icon, description: entry.description }
   }),
 }))
 
@@ -222,6 +223,7 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
         submenu.push({
           id: `add-${nodeType.type}`,
           label: nodeType.label,
+          description: nodeType.description,
           icon: nodeType.icon,
           nodeType: nodeType.type,
           onClick: () => onAddNode?.(nodeType.type)
@@ -390,6 +392,7 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
                   return (
                     <button
                       key={sub.id}
+                      title={sub.description}
                       onClick={() => {
                         sub.onClick?.()
                         onClose()
