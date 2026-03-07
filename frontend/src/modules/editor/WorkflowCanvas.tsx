@@ -1193,6 +1193,18 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
 
     const mode = pendingExecutionMode
 
+    // In debug mode, auto-populate breakpoints with callback node IDs
+    // so execution pauses at checkpoint/callback nodes
+    let breakpoints: Set<string> | undefined
+    if (mode === 'debug' && parsed.file?.nodes) {
+      const callbackNodeIds = parsed.file.nodes
+        .filter((n: { type: string }) => n.type === 'callback')
+        .map((n: { id: string }) => n.id)
+      if (callbackNodeIds.length > 0) {
+        breakpoints = new Set(callbackNodeIds)
+      }
+    }
+
     // Initialize execution state
     setExecutionState({
       workflowId: workflowFile.metadata.id,
@@ -1207,6 +1219,7 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
     // Create executor with callbacks
     const executor = createWorkflowExecutor(parsed, params, {
       executionMode: mode,
+      breakpoints,
       onProgress: (state) => {
         setExecutionState(state)
       },

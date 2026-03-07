@@ -678,6 +678,9 @@ export interface ElectronAPI {
     // Respond to checkpoint request (bidirectional IPC)
     respondToCheckpoint: (requestId: string, shouldContinue: boolean) => Promise<void>
 
+    // Respond to debug/step pause request (bidirectional IPC)
+    respondToDebugPause: (requestId: string, shouldContinue: boolean) => Promise<void>
+
     // Listen for scheduled/deployed workflow execution requests from main process
     onExecuteRequest: (callback: (data: {
       workflowPath: string
@@ -860,6 +863,7 @@ export type WorkflowExecutionEvent =
   | { type: 'error'; executionId: string; data: { error: string; stack?: string }; timestamp: number }
   | { type: 'user-input-request'; executionId: string; requestId: string; data: unknown; timestamp: number }
   | { type: 'checkpoint-request'; executionId: string; requestId: string; data: unknown; timestamp: number }
+  | { type: 'debug-pause-request'; executionId: string; requestId: string; data: { isPaused: boolean; currentNodeId: string | null; breakpoints: string[]; watchedVariables: string[] }; timestamp: number }
 
 // Compilation types
 export interface CompileOptions {

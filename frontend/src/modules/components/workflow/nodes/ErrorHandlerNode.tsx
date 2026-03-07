@@ -120,7 +120,8 @@ export const ErrorHandlerNode = memo(({ id, data, selected }: ErrorHandlerNodePr
   }
 
   const statusBorderColor = getStatusBorderColor()
-  const borderColor = statusBorderColor || (selected ? nodeColor : 'var(--border)')
+  // Unselected: muted red dashed, selected: bold red dashed (global/config node convention)
+  const borderColor = statusBorderColor || (selected ? nodeColor : `color-mix(in srgb, ${nodeColor} 35%, transparent)`)
 
   return (
     <div
@@ -129,8 +130,8 @@ export const ErrorHandlerNode = memo(({ id, data, selected }: ErrorHandlerNodePr
         minWidth: 180,
         padding: '12px',
         background: 'var(--panel)',
-        borderWidth: '2px',
-        borderStyle: 'dashed', // Dashed to indicate config node
+        borderWidth: selected ? '2.5px' : '2px',
+        borderStyle: 'dashed',
         borderColor: borderColor,
         borderRadius: '8px',
         boxShadow: selected

@@ -1326,6 +1326,13 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
         <div className="issues" style={{ fontSize: 12 }}>Your browser may not support the File System Access API. Try Chromium-based browsers.</div>
       ) : null}
       {contextMenu ? (
+        <>
+        {/* Click-outside backdrop to dismiss context menu */}
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 149 }}
+          onClick={() => setContextMenu(null)}
+          onContextMenu={(e) => { e.preventDefault(); setContextMenu(null) }}
+        />
         <div
           ref={contextMenuRef}
           style={{
@@ -1335,7 +1342,6 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
             background: 'var(--panel-2)',
             border: '1px solid rgba(71, 85, 105, 0.3)', borderRadius: 8, zIndex: 150, minWidth: 180, boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15), 0 0 12px rgba(99, 102, 241, 0.15)'
           }}
-          onMouseLeave={() => setContextMenu(null)}
         >
           {contextMenu.type === 'file' ? (
             <>
@@ -1706,6 +1712,7 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
             </>
           )}
         </div>
+        </>
       ) : null}
 
       {/* Input Dialog for rename/new folder (simple text input) */}

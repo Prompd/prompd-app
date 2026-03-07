@@ -22,14 +22,16 @@ interface ProviderNodeProps {
   selected?: boolean
 }
 
-// Shared styles
+// Shared styles — Provider uses green as its identity color (global/config node = always dashed)
 const containerStyle = (selected: boolean, minWidth: number): React.CSSProperties => ({
   padding: '12px 16px',
   borderRadius: '8px',
   minWidth,
   background: 'var(--panel)',
-  border: `2px ${selected ? 'solid var(--node-rose)' : 'dashed var(--node-rose)'}`,
-  boxShadow: selected ? '0 0 0 2px color-mix(in srgb, var(--node-rose) 30%, transparent)' : '0 2px 4px rgba(0,0,0,0.1)',
+  border: selected
+    ? '2.5px dashed var(--node-green)'
+    : '2px dashed color-mix(in srgb, var(--node-green) 35%, transparent)',
+  boxShadow: selected ? '0 0 0 2px color-mix(in srgb, var(--node-green) 30%, transparent)' : '0 2px 4px rgba(0,0,0,0.1)',
   transition: 'border-color 0.2s, box-shadow 0.2s',
 })
 
@@ -37,7 +39,7 @@ const handleStyle: React.CSSProperties = {
   width: 12,
   height: 12,
   background: 'var(--node-green)',
-  border: '2px solid var(--rose)',
+  border: '2px solid var(--panel)',
 }
 
 const headerStyle: React.CSSProperties = {
@@ -51,7 +53,7 @@ const headerStyle: React.CSSProperties = {
 function ProviderHeader({ label }: { label: string }) {
   return (
     <div style={headerStyle}>
-      <Cpu style={{ width: 16, height: 16, color: 'var(--node-rose)' }} />
+      <Cpu style={{ width: 16, height: 16, color: 'var(--node-green)' }} />
       <span style={{ fontWeight: 500, fontSize: '13px', color: 'var(--text)' }}>
         {label || 'Provider'}
       </span>
@@ -335,9 +337,9 @@ export const ProviderNode = memo(({ id, data, selected }: ProviderNodeProps) => 
         }}>
           <span style={{
             padding: '2px 6px',
-            background: 'color-mix(in srgb, var(--node-rose) 15%, transparent)',
+            background: 'color-mix(in srgb, var(--node-green) 15%, transparent)',
             borderRadius: '4px',
-            color: 'var(--node-rose)',
+            color: 'var(--node-green)',
           }}>
             {formatPricePerMillion(currentModel.inputPrice)}/1M in
           </span>

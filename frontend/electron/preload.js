@@ -719,6 +719,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // shouldContinue: boolean - whether to continue execution
     respondToCheckpoint: (requestId, shouldContinue) => ipcRenderer.invoke('workflow:checkpoint-response', requestId, shouldContinue),
 
+    // Respond to debug/step pause request (bidirectional IPC)
+    // requestId: ID from debug-pause-request event
+    // shouldContinue: boolean - whether to continue execution
+    respondToDebugPause: (requestId, shouldContinue) => ipcRenderer.invoke('workflow:debug-pause-response', requestId, shouldContinue),
+
     // Listen for scheduled/deployed workflow execution requests from main process
     // callback: (data: { workflowPath, parameters, trigger, deploymentId?, triggerId? }) => void
     // Returns: cleanup function to remove listener
