@@ -41,10 +41,8 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: |
+          rm -f package-lock.json
           npm install
-          # Ensure platform-specific rollup binary is installed
-          # (lockfile may only have Windows binaries when generated on Windows)
-          npm ls @rollup/rollup-linux-x64-gnu 2>/dev/null || npm install @rollup/rollup-linux-x64-gnu --no-save
 
       - name: TypeScript check
         working-directory: frontend
