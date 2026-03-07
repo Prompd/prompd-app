@@ -5653,8 +5653,11 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
       }
 
       // Build options with event-emitting callbacks
+      // Convert breakpoints array back to Set (IPC serializes Sets as arrays)
+      const breakpointsSet = options.breakpoints ? new Set(options.breakpoints) : undefined
       const executorOptions = {
         ...options,
+        breakpoints: breakpointsSet,
         onNodeStart: (nodeId) => {
           // Check cancellation before starting each node
           const execution = runningExecutions.get(executionId)
@@ -5830,6 +5833,39 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
                 reject(new Error('Checkpoint request timed out'))
               }
             }, 300000)
+          })
+        },
+        // Bidirectional: Pause execution in debug/step mode and wait for user to continue or stop
+        onDebugPause: async (debugState, trace) => {
+          const requestId = `debug-pause-${Date.now()}-${Math.random().toString(36).substring(7)}`
+
+          console.log(`[Workflow Executor] Debug/step pause at node '${debugState.currentNodeId}' (${requestId})`)
+
+          // Send pause event to renderer
+          sender.send('workflow:event', {
+            type: 'debug-pause-request',
+            executionId,
+            requestId,
+            data: {
+              isPaused: debugState.isPaused,
+              currentNodeId: debugState.currentNodeId,
+              breakpoints: debugState.breakpoints ? Array.from(debugState.breakpoints) : [],
+              watchedVariables: debugState.watchedVariables || [],
+            },
+            timestamp: Date.now()
+          })
+
+          // Wait for renderer to respond (continue or stop)
+          return new Promise((resolve, reject) => {
+            pendingUserInputs.set(requestId, { resolve, reject })
+
+            // Timeout after 10 minutes
+            setTimeout(() => {
+              if (pendingUserInputs.has(requestId)) {
+                pendingUserInputs.delete(requestId)
+                resolve(false) // Stop execution on timeout
+              }
+            }, 600000)
           })
         },
         // Centralized .prmd execution — single path for all workflow prompt execution
@@ -7026,6 +7062,20 @@ ipcMain.handle('workflow:checkpoint-response', async (_event, requestId, shouldC
     console.log(`[Workflow Executor] Checkpoint response received: ${requestId}, continue: ${shouldContinue}`)
   } else {
     console.warn(`[Workflow Executor] No pending request for: ${requestId}`)
+  }
+})
+
+/**
+ * Respond to debug/step pause request (bidirectional IPC)
+ */
+ipcMain.handle('workflow:debug-pause-response', async (_event, requestId, shouldContinue) => {
+  const pending = pendingUserInputs.get(requestId)
+  if (pending) {
+    pendingUserInputs.delete(requestId)
+    pending.resolve(shouldContinue)
+    console.log(`[Workflow Executor] Debug pause response received: ${requestId}, continue: ${shouldContinue}`)
+  } else {
+    console.warn(`[Workflow Executor] No pending debug pause request for: ${requestId}`)
   }
 })
 

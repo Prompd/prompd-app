@@ -78,6 +78,7 @@ export function registerHoverProvider(
 
   return monaco.languages.registerHoverProvider(languageId, {
     async provideHover(model, position) {
+      if (model.isDisposed()) return null
       const word = model.getWordAtPosition(position)
       if (!word) return null
 
@@ -541,6 +542,9 @@ export function registerHoverProvider(
           console.warn('[IntelliSense] Inherits hover failed:', error)
         }
       }
+
+      // Re-check after async operations — model may have been disposed during file I/O
+      if (model.isDisposed()) return null
 
       if (context.type === 'package') {
         try {

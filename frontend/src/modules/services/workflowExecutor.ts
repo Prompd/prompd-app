@@ -236,6 +236,29 @@ export function createWorkflowExecutor(
             window.electronAPI?.workflow?.respondToCheckpoint(event.requestId, true)
           }
           break
+
+        case 'debug-pause-request':
+          // Bidirectional: Main process paused in debug/step mode
+          if (options.onDebugPause) {
+            const debugState: DebugState = {
+              isPaused: true,
+              currentNodeId: event.data?.currentNodeId || null,
+              breakpoints: new Set(event.data?.breakpoints || []),
+              watchedVariables: event.data?.watchedVariables || [],
+            }
+            options.onDebugPause(debugState, { entries: [] } as unknown as ExecutionTrace)
+              .then((shouldContinue) => {
+                window.electronAPI?.workflow?.respondToDebugPause(event.requestId, shouldContinue)
+              })
+              .catch((err) => {
+                console.error('[WorkflowExecutor] Debug pause error:', err)
+                window.electronAPI?.workflow?.respondToDebugPause(event.requestId, true)
+              })
+          } else {
+            // No handler - default to continuing
+            window.electronAPI?.workflow?.respondToDebugPause(event.requestId, true)
+          }
+          break
       }
     })
 
@@ -267,11 +290,11 @@ export function createWorkflowExecutor(
     },
     getTrace: () => currentTrace,
     continueExecution: () => {
-      // Future: could send IPC command to resume paused execution
-      console.warn('[WorkflowExecutor] continueExecution not yet implemented')
+      // Resume is handled through promise resolution in debug-pause-request handler
+      // No separate IPC command needed — the response to the debug-pause-request continues execution
     },
     resume: () => {
-      console.warn('[WorkflowExecutor] resume not yet implemented')
+      // Resume is handled through promise resolution in debug-pause-request handler
     },
     abortExecution: () => {
       if (executionId && window.electronAPI?.workflow) {

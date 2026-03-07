@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { ClipboardList, Check, X, ChevronDown, ChevronRight, FileEdit, GitMerge, Terminal, Folder, Search, Package, Eye, ToggleLeft, ToggleRight } from 'lucide-react'
 import type { EditOperation } from '../services/toolExecutor'
 import { ApprovalDiffView } from './ApprovalDiffView'
@@ -425,11 +426,11 @@ export function PlanApprovalDialog({ toolCalls, agentMessage, onApprove, onRejec
   const execCount = enabledToolCalls.filter(tc => getToolCategory(tc.tool) === 'execute').length
   const enabledCount = enabledActions.size
 
-  return (
+  return createPortal(
     <div style={{
       position: 'fixed',
       inset: 0,
-      zIndex: 2000,
+      zIndex: 10000,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -948,6 +949,7 @@ export function PlanApprovalDialog({ toolCalls, agentMessage, onApprove, onRejec
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

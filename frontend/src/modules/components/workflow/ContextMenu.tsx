@@ -258,25 +258,30 @@ export const ContextMenu = memo((props: ContextMenuProps) => {
     })
   }
 
-  // Position menu to stay within viewport
-  const adjustedPosition = { ...position }
-  if (menuRef.current) {
-    const rect = menuRef.current.getBoundingClientRect()
-    if (rect.right > window.innerWidth) {
-      adjustedPosition.x = window.innerWidth - rect.width - 10
+  // Clamp menu position to viewport after mount/content changes
+  useEffect(() => {
+    const el = menuRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const pad = 8
+    let x = position.x, y = position.y
+    if (rect.right > window.innerWidth - pad) x = window.innerWidth - rect.width - pad
+    if (rect.bottom > window.innerHeight - pad) y = window.innerHeight - rect.height - pad
+    if (x < pad) x = pad
+    if (y < pad) y = pad
+    if (x !== position.x || y !== position.y) {
+      el.style.left = `${x}px`
+      el.style.top = `${y}px`
     }
-    if (rect.bottom > window.innerHeight) {
-      adjustedPosition.y = window.innerHeight - rect.height - 10
-    }
-  }
+  }, [position, expandedSubmenu])
 
   return (
     <div
       ref={menuRef}
       style={{
         position: 'fixed',
-        left: adjustedPosition.x,
-        top: adjustedPosition.y,
+        left: position.x,
+        top: position.y,
         zIndex: 10000,
         minWidth: 180,
         background: 'var(--panel)',

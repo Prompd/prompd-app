@@ -309,6 +309,16 @@ export function ApprovalDiffView({
   const [viewMode, setViewMode] = useState<'side-by-side' | 'stacked'>(defaultViewMode)
   const editorRef = useRef<Monaco.editor.IStandaloneDiffEditor | null>(null)
 
+  // Dispose DiffEditor on unmount to prevent stale hover/marker references
+  useEffect(() => {
+    return () => {
+      if (editorRef.current) {
+        try { editorRef.current.dispose() } catch {}
+        editorRef.current = null
+      }
+    }
+  }, [])
+
   // Detect language from file path
   const language = useMemo(() => detectLanguage(filePath || ''), [filePath])
 
