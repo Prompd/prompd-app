@@ -3,6 +3,7 @@
   "version": "0.5.0-beta.1",
   "description": "Node.js backend for Prompd Editor with MongoDB and WebSocket support",
   "main": "src/server.js",
+  "license": "Elastic-2.0",
   "type": "module",
   "scripts": {
     "dev": "nodemon src/server.js",

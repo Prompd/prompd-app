@@ -5,6 +5,7 @@
   "description": "AI prompt editor with package-based inheritance",
   "author": "Prompd LLC",
   "private": true,
+  "license": "Elastic-2.0",
   "main": "electron/main.js",
   "homepage": "./",
   "scripts": {

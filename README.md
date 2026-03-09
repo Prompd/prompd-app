@@ -10,6 +10,12 @@ Prompd brings software engineering practices to AI prompt development. Instead o
 
 > **Platform:** Pre-built binaries are currently **Windows only**. Mac and Linux builds are coming soon. You can build from source on any platform today.
 
+## Download
+
+**[Download for Windows](https://github.com/prompd/prompd-app/releases/latest)** | [Build from Source](#quick-start)
+
+**Requirements:** Windows 10+ | 4GB RAM | 500MB disk space
+
 <!-- SCREENSHOT: Design View - Open a .prmd file in Design View showing the WYSIWYG editor
      with the provider bar (Anthropic/OpenAI tabs), parameter panel, and content sections.
      Use the public-examples/prompts/topic-researcher.prmd file for a good example. -->
@@ -55,7 +61,7 @@ Prompd brings software engineering practices to AI prompt development. Instead o
 ```bash
 # Clone the repository
 git clone https://github.com/Prompd/prompd-app.git
-cd prompd.app
+cd prompd-app
 
 # Build local packages (required before frontend)
 cd packages/scheduler && npm install && npm run build
@@ -106,7 +112,7 @@ The backend API is optional and only used for provider/model list updates, regis
 ### Project Structure
 
 ```
-prompd.app/
+prompd-app/
 ├── frontend/               # Electron + React application
 │   ├── src/modules/        # Components, services, editor
 │   ├── src/stores/         # Zustand state management
@@ -159,4 +165,4 @@ At minimum, you need one LLM provider API key (e.g., Anthropic or OpenAI) config
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+Elastic License 2.0 (ELv2) - see [LICENSE](LICENSE) for details.

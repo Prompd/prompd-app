@@ -209,7 +209,7 @@ function WelcomeGradientP({ contextFileName }: { contextFileName: string | null 
           }}
         />
         <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '8px', color: 'var(--prompd-text)' }}>
-          Prompd Agent
+          Hi, I'm Fox!
         </h2>
         <p style={{ maxWidth: '320px', margin: '0 auto 16px', color: 'var(--prompd-muted)' }}>
           {contextFileName

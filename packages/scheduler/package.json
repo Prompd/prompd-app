@@ -18,7 +18,7 @@
     "prompd"
   ],
   "author": "Prompd Team",
-  "license": "MIT",
+  "license": "Elastic-2.0",
   "dependencies": {
     "@prompd/cli": "^0.5.0-beta.2",
     "adm-zip": "^0.5.10",

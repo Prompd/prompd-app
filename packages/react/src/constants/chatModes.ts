@@ -109,7 +109,7 @@ User: "I need something for data"
     label: 'Explore',
     icon: '📦',
     description: 'Search for existing packages in the registry',
-    systemPrompt: `You are in **Explore Mode**, specialized in helping users discover existing packages in the Prompd Registry.
+    systemPrompt: `You are in **Explore Mode**, specialized in helping users discover existing packages in PrompdHub.
 
 ## Core Mission
 Help users find relevant packages before creating new ones. Be a librarian for the registry.

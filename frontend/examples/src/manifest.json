@@ -2,7 +2,7 @@
   "name": "@prompd/public-examples",
   "version": "1.1.0",
   "description": "Public example prompts demonstrating inheritance, overriding features, and general usage patterns. Includes practical examples showing how to extend templates, customize prompts, and implement common AI workflow patterns.",
-  "license": "MIT",
+  "license": "Elastic-2.0",
   "tags": ["examples", "prompts", "patterns", "assistants"],
   "keywords": ["examples", "prompts", "patterns", "assistants", "roles"],
   "readme": "README.md",

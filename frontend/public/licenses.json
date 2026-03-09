@@ -179,13 +179,13 @@
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\README.md"
   },
   "@prompd/react@0.5.0-beta.1": {
-    "licenses": "MIT",
+    "licenses": "Elastic-2.0",
     "publisher": "Stephen Baker",
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\react",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\react\\README.md"
   },
   "@prompd/scheduler@0.5.0-beta.1": {
-    "licenses": "MIT",
+    "licenses": "Elastic-2.0",
     "publisher": "Prompd Team",
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler"
   },

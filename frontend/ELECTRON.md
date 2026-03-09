@@ -163,8 +163,8 @@ The Electron app is configured for auto-updates via `electron-builder`. To enabl
 "build": {
   "publish": {
     "provider": "github",
-    "owner": "Logikbug",
-    "repo": "editor.prompdhub.ai"
+    "owner": "prompd",
+    "repo": "prompd-app"
   }
 }
 ```
