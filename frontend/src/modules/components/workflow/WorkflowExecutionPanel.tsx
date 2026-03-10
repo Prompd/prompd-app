@@ -81,6 +81,7 @@ export function WorkflowExecutionPanel({
   const isExecuting = useWorkflowStore(state => state.isExecuting)
   const workflowFile = useWorkflowStore(state => state.workflowFile)
   const executionHistory = useWorkflowStore(state => state.executionHistory)
+  const viewingHistoryId = useWorkflowStore(state => state.viewingHistoryId)
   const loadExecutionFromHistory = useWorkflowStore(state => state.loadExecutionFromHistory)
   const clearExecutionHistory = useWorkflowStore(state => state.clearExecutionHistory)
 
@@ -617,8 +618,8 @@ export function WorkflowExecutionPanel({
                         className="workflow-history-entry"
                         onClick={() => loadExecutionFromHistory(entry.id)}
                         style={{
-                          background: result?.startTime === entry.result.startTime ? 'var(--hover)' : 'var(--panel-2)',
-                          border: result?.startTime === entry.result.startTime ? '1px solid var(--primary)' : '1px solid var(--border)',
+                          background: viewingHistoryId === entry.id ? 'var(--hover)' : 'var(--panel-2)',
+                          border: viewingHistoryId === entry.id ? '1px solid var(--primary)' : '1px solid var(--border)',
                           borderRadius: '6px',
                           padding: '12px',
                           cursor: 'pointer',
@@ -693,7 +694,7 @@ export function WorkflowExecutionPanel({
                         )}
 
                         {/* Active indicator */}
-                        {result?.startTime === entry.result.startTime && (
+                        {viewingHistoryId === entry.id && (
                           <div style={{
                             marginTop: '8px',
                             fontSize: '10px',

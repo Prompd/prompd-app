@@ -4,7 +4,8 @@
 
 import { useMemo } from 'react'
 import { Wrench } from 'lucide-react'
-import type { ToolCallRouterNodeData, ToolNodeData } from '../../../services/workflowTypes'
+import type { ToolCallRouterNodeData, BaseToolNodeData } from '../../../services/workflowTypes'
+import { TOOL_CONTAINER_CHILD_TYPES } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { labelStyle, selectStyle } from '../shared/styles/propertyStyles'
 
@@ -17,11 +18,12 @@ export interface ToolCallRouterNodePropertiesProps {
 export function ToolCallRouterNodeProperties({ data, onChange, nodeId }: ToolCallRouterNodePropertiesProps) {
   const nodes = useWorkflowStore(state => state.nodes)
 
-  // Get child Tool nodes for fallback dropdown
+  // Get child tool-like nodes for fallback dropdown
+  const toolContainerTypes = useMemo(() => new Set<string>(TOOL_CONTAINER_CHILD_TYPES), [])
   const childToolNodes = useMemo(() => {
     if (!nodeId) return []
-    return nodes.filter(n => n.parentId === nodeId && n.type === 'tool')
-  }, [nodes, nodeId])
+    return nodes.filter(n => n.parentId === nodeId && toolContainerTypes.has(n.type || ''))
+  }, [nodes, nodeId, toolContainerTypes])
 
   return (
     <>
@@ -88,7 +90,7 @@ export function ToolCallRouterNodeProperties({ data, onChange, nodeId }: ToolCal
             <option value="">Select a tool...</option>
             {childToolNodes.map(node => (
               <option key={node.id} value={node.id}>
-                {(node.data as ToolNodeData).toolName || node.data.label}
+                {(node.data as BaseToolNodeData).toolName || node.data.label}
               </option>
             ))}
           </select>

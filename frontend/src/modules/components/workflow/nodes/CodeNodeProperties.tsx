@@ -7,6 +7,7 @@ import { Braces, Maximize2 } from 'lucide-react'
 import type { CodeNodeData } from '../../../services/workflowTypes'
 import { useUIStore } from '../../../../stores/uiStore'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
+
 import { getMonacoTheme } from '../../../lib/monacoConfig'
 import { hasVariables, VariablePreview } from '../../common/VariableReference'
 
@@ -238,18 +239,6 @@ return result;`
           onChange={(e) => onChange('timeoutMs', parseInt(e.target.value) || 30000)}
           style={inputStyle}
           placeholder='30000'
-        />
-      </div>
-
-      {/* Description */}
-      <div>
-        <label style={labelStyle}>Description</label>
-        <input
-          type="text"
-          value={data.description || ''}
-          onChange={(e) => onChange('description', e.target.value)}
-          style={inputStyle}
-          placeholder='What this code does...'
         />
       </div>
     </>

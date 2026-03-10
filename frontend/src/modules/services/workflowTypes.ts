@@ -137,6 +137,64 @@ export interface BaseNodeData {
 }
 
 // ============================================================================
+// Tool Node Base Types & Constants
+// ============================================================================
+
+/**
+ * Parameter schema for tool nodes — describes the parameters a tool accepts.
+ * Sent to LLM agents so they know how to call the tool.
+ */
+export interface ToolParameterSchema {
+  type: 'object'
+  properties?: Record<string, {
+    type: string
+    description?: string
+    default?: unknown
+    enum?: string[]
+  }>
+  required?: string[]
+}
+
+/**
+ * Base interface for all tool-like nodes.
+ *
+ * Every node that can be placed inside a ToolCallRouter or ChatAgent container
+ * must extend this interface. The `toolName` is the snake_case identifier that
+ * LLM agents use for tool-call routing.
+ */
+export interface BaseToolNodeData extends BaseNodeData {
+  /** Snake_case identifier for LLM tool-call routing (e.g. 'web_search', 'run_command') */
+  toolName: string
+  /** Human-readable description — shown to LLM agents for tool selection */
+  description?: string
+  /** Parameter schema — sent to LLM so it knows what arguments the tool accepts */
+  parameterSchema?: ToolParameterSchema
+}
+
+/** All node types that represent callable tools */
+export const TOOL_NODE_TYPES = [
+  'tool', 'mcp-tool', 'web-search', 'skill', 'api',
+  'command', 'code', 'claude-code', 'database-query',
+] as const
+
+export type ToolNodeType = typeof TOOL_NODE_TYPES[number]
+
+/** Node types allowed as children inside tool containers (tool-call-router, chat-agent) */
+export const TOOL_CONTAINER_CHILD_TYPES = [
+  ...TOOL_NODE_TYPES, 'tool-call-parser',
+] as const
+
+/** Check if a node type string is a tool node type */
+export function isToolNodeType(type: string): boolean {
+  return (TOOL_NODE_TYPES as readonly string[]).includes(type)
+}
+
+/** Check if a node type string is allowed as a tool container child */
+export function isToolContainerChildType(type: string): boolean {
+  return (TOOL_CONTAINER_CHILD_TYPES as readonly string[]).includes(type)
+}
+
+// ============================================================================
 // Node Docking Configuration
 // ============================================================================
 
@@ -432,7 +490,7 @@ export interface TransformerNodeData extends BaseNodeData {
   transform?: string
 }
 
-export interface ApiNodeData extends BaseNodeData {
+export interface ApiNodeData extends BaseToolNodeData {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
   url: string
   headers?: Record<string, string>
@@ -459,30 +517,12 @@ export interface ApiNodeData extends BaseNodeData {
  * - Shell command execution
  * - Data transformation via code
  */
-export interface ToolNodeData extends BaseNodeData {
+export interface ToolNodeData extends BaseToolNodeData {
   /** Tool type determines how the tool is invoked */
   toolType: 'function' | 'mcp' | 'http' | 'command' | 'code'
 
-  /** Tool name - for function/mcp types, this identifies the tool to call */
-  toolName: string
-
-  /** Description shown in the node and used for documentation */
-  description?: string
-
   /** Input parameters - template expressions supported */
   parameters?: Record<string, unknown>
-
-  /** Parameter schema for validation and UI generation */
-  parameterSchema?: {
-    type: 'object'
-    properties?: Record<string, {
-      type: string
-      description?: string
-      default?: unknown
-      enum?: string[]
-    }>
-    required?: string[]
-  }
 
   // === HTTP-specific fields (toolType: 'http') ===
   /** HTTP method (only for http type) */
@@ -910,7 +950,7 @@ export interface UserInputNodeData extends BaseNodeData {
  * - Output is captured and parsed
  * - Requires approval for sensitive operations
  */
-export interface CommandNodeData extends BaseNodeData {
+export interface CommandNodeData extends BaseToolNodeData {
   /** Command template (supports {{ }} expressions for arguments) */
   command: string
 
@@ -942,7 +982,7 @@ export interface CommandNodeData extends BaseNodeData {
  * Uses the connection system to select which database to query.
  * Supports SQL (PostgreSQL, MySQL, SQLite), MongoDB JSON queries, and Redis commands.
  */
-export interface DatabaseQueryNodeData extends BaseNodeData {
+export interface DatabaseQueryNodeData extends BaseToolNodeData {
   /** Reference to a saved database connection */
   connectionId: string
 
@@ -974,7 +1014,7 @@ export interface DatabaseQueryNodeData extends BaseNodeData {
  * Uses the connection system to configure which search provider to use.
  * Supports LangSearch (free), Brave Search, and Tavily.
  */
-export interface WebSearchNodeData extends BaseNodeData {
+export interface WebSearchNodeData extends BaseToolNodeData {
   /** Search query template (supports {{ }} expressions) */
   query: string
 
@@ -997,7 +1037,7 @@ export interface WebSearchNodeData extends BaseNodeData {
  * - Use file editing, command execution, and web tools
  * - Stream progress back to the workflow
  */
-export interface ClaudeCodeNodeData extends BaseNodeData {
+export interface ClaudeCodeNodeData extends BaseToolNodeData {
   /** Connection type and configuration */
   connection: {
     type: 'local' | 'ssh'
@@ -1096,7 +1136,7 @@ export interface WorkflowNodeData extends BaseNodeData {
  * Unlike the generic Tool node, this is specifically for MCP protocol
  * and supports MCP-specific features like resources and prompts.
  */
-export interface McpToolNodeData extends BaseNodeData {
+export interface McpToolNodeData extends BaseToolNodeData {
   /** Reference to MCP server connection from Connections Panel */
   connectionId?: string
 
@@ -1106,9 +1146,6 @@ export interface McpToolNodeData extends BaseNodeData {
     serverName?: string
     transport?: 'stdio' | 'http' | 'websocket'
   }
-
-  /** Tool name to execute */
-  toolName: string
 
   /** Parameter mapping (supports {{ }} expressions) */
   parameters: Record<string, string>
@@ -1126,7 +1163,7 @@ export interface McpToolNodeData extends BaseNodeData {
  * Skills are AI agent tasks: a .prmd prompt that orchestrates tool usage,
  * optionally bundled with executable scripts. Installed to .prompd/skills/.
  */
-export interface SkillNodeData extends BaseNodeData {
+export interface SkillNodeData extends BaseToolNodeData {
   /** Installed skill package name (e.g. "@prompd/code-review") */
   skillName: string
 
@@ -1156,7 +1193,7 @@ export interface SkillNodeData extends BaseNodeData {
  *
  * The previous_output is available as a variable (default name: 'input')
  */
-export interface CodeNodeData extends BaseNodeData {
+export interface CodeNodeData extends BaseToolNodeData {
   /** Programming language */
   language: 'typescript' | 'javascript' | 'python' | 'csharp'
 

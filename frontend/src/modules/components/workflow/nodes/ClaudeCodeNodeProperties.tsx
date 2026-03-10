@@ -6,6 +6,7 @@ import type { ClaudeCodeNodeData } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
 
+
 export interface ClaudeCodeNodePropertiesProps {
   data: ClaudeCodeNodeData
   onChange: (field: string, value: unknown) => void

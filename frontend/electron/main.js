@@ -5952,45 +5952,242 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
           }
         },
         // Agent LLM execution (for chat-agent nodes)
-        // Routes through executePrompt for single execution path
+        // Makes direct API calls to LLM providers with proper message formatting
+        // and native tool/function-calling support
         onPromptExecute: async (request) => {
           try {
-            console.log(`[Workflow Executor] Agent LLM request from node: ${request.nodeId}`)
+            const provider = request.provider || 'openai'
+            const model = request.model || 'gpt-4o'
+            const temperature = request.temperature ?? 0.7
 
-            // Format prompt with system message and conversation history
-            let fullPrompt = request.prompt + '\n\n'
-            for (const msg of request.messages) {
-              if (msg.role === 'user') {
-                fullPrompt += `User: ${msg.content}\n\n`
-              } else if (msg.role === 'assistant') {
-                fullPrompt += `Assistant: ${msg.content}\n\n`
+            console.log(`[Workflow Executor] Agent LLM call: provider=${provider} model=${model} tools=${request.tools?.length || 0} messages=${request.messages?.length || 0}`)
+
+            // Get API key
+            const config = await configManager.load()
+            const apiKey = config.apiKeys?.[provider]
+              || config.api_keys?.[provider]
+              || process.env[`${provider.toUpperCase()}_API_KEY`]
+
+            if (!apiKey) {
+              throw new Error(`No API key found for provider: ${provider}`)
+            }
+
+            // Provider endpoint configuration
+            const PROVIDER_ENDPOINTS = {
+              openai:     { url: 'https://api.openai.com/v1/chat/completions', format: 'openai' },
+              groq:       { url: 'https://api.groq.com/openai/v1/chat/completions', format: 'openai' },
+              mistral:    { url: 'https://api.mistral.ai/v1/chat/completions', format: 'openai' },
+              together:   { url: 'https://api.together.xyz/v1/chat/completions', format: 'openai' },
+              perplexity: { url: 'https://api.perplexity.ai/chat/completions', format: 'openai' },
+              deepseek:   { url: 'https://api.deepseek.com/v1/chat/completions', format: 'openai' },
+              google:     { url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', format: 'openai' },
+              anthropic:  { url: 'https://api.anthropic.com/v1/messages', format: 'anthropic' },
+              ollama:     { url: 'http://localhost:11434/api/chat', format: 'ollama' },
+            }
+
+            // Check for custom provider
+            let endpoint = PROVIDER_ENDPOINTS[provider]
+            if (!endpoint && config.custom_providers?.[provider]) {
+              const custom = config.custom_providers[provider]
+              endpoint = {
+                url: custom.base_url?.replace(/\/$/, '') + '/chat/completions',
+                format: custom.type === 'anthropic' ? 'anthropic' : 'openai',
               }
             }
-            fullPrompt += 'Assistant:'
+            if (!endpoint) {
+              // Fallback: assume OpenAI-compatible
+              endpoint = { url: `https://api.${provider}.com/v1/chat/completions`, format: 'openai' }
+            }
 
-            // Build .prmd content and route through executePrompt (single execution path)
-            const uniqueId = `agent-prompt-${Date.now()}`
-            const promptContent = [
-              '---',
-              `id: ${uniqueId}`,
-              'name: "Agent Prompt"',
-              'version: 0.0.1',
-              'description: "Chat agent LLM request"',
-              '---',
-              '',
-              fullPrompt
-            ].join('\n')
+            // Format native tool definitions for providers that support them
+            const formatToolsOpenAI = (tools) => {
+              if (!tools || tools.length === 0) return undefined
+              return tools.map(t => ({
+                type: 'function',
+                function: {
+                  name: t.name,
+                  description: t.description || '',
+                  parameters: t.parameters || { type: 'object', properties: {} },
+                },
+              }))
+            }
 
-            const response = await executorOptions.executePrompt(
-              promptContent,
-              {},
-              request.provider || 'openai',
-              request.model || 'gpt-4o'
-            )
+            const formatToolsAnthropic = (tools) => {
+              if (!tools || tools.length === 0) return undefined
+              return tools.map(t => ({
+                name: t.name,
+                description: t.description || '',
+                input_schema: t.parameters || { type: 'object', properties: {} },
+              }))
+            }
+
+            // Build request body based on provider format
+            let requestBody
+            let headers
+
+            if (endpoint.format === 'anthropic') {
+              // Anthropic Messages API
+              headers = {
+                'x-api-key': apiKey,
+                'Content-Type': 'application/json',
+                'anthropic-version': '2023-06-01',
+              }
+              requestBody = {
+                model,
+                max_tokens: 4096,
+                temperature,
+                system: request.prompt || undefined,
+                messages: (request.messages || []).map(msg => ({
+                  role: msg.role === 'user' ? 'user' : 'assistant',
+                  content: msg.content,
+                })),
+              }
+              const anthropicTools = formatToolsAnthropic(request.tools)
+              if (anthropicTools) {
+                requestBody.tools = anthropicTools
+              }
+            } else if (endpoint.format === 'ollama') {
+              // Ollama API
+              headers = { 'Content-Type': 'application/json' }
+              const messages = []
+              if (request.prompt) {
+                messages.push({ role: 'system', content: request.prompt })
+              }
+              messages.push(...(request.messages || []))
+              requestBody = {
+                model,
+                messages,
+                stream: false,
+                options: { temperature },
+              }
+            } else {
+              // OpenAI-compatible (OpenAI, Groq, Mistral, Together, etc.)
+              headers = {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+              }
+              const messages = []
+              if (request.prompt) {
+                messages.push({ role: 'system', content: request.prompt })
+              }
+              messages.push(...(request.messages || []))
+              requestBody = {
+                model,
+                messages,
+                max_tokens: 4096,
+                temperature,
+              }
+              const openaiTools = formatToolsOpenAI(request.tools)
+              if (openaiTools) {
+                requestBody.tools = openaiTools
+              }
+            }
+
+            // Make the API call
+            const https = require('https')
+            const http = require('http')
+            const urlModule = require('url')
+            const parsedUrl = urlModule.parse(endpoint.url)
+            const isHttps = parsedUrl.protocol === 'https:'
+            const httpModule = isHttps ? https : http
+
+            const apiResponse = await new Promise((resolve, reject) => {
+              const bodyStr = JSON.stringify(requestBody)
+              const reqOptions = {
+                method: 'POST',
+                hostname: parsedUrl.hostname,
+                port: parsedUrl.port || (isHttps ? 443 : 80),
+                path: parsedUrl.path,
+                headers: {
+                  ...headers,
+                  'Content-Length': Buffer.byteLength(bodyStr),
+                },
+              }
+
+              const req = httpModule.request(reqOptions, (res) => {
+                let data = ''
+                res.on('data', (chunk) => { data += chunk })
+                res.on('end', () => {
+                  if (res.statusCode >= 200 && res.statusCode < 300) {
+                    try {
+                      resolve(JSON.parse(data))
+                    } catch (e) {
+                      reject(new Error(`Invalid JSON response from ${provider}: ${data.slice(0, 200)}`))
+                    }
+                  } else {
+                    let errorMsg = `${provider} API returned HTTP ${res.statusCode}`
+                    try {
+                      const errData = JSON.parse(data)
+                      errorMsg += `: ${errData.error?.message || errData.error || JSON.stringify(errData).slice(0, 200)}`
+                    } catch {
+                      errorMsg += `: ${data.slice(0, 200)}`
+                    }
+                    reject(new Error(errorMsg))
+                  }
+                })
+              })
+
+              req.on('error', (err) => reject(new Error(`${provider} API request failed: ${err.message}`)))
+              req.setTimeout(120000, () => {
+                req.destroy()
+                reject(new Error(`${provider} API request timed out after 120s`))
+              })
+              req.write(bodyStr)
+              req.end()
+            })
+
+            // Parse response based on provider format
+            let responseContent
+            if (endpoint.format === 'anthropic') {
+              const contentBlocks = apiResponse.content || []
+              // Check for tool_use blocks (Anthropic native tool calling)
+              const toolUseBlocks = contentBlocks.filter(b => b.type === 'tool_use')
+              if (toolUseBlocks.length > 0) {
+                // Return structured response with tool_calls in OpenAI-compatible format
+                // so the CLI's parseToolCall can handle it
+                responseContent = {
+                  content: contentBlocks.filter(b => b.type === 'text').map(b => b.text).join(''),
+                  tool_calls: toolUseBlocks.map(b => ({
+                    function: {
+                      name: b.name,
+                      arguments: JSON.stringify(b.input || {}),
+                    },
+                  })),
+                }
+              } else {
+                responseContent = contentBlocks.map(b => b.text || '').join('')
+              }
+            } else if (endpoint.format === 'ollama') {
+              responseContent = apiResponse.message?.content || ''
+            } else {
+              // OpenAI-compatible
+              const choice = apiResponse.choices?.[0]
+              if (!choice) {
+                throw new Error(`No response choices returned from ${provider}`)
+              }
+              const message = choice.message
+              // If the model made tool calls, return the full message object
+              // so the CLI's parseToolCall can extract tool_calls
+              if (message.tool_calls && message.tool_calls.length > 0) {
+                responseContent = {
+                  content: message.content || '',
+                  tool_calls: message.tool_calls.map(tc => ({
+                    function: {
+                      name: tc.function?.name,
+                      arguments: tc.function?.arguments || '{}',
+                    },
+                  })),
+                }
+              } else {
+                responseContent = message.content || ''
+              }
+            }
+
+            console.log(`[Workflow Executor] Agent LLM response received (type=${typeof responseContent})`)
 
             return {
               success: true,
-              response: response || ''
+              response: responseContent,
             }
           } catch (err) {
             console.error('[Workflow Executor] onPromptExecute failed:', err)
@@ -6013,7 +6210,47 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
 
             // Handle HTTP requests
             if (request.toolType === 'http') {
-              const { method, url, headers, body } = request.httpConfig || {}
+              let { method, url, headers, body } = request.httpConfig || {}
+              const httpConnectionId = request.httpConfig?.connectionId
+
+              // Resolve http-api connection for baseUrl and auth headers
+              if (httpConnectionId) {
+                try {
+                  const { loadConnections } = require('./services/connectionStorage')
+                  const connResult = await loadConnections(currentWorkspacePath)
+                  const savedConnections = (connResult.success && connResult.connections) ? connResult.connections : []
+                  const httpConnection = savedConnections.find(c => c.id === httpConnectionId)
+
+                  if (httpConnection && httpConnection.type === 'http-api' && httpConnection.config) {
+                    const connConfig = httpConnection.config
+
+                    // Prepend baseUrl if the node URL is relative (no protocol)
+                    if (connConfig.baseUrl && url && !url.startsWith('http://') && !url.startsWith('https://')) {
+                      const base = connConfig.baseUrl.replace(/\/+$/, '')
+                      const path = url.startsWith('/') ? url : '/' + url
+                      url = base + path
+                      console.log(`[Workflow Executor] Resolved HTTP URL from connection: ${url}`)
+                    }
+
+                    // Merge auth headers from connection
+                    if (connConfig.headers && typeof connConfig.headers === 'object') {
+                      headers = { ...connConfig.headers, ...headers }
+                    }
+
+                    // Apply auth configuration
+                    if (connConfig.authType === 'bearer' && connConfig.authToken) {
+                      headers = { ...headers, 'Authorization': `Bearer ${connConfig.authToken}` }
+                    } else if (connConfig.authType === 'api-key' && connConfig.apiKeyHeader && connConfig.apiKeyValue) {
+                      headers = { ...headers, [connConfig.apiKeyHeader]: connConfig.apiKeyValue }
+                    } else if (connConfig.authType === 'basic' && connConfig.username && connConfig.password) {
+                      const credentials = Buffer.from(`${connConfig.username}:${connConfig.password}`).toString('base64')
+                      headers = { ...headers, 'Authorization': `Basic ${credentials}` }
+                    }
+                  }
+                } catch (connError) {
+                  console.warn('[Workflow Executor] Failed to resolve HTTP connection:', connError.message)
+                }
+              }
 
               if (!url) {
                 return {
@@ -6126,22 +6363,47 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               }
               let apiKey = connectionConfig?.apiKey || ''
 
-              // If the node has a connectionId, look up the connection from the workflow
-              if (request.nodeId && !connectionConfig) {
-                const workflowFile = workflow.file || workflow
-                const connections = workflowFile.connections || workflow.connections || []
-                const nodes = workflowFile.nodes || []
-                const node = nodes.find(n => n.id === request.nodeId)
-                if (node && node.data && node.data.connectionId) {
-                  const conn = connections.find(c => c.id === node.data.connectionId)
-                  if (conn && conn.config && conn.config.type === 'web-search') {
-                    provider = conn.config.provider || 'langsearch'
-                    apiKey = conn.config.apiKey || ''
+              // Resolve connection from connectionStorage (connections are stored globally, NOT in .pdflow files)
+              if (!connectionConfig || !connectionConfig.apiKey) {
+                try {
+                  const { loadConnections } = require('./services/connectionStorage')
+                  const connResult = await loadConnections(currentWorkspacePath)
+                  const savedConnections = (connResult.success && connResult.connections) ? connResult.connections : []
+
+                  // First try connectionId from webSearchConfig (agent tool path) or node data
+                  let connId = request.webSearchConfig?.connectionId
+                  if (!connId && request.nodeId) {
+                    const workflowFile = workflow.file || workflow
+                    const nodes = workflowFile.nodes || []
+                    const node = nodes.find(n => n.id === request.nodeId)
+                    if (node && node.data) {
+                      connId = node.data.connectionId
+                    }
                   }
+
+                  if (connId) {
+                    const conn = savedConnections.find(c => c.id === connId)
+                    if (conn && conn.config) {
+                      provider = conn.config.provider || provider
+                      apiKey = conn.config.apiKey || apiKey
+                    }
+                  }
+
+                  // Final fallback: use first web-search connection available
+                  if (!apiKey && savedConnections.length > 0) {
+                    const webSearchConn = savedConnections.find(c => c.type === 'web-search')
+                    if (webSearchConn && webSearchConn.config) {
+                      provider = webSearchConn.config.provider || 'langsearch'
+                      apiKey = webSearchConn.config.apiKey || ''
+                    }
+                  }
+                } catch (connErr) {
+                  console.error('[onToolCall:web-search] Failed to load connections:', connErr.message)
                 }
               }
 
-              // If no API key resolved from node data or connections, fall back to config resolution
+              // If no API key resolved from node data or connections, fall back to env/config resolution
+              // Priority: workspace .env > system env vars > config.yaml
               if (!apiKey) {
                 try {
                   const envVarMap = {
@@ -6150,12 +6412,34 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
                     tavily: 'TAVILY_API_KEY'
                   }
                   const envVar = envVarMap[provider]
-                  if (envVar && process.env[envVar]) {
+
+                  // 1. Check workspace .env file
+                  const wsPath = workflow.workspacePath || workflow.file?.workspacePath || currentWorkspacePath
+                  if (!apiKey && wsPath && envVar) {
+                    try {
+                      const fs = require('fs')
+                      const envFilePath = path.join(wsPath, '.env')
+                      if (fs.existsSync(envFilePath)) {
+                        const envContent = fs.readFileSync(envFilePath, 'utf-8')
+                        const match = envContent.match(new RegExp(`^${envVar}=(.+)$`, 'm'))
+                        if (match) {
+                          apiKey = match[1].trim().replace(/^["']|["']$/g, '')
+                        }
+                      }
+                    } catch (envErr) {
+                      // .env file not found or unreadable - continue to next fallback
+                    }
+                  }
+
+                  // 2. Check system environment variables
+                  if (!apiKey && envVar && process.env[envVar]) {
                     apiKey = process.env[envVar]
-                  } else {
+                  }
+
+                  // 3. Check ~/.prompd/config.yaml and workspace config
+                  if (!apiKey) {
                     const globalPath = getGlobalConfigPath()
                     let config = await readConfigFile(globalPath) || {}
-                    const wsPath = workflow.workspacePath || workflow.file?.workspacePath
                     if (wsPath) {
                       const localPath = getLocalConfigPath(wsPath)
                       const localConfig = await readConfigFile(localPath)
@@ -6388,10 +6672,16 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
                 return { success: false, error: 'Missing database configuration' }
               }
 
-              // Resolve connection from workflow connections
-              const workflowFile = workflow.file || workflow
-              const wfConnections = workflowFile.connections || workflow.connections || []
-              const dbConnection = wfConnections.find(c => c.id === dbConfig.connectionId)
+              // Resolve connection from connectionStorage (connections are stored globally, NOT in .pdflow files)
+              let dbConnection = null
+              try {
+                const { loadConnections } = require('./services/connectionStorage')
+                const connResult = await loadConnections(currentWorkspacePath)
+                const savedConnections = (connResult.success && connResult.connections) ? connResult.connections : []
+                dbConnection = savedConnections.find(c => c.id === dbConfig.connectionId)
+              } catch (connErr) {
+                console.error('[onToolCall:database-query] Failed to load connections:', connErr.message)
+              }
 
               if (!dbConnection) {
                 return { success: false, error: `Database connection not found: ${dbConfig.connectionId}` }
@@ -6684,10 +6974,16 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
                 const wfNodes = workflowFile.nodes || workflow.nodes || []
                 const node = wfNodes.find(n => n.id === request.nodeId)
                 if (node && node.data?.connectionId) {
-                  const wfConnections = workflowFile.connections || workflow.connections || []
-                  const mcpConn = wfConnections.find(c => c.id === node.data.connectionId)
-                  if (mcpConn && mcpConn.config) {
-                    serverName = mcpConn.config.serverName
+                  try {
+                    const { loadConnections } = require('./services/connectionStorage')
+                    const connResult = await loadConnections(currentWorkspacePath)
+                    const savedConnections = (connResult.success && connResult.connections) ? connResult.connections : []
+                    const mcpConn = savedConnections.find(c => c.id === node.data.connectionId)
+                    if (mcpConn && mcpConn.config) {
+                      serverName = mcpConn.config.serverName
+                    }
+                  } catch (connErr) {
+                    console.error('[onToolCall:mcp] Failed to load connections:', connErr.message)
                   }
                 }
               }

@@ -19,10 +19,10 @@
 import { memo, useCallback, useMemo, useEffect, useRef } from 'react'
 import { Handle, Position, NodeResizer, useReactFlow, useUpdateNodeInternals } from '@xyflow/react'
 import { Route, Wrench, ChevronDown, ChevronRight, CheckCircle, XCircle, Loader2 } from 'lucide-react'
-import type { ToolCallRouterNodeData, BaseNodeData, ToolNodeData, NodeExecutionStatus } from '../../../services/workflowTypes'
+import type { ToolCallRouterNodeData, BaseNodeData, BaseToolNodeData, NodeExecutionStatus } from '../../../services/workflowTypes'
+import { DOCKABLE_HANDLES, TOOL_CONTAINER_CHILD_TYPES } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { DockedNodePreview, useDockedNodes } from './DockedNodePreview'
-import { DOCKABLE_HANDLES } from '../../../services/workflowTypes'
 import { getNodeColor } from '../nodeColors'
 import { NodeExecutionFooter } from './NodeExecutionFooter'
 
@@ -81,17 +81,18 @@ export const ToolCallRouterNode = memo(({ id, data, selected }: ToolCallRouterNo
   const isToolRouterDockTarget = dockingState?.hoveredDockTarget?.nodeId === id &&
     (dockingState?.hoveredDockTarget?.handleId === 'toolResult' || dockingState?.hoveredDockTarget?.handleId === "ai-input")
 
-  // Count child Tool nodes (nodes with parentId === this node's id)
+  // Count child tool-like nodes (nodes with parentId === this node's id)
+  const toolContainerTypes = useMemo(() => new Set<string>(TOOL_CONTAINER_CHILD_TYPES), [])
   const childToolNodes = useMemo(() => {
-    return nodes.filter(n => n.parentId === id && n.type === 'tool')
-  }, [nodes, id])
+    return nodes.filter(n => n.parentId === id && toolContainerTypes.has(n.type || ''))
+  }, [nodes, id, toolContainerTypes])
 
   const childCount = childToolNodes.length
 
   // Collect tool names from child nodes for display
   const toolNames = useMemo(() => {
     return childToolNodes
-      .map(n => (n.data as ToolNodeData).toolName || (n.data as BaseNodeData).label)
+      .map(n => (n.data as BaseToolNodeData).toolName || (n.data as BaseNodeData).label)
       .filter(Boolean)
   }, [childToolNodes])
 

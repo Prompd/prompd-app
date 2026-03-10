@@ -3,9 +3,10 @@
  */
 
 import { useState, useCallback } from 'react'
-import { X, Server, Database, Globe, MessageSquare, Link2, RefreshCw, Settings, Search } from 'lucide-react'
+import { X, Server, Database, Globe, MessageSquare, Link2, RefreshCw, Settings, Search, Loader2, Check, AlertCircle } from 'lucide-react'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { McpServerSetupFlow } from './McpServerSetupFlow'
+import { testConnection } from './ConnectionSettingsDialog'
 import type {
   WorkflowConnectionType,
   WorkflowConnectionConfig,
@@ -665,10 +666,39 @@ export function AddConnectionDialog({ onClose, initialType }: AddConnectionDialo
 
   const addConnection = useWorkflowStore(state => state.addConnection)
 
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
+  const [testMessage, setTestMessage] = useState('')
+
+  const handleTestConnection = useCallback(async () => {
+    if (!selectedType) return
+    setTestStatus('testing')
+    setTestMessage('')
+    try {
+      const tempConnection = {
+        id: 'test-temp',
+        name: name.trim() || 'Test',
+        type: selectedType,
+        status: 'disconnected' as const,
+        scope,
+        config: { ...config, type: selectedType } as WorkflowConnectionConfig,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      const result = await testConnection(tempConnection)
+      setTestStatus(result.success ? 'success' : 'error')
+      setTestMessage(result.message)
+    } catch (err) {
+      setTestStatus('error')
+      setTestMessage(err instanceof Error ? err.message : 'Test failed')
+    }
+  }, [selectedType, name, config, scope])
+
   const handleSelectType = useCallback((type: WorkflowConnectionType) => {
     setSelectedType(type)
     setConfig({ type } as Partial<WorkflowConnectionConfig>)
     setStep('config')
+    setTestStatus('idle')
+    setTestMessage('')
   }, [])
 
   const handleCreate = useCallback(() => {
@@ -901,7 +931,7 @@ export function AddConnectionDialog({ onClose, initialType }: AddConnectionDialo
         </div>
 
         {/* Footer — hidden for MCP (setup flow has its own buttons) */}
-        {selectedType !== 'mcp-server' && (
+        {selectedType !== 'mcp-server' && (<>
           <div style={footerStyle}>
             {step === 'config' && !initialType && (
               <button
@@ -928,22 +958,64 @@ export function AddConnectionDialog({ onClose, initialType }: AddConnectionDialo
               Cancel
             </button>
             {step === 'config' && (
-              <button
-                onClick={handleCreate}
-                disabled={!isValid}
-                style={{
-                  ...buttonStyle,
-                  background: isValid ? 'var(--accent)' : 'var(--muted)',
-                  color: 'white',
-                  opacity: isValid ? 1 : 0.5,
-                  cursor: isValid ? 'pointer' : 'not-allowed',
-                }}
-              >
-                Create Connection
-              </button>
+              <>
+                <button
+                  onClick={handleTestConnection}
+                  disabled={testStatus === 'testing'}
+                  style={{
+                    ...buttonStyle,
+                    background: 'transparent',
+                    color: testStatus === 'success'
+                      ? 'var(--success, #10b981)'
+                      : testStatus === 'error'
+                        ? 'var(--error, #ef4444)'
+                        : 'var(--text-secondary)',
+                    border: `1px solid ${
+                      testStatus === 'success'
+                        ? 'var(--success, #10b981)'
+                        : testStatus === 'error'
+                          ? 'var(--error, #ef4444)'
+                          : 'var(--border)'
+                    }`,
+                    cursor: testStatus === 'testing' ? 'wait' : 'pointer',
+                  }}
+                >
+                  {testStatus === 'testing' && <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />}
+                  {testStatus === 'success' && <Check size={14} />}
+                  {testStatus === 'error' && <AlertCircle size={14} />}
+                  {testStatus === 'testing' ? 'Testing...' : testStatus === 'success' ? 'Connected' : testStatus === 'error' ? 'Failed' : 'Test Connection'}
+                </button>
+                <button
+                  onClick={handleCreate}
+                  disabled={!isValid}
+                  style={{
+                    ...buttonStyle,
+                    background: isValid ? 'var(--accent)' : 'var(--muted)',
+                    color: 'white',
+                    opacity: isValid ? 1 : 0.5,
+                    cursor: isValid ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  Create Connection
+                </button>
+              </>
             )}
           </div>
-        )}
+          {/* Test result message */}
+          {step === 'config' && testMessage && (
+            <div style={{
+              padding: '8px 20px 12px',
+              fontSize: '12px',
+              color: testStatus === 'success' ? 'var(--success, #10b981)' : 'var(--error, #ef4444)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}>
+              {testStatus === 'success' ? <Check size={12} /> : <AlertCircle size={12} />}
+              {testMessage}
+            </div>
+          )}
+        </>)}
       </div>
     </div>
   )

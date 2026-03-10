@@ -48,6 +48,8 @@ import { registryApi, type RegistryPackage } from '../../services/registryApi'
 import { ErrorHandlerSelector } from './shared/property-components/ErrorHandlerSelector'
 import { ConnectionSelector } from './shared/property-components/ConnectionSelector'
 import { labelStyle, inputStyle } from './shared/styles/propertyStyles'
+import { ToolIdentityFields } from './nodes/ToolIdentityFields'
+import { isToolNodeType } from '../../services/workflowTypes'
 import type {
   BaseNodeData,
   PromptNodeData,
@@ -77,6 +79,7 @@ import type {
   WebSearchNodeData,
   DatabaseQueryNodeData,
   SkillNodeData,
+  ApiNodeData,
 } from '../../services/workflowTypes'
 
 // Import all property editors from node files
@@ -107,6 +110,7 @@ import { GuardrailNodeProperties } from './nodes/GuardrailNode'
 import { WebSearchNodeProperties } from './nodes/WebSearchNode'
 import { DatabaseQueryNodeProperties } from './nodes/DatabaseQueryNode'
 import { SkillNodeProperties } from './nodes/SkillNodeProperties'
+import { ApiNodeProperties } from './nodes/ApiNodeProperties'
 // --- Add new node property imports here ---
 
 export function WorkflowPropertiesPanel() {
@@ -452,11 +456,20 @@ export function WorkflowPropertiesPanel() {
           currentNodeType={selectedNode.type || ''}
         />
 
-        {/* Connection Selector - shows for nodes that can use external connections */}
-        {['tool', 'api', 'agent'].includes(selectedNode.type || '') && (
-          <ConnectionSelector
-            connectionId={(selectedNode.data as BaseNodeData).connectionId}
-            onConnectionChange={(connId) => handleDataChange('connectionId', connId)}
+        {/* Connection Selector - auto-filters by node type via internal mapping */}
+        <ConnectionSelector
+          connectionId={(selectedNode.data as BaseNodeData).connectionId}
+          onConnectionChange={(connId) => handleDataChange('connectionId', connId)}
+          nodeType={selectedNode.type}
+        />
+
+        {/* Tool Identity fields - shown for tool-like nodes (except tool/mcp-tool which have custom handling) */}
+        {isToolNodeType(selectedNode.type || '') && selectedNode.type !== 'tool' && selectedNode.type !== 'mcp-tool' && (
+          <ToolIdentityFields
+            toolName={(selectedNode.data as { toolName?: string }).toolName || ''}
+            description={(selectedNode.data as { description?: string }).description || ''}
+            onToolNameChange={(value) => handleDataChange('toolName', value)}
+            onDescriptionChange={(value) => handleDataChange('description', value)}
           />
         )}
 
@@ -542,6 +555,13 @@ export function WorkflowPropertiesPanel() {
             data={selectedNode.data as ToolNodeData}
             onChange={handleDataChange}
             onExpandEditor={handleExpandEditor}
+          />
+        )}
+
+        {selectedNode.type === 'api' && (
+          <ApiNodeProperties
+            data={selectedNode.data as ApiNodeData}
+            onChange={handleDataChange}
           />
         )}
 

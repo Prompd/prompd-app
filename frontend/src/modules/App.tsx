@@ -5497,15 +5497,7 @@ version: 1.0.0
             }}
 
             onNewPrompt={() => {
-              const newTab: Tab = {
-                id: 'wizard-' + Date.now(),
-                name: 'untitled.prmd',
-                text: '',
-                dirty: false,
-                viewMode: 'wizard'
-              }
-              addTab(newTab)
-              setMode('wizard')
+              setShowNewFileDialog(true)
               // User took the action we were hinting at - dismiss the hint
               markHintSeen('getting-started')
             }}

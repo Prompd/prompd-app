@@ -1,13 +1,13 @@
 /**
  * WebSearchNodeProperties - Property editor for Web Search nodes
  *
- * Provides inline provider configuration (LangSearch/Brave/Tavily) directly on the node,
- * with optional connection override via the Connections panel.
+ * When a web-search connection is selected (via the common ConnectionSelector),
+ * provider and API key come from the connection. Otherwise shows inline config.
  */
 
 import type { WebSearchNodeData } from '../../../services/workflowTypes'
+import { useConnection } from '../shared/hooks/useNodeConnections'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
-import { ConnectionSelector } from '../shared/property-components/ConnectionSelector'
 
 export interface WebSearchNodePropertiesProps {
   data: WebSearchNodeData
@@ -21,44 +21,52 @@ const PROVIDER_INFO: Record<string, { label: string; needsApiKey: boolean; descr
   tavily: { label: 'Tavily', needsApiKey: true, description: 'AI-optimized search API (requires API key)' },
 }
 
-export function WebSearchNodeProperties({ data, onChange, nodeId }: WebSearchNodePropertiesProps) {
+export function WebSearchNodeProperties({ data, onChange }: WebSearchNodePropertiesProps) {
+  const connection = useConnection(data.connectionId)
+  const hasConnection = !!connection
+
   const provider = data.provider || 'langsearch'
   const providerInfo = PROVIDER_INFO[provider]
 
   return (
     <>
-      {/* Search Provider */}
-      <div>
-        <label style={labelStyle}>Search Provider</label>
-        <select
-          value={provider}
-          onChange={(e) => onChange('provider', e.target.value)}
-          style={selectStyle}
-        >
-          <option value="langsearch">LangSearch (Free)</option>
-          <option value="brave">Brave Search</option>
-          <option value="tavily">Tavily</option>
-        </select>
-        <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-          {providerInfo?.description}
-        </div>
-      </div>
+      {/* Inline provider config - only when no connection is selected */}
+      {!hasConnection && (
+        <>
+          {/* Search Provider */}
+          <div>
+            <label style={labelStyle}>Search Provider</label>
+            <select
+              value={provider}
+              onChange={(e) => onChange('provider', e.target.value)}
+              style={selectStyle}
+            >
+              <option value="langsearch">LangSearch (Free)</option>
+              <option value="brave">Brave Search</option>
+              <option value="tavily">Tavily</option>
+            </select>
+            <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+              {providerInfo?.description}
+            </div>
+          </div>
 
-      {/* API Key (Brave/Tavily only) */}
-      {providerInfo?.needsApiKey && (
-        <div>
-          <label style={labelStyle}>API Key</label>
-          <input
-            type="password"
-            value={data.apiKey || ''}
-            onChange={(e) => onChange('apiKey', e.target.value)}
-            style={inputStyle}
-            placeholder={provider === 'brave' ? 'Brave API key' : provider === 'langsearch' ? 'LangSearch API key' : 'Tavily API key'}
-          />
-        </div>
+          {/* API Key */}
+          {providerInfo?.needsApiKey && (
+            <div>
+              <label style={labelStyle}>API Key</label>
+              <input
+                type="password"
+                value={data.apiKey || ''}
+                onChange={(e) => onChange('apiKey', e.target.value)}
+                style={inputStyle}
+                placeholder={provider === 'brave' ? 'Brave API key' : provider === 'langsearch' ? 'LangSearch API key' : 'Tavily API key'}
+              />
+            </div>
+          )}
+        </>
       )}
 
-      {/* Search Query */}
+      {/* Search Query - always visible */}
       <div>
         <label style={labelStyle}>Search Query</label>
         <textarea
@@ -72,7 +80,7 @@ export function WebSearchNodeProperties({ data, onChange, nodeId }: WebSearchNod
         </div>
       </div>
 
-      {/* Max Results */}
+      {/* Max Results - always visible */}
       <div>
         <label style={labelStyle}>Max Results</label>
         <input
@@ -85,14 +93,6 @@ export function WebSearchNodeProperties({ data, onChange, nodeId }: WebSearchNod
           placeholder='5'
         />
       </div>
-
-      {/* Optional: Connection override */}
-      <ConnectionSelector
-        connectionId={data.connectionId}
-        onConnectionChange={(connectionId) => onChange('connectionId', connectionId)}
-        connectionTypes={['web-search']}
-        label="Connection Override"
-      />
     </>
   )
 }
