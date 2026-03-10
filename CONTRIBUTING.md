@@ -16,8 +16,8 @@ The project is a monorepo with local packages that must be built in order:
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/Prompd/prompd.app.git
-cd prompd.app
+git clone https://github.com/prompd/prompd-app.git
+cd prompd-app
 
 # 2. Build @prompd/scheduler (required by frontend)
 cd packages/scheduler && npm install && npm run build
@@ -97,7 +97,7 @@ For detailed architecture, see [CLAUDE.md](CLAUDE.md).
 
 ## Reporting Issues
 
-- Use [GitHub Issues](https://github.com/Prompd/prompd.app/issues)
+- Use [GitHub Issues](https://github.com/prompd/prompd-app/issues)
 - Include steps to reproduce, expected vs actual behavior
 - For security vulnerabilities, email security@prompd.app instead of opening a public issue
 

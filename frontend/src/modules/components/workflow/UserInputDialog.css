@@ -131,7 +131,7 @@
 }
 
 .uid-context-content {
-  max-height: 240px;
+  max-height: 50vh;
   overflow-y: auto;
 }
 

@@ -13,16 +13,19 @@ import { memo, useMemo } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import { Bot, CheckCircle, XCircle, Loader2, Wrench, RotateCcw, Cpu, Activity, ArrowDownLeft } from 'lucide-react'
 import type { AgentNodeData, BaseNodeData, ProviderNodeData, WorkflowNodeType } from '../../../services/workflowTypes'
+import { DOCKABLE_HANDLES, TOOL_CONTAINER_CHILD_TYPES } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { DockedNodePreview, useDockedNodes } from './DockedNodePreview'
 import { ToolRouterDockPreview } from './ToolRouterDockPreview'
-import { DOCKABLE_HANDLES } from '../../../services/workflowTypes'
 import { getNodeColor } from '../nodeColors'
 import { NodeExecutionFooter } from './NodeExecutionFooter'
 
 // Handle style constants
 const handleSize = 12
 const handleBorder = '2px solid var(--panel)'
+
+// Set of tool container child types for filtering
+const toolContainerTypeSet = new Set<string>(TOOL_CONTAINER_CHILD_TYPES)
 
 /** Get provider info from providerNodeId reference */
 function useProviderReference(providerNodeId: string | undefined): {
@@ -62,8 +65,8 @@ function useConnectedToolsCount(nodeId: string): number {
       // If connected to a ToolCallRouter, count its child tool nodes
       const targetNode = nodes.find(n => n.id === toolsEdge.target)
       if (targetNode?.type === 'tool-call-router') {
-        // Count tool nodes inside the router
-        return nodes.filter(n => n.parentId === toolsEdge.target && n.type === 'tool').length
+        // Count tool-like nodes inside the router
+        return nodes.filter(n => n.parentId === toolsEdge.target && toolContainerTypeSet.has(n.type || '')).length
       }
     }
 
@@ -73,7 +76,7 @@ function useConnectedToolsCount(nodeId: string): number {
     )
     return directToolEdges.filter(e => {
       const sourceNode = nodes.find(n => n.id === e.source)
-      return sourceNode?.type === 'tool'
+      return toolContainerTypeSet.has(sourceNode?.type || '')
     }).length
   }, [edges, nodes, nodeId])
 }
@@ -151,8 +154,8 @@ export const AgentNode = memo(({ id, data, selected }: AgentNodeProps) => {
     const dockedRouter = dockedToAiOutput.find(n => n.type === 'tool-call-router')
     if (!dockedRouter) return 0
 
-    // Count Tool nodes that are children of the docked router
-    return nodes.filter(n => n.parentId === dockedRouter.id && n.type === 'tool').length
+    // Count tool-like nodes that are children of the docked router
+    return nodes.filter(n => n.parentId === dockedRouter.id && toolContainerTypeSet.has(n.type || '')).length
   }, [dockedToAiOutput, nodes])
 
   // Check if this handle is being targeted for docking

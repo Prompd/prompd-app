@@ -17,6 +17,7 @@ import type {
   LoopNodeData,
   ParallelNodeData,
   AgentNodeData,
+  ApiNodeData,
   BaseNodeData,
 } from './workflowTypes'
 
@@ -142,7 +143,9 @@ function validateNode(node: WorkflowNode, workflow: WorkflowFile): WorkflowValid
     case 'agent':
       errors.push(...validateAgentNode(node))
       break
-    // Add more node type validations as needed
+    case 'api':
+      errors.push(...validateApiNode(node))
+      break
   }
 
   // Validate container nodes have proper children
@@ -304,6 +307,33 @@ function validateAgentNode(node: WorkflowNode): WorkflowValidationError[] {
       nodeId: node.id,
       message: `Agent '${data.label || node.id}' has no model configured. Select an LLM provider and model in the properties panel, or connect to a Provider node.`,
       code: 'MISSING_AGENT_MODEL',
+    })
+  }
+
+  return errors
+}
+
+/**
+ * Validate API node
+ */
+function validateApiNode(node: WorkflowNode): WorkflowValidationError[] {
+  const errors: WorkflowValidationError[] = []
+  const data = node.data as ApiNodeData
+
+  // API node needs either a URL or a connection providing a base URL
+  if (!data.url && !data.connectionId) {
+    errors.push({
+      nodeId: node.id,
+      message: `API node '${data.label || node.id}' has no URL configured. Set a URL or select an HTTP connection.`,
+      code: 'MISSING_API_URL',
+    })
+  }
+
+  if (!data.method) {
+    errors.push({
+      nodeId: node.id,
+      message: `API node '${data.label || node.id}' has no HTTP method configured.`,
+      code: 'MISSING_API_METHOD',
     })
   }
 

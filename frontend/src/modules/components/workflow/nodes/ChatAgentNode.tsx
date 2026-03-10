@@ -23,9 +23,9 @@ import {
 } from 'lucide-react'
 import { ContainerNode } from './ContainerNode'
 import type { ChatAgentNodeData, BaseNodeData, ProviderNodeData, WorkflowNodeType } from '../../../services/workflowTypes'
+import { DOCKABLE_HANDLES, TOOL_CONTAINER_CHILD_TYPES } from '../../../services/workflowTypes'
 import { useWorkflowStore } from '../../../../stores/workflowStore'
 import { DockedNodePreview, useDockedNodes } from './DockedNodePreview'
-import { DOCKABLE_HANDLES } from '../../../services/workflowTypes'
 
 /** Get provider info from providerNodeId reference */
 function useProviderReference(providerNodeId: string | undefined): {
@@ -100,10 +100,11 @@ export const ChatAgentNode = memo(({ id, data, selected }: ChatAgentNodeProps) =
     return nodes.filter(n => n.parentId === id).length
   }, [nodes, id])
 
-  // Count child Tool nodes specifically
+  // Count child tool-like nodes (tool, mcp-tool, web-search, skill, etc.)
+  const toolContainerTypes = useMemo(() => new Set<string>(TOOL_CONTAINER_CHILD_TYPES), [])
   const childToolCount = useMemo(() => {
-    return nodes.filter(n => n.parentId === id && n.type === 'tool').length
-  }, [nodes, id])
+    return nodes.filter(n => n.parentId === id && toolContainerTypes.has(n.type || '')).length
+  }, [nodes, id, toolContainerTypes])
 
   // Count tools: inline tools (data.tools) + child Tool nodes
   const inlineToolCount = nodeData.tools?.length || 0

@@ -5,6 +5,7 @@
 import type { CommandNodeData } from '../../../services/workflowTypes'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
 
+
 export interface CommandNodePropertiesProps {
   data: CommandNodeData
   onChange: (field: string, value: unknown) => void

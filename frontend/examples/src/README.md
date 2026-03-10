@@ -443,7 +443,7 @@ Found an issue or want to improve these examples? Contributions welcome!
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+Elastic License 2.0 (ELv2) - see [LICENSE](LICENSE) file for details.
 
 ---
 

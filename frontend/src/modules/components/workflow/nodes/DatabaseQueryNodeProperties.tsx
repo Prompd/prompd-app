@@ -12,8 +12,9 @@ import { Maximize2 } from 'lucide-react'
 import type { DatabaseQueryNodeData, DatabaseConnectionConfig } from '../../../services/workflowTypes'
 import { useUIStore } from '../../../../stores/uiStore'
 import { useConnection } from '../shared/hooks/useNodeConnections'
-import { ConnectionSelector } from '../shared/property-components/ConnectionSelector'
+
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
+
 import { getMonacoTheme } from '../../../lib/monacoConfig'
 
 export interface DatabaseQueryNodePropertiesProps {
@@ -98,14 +99,6 @@ export function DatabaseQueryNodeProperties({ data, onChange, onExpandEditor }: 
 
   return (
     <>
-      {/* Connection */}
-      <ConnectionSelector
-        connectionId={data.connectionId}
-        onConnectionChange={(id) => onChange('connectionId', id || '')}
-        connectionTypes={['database']}
-        label="Database Connection"
-      />
-
       {/* Query Type */}
       <div>
         <label style={labelStyle}>Query Type</label>
@@ -243,18 +236,6 @@ export function DatabaseQueryNodeProperties({ data, onChange, onExpandEditor }: 
           onChange={(e) => onChange('timeoutMs', parseInt(e.target.value) || 30000)}
           style={inputStyle}
           placeholder="30000"
-        />
-      </div>
-
-      {/* Description */}
-      <div>
-        <label style={labelStyle}>Description</label>
-        <input
-          type="text"
-          value={data.description || ''}
-          onChange={(e) => onChange('description', e.target.value)}
-          style={inputStyle}
-          placeholder="What this query does..."
         />
       </div>
     </>

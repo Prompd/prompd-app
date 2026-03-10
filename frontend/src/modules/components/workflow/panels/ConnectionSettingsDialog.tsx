@@ -139,7 +139,7 @@ const buttonStyle: React.CSSProperties = {
 // Test Connection Function
 // ============================================================================
 
-async function testConnection(connection: WorkflowConnection): Promise<{ success: boolean; message: string }> {
+export async function testConnection(connection: WorkflowConnection): Promise<{ success: boolean; message: string }> {
   // Simulate connection test based on type
   // In production, this would use Electron IPC or backend API
   const config = connection.config

@@ -331,6 +331,8 @@ export function createWorkflowNode(
         position,
         data: {
           ...baseData,
+          toolName: 'api_request',
+          description: 'Make an HTTP API request',
           method: 'GET',
           url: '',
         },
@@ -488,6 +490,8 @@ export function createWorkflowNode(
         position,
         data: {
           ...baseData,
+          toolName: 'run_command',
+          description: 'Run a shell command',
           command: '',
           args: [],
           cwd: '',
@@ -504,6 +508,8 @@ export function createWorkflowNode(
         position,
         data: {
           ...baseData,
+          toolName: 'web_search',
+          description: 'Search the web',
           query: '',
           resultCount: 5,
           provider: 'langsearch',
@@ -516,6 +522,8 @@ export function createWorkflowNode(
         position,
         data: {
           ...baseData,
+          toolName: 'claude_code',
+          description: 'Run Claude Code agent',
           connection: {
             type: 'local',
           },
@@ -555,6 +563,7 @@ export function createWorkflowNode(
         data: {
           ...baseData,
           toolName: '',
+          description: '',
           parameters: {},
           timeoutMs: 30000,
           includeInContext: false,
@@ -567,6 +576,8 @@ export function createWorkflowNode(
         position,
         data: {
           ...baseData,
+          toolName: 'run_code',
+          description: 'Execute code',
           language: 'typescript',
           code: '',
           inputVariable: 'input',
@@ -605,6 +616,8 @@ export function createWorkflowNode(
         position,
         data: {
           ...baseData,
+          toolName: 'database_query',
+          description: 'Query a database',
           connectionId: '',
           queryType: 'select',
           query: '',
@@ -612,7 +625,6 @@ export function createWorkflowNode(
           collection: '',
           maxRows: 1000,
           timeoutMs: 30000,
-          description: '',
         },
       }
     case 'node-group':
@@ -634,6 +646,8 @@ export function createWorkflowNode(
         position,
         data: {
           ...baseData,
+          toolName: 'skill',
+          description: '',
           skillName: '',
           skillVersion: '',
           skillPath: '',
@@ -863,11 +877,11 @@ function validateNodeData(
       break
 
     case 'api':
-      if (!('url' in node.data) || !node.data.url) {
+      if ((!('url' in node.data) || !node.data.url) && !node.data.connectionId) {
         errors.push({
           nodeId: node.id,
           field: 'url',
-          message: 'API node missing URL',
+          message: 'API node missing URL or HTTP connection',
           code: 'MISSING_API_URL',
         })
       }

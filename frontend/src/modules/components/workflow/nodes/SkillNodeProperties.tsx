@@ -12,6 +12,7 @@ import { useInstalledSkills } from '../../../hooks'
 import type { InstalledSkill } from '../../../hooks'
 import { labelStyle, inputStyle, selectStyle } from '../shared/styles/propertyStyles'
 
+
 export interface SkillNodePropertiesProps {
   data: SkillNodeData
   onChange: (field: string, value: unknown) => void

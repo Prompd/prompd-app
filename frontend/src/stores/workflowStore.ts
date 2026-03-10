@@ -16,6 +16,9 @@ import {
   type EdgeChange,
   type Connection,
 } from '@xyflow/react'
+import {
+  TOOL_CONTAINER_CHILD_TYPES,
+} from '@/modules/services/workflowTypes'
 import type {
   WorkflowFile,
   WorkflowNode,
@@ -104,8 +107,9 @@ function cloneEdges(edges: WorkflowCanvasEdge[]): WorkflowCanvasEdge[] {
 // Container node types that can have children
 const CONTAINER_TYPES = ['loop', 'parallel', 'tool-call-router', 'chat-agent', 'node-group']
 
-// Node types that can be dropped into tool-call-router
-const TOOL_ROUTER_ALLOWED_CHILDREN = ['tool', 'tool-call-parser']
+// Node types that can be dropped into tool-call-router and chat-agent containers
+// (imported from workflowTypes.ts as TOOL_CONTAINER_CHILD_TYPES)
+const TOOL_ROUTER_ALLOWED_CHILDREN: readonly string[] = TOOL_CONTAINER_CHILD_TYPES
 
 // Default dimensions for container nodes
 const DEFAULT_CONTAINER_WIDTH = 300
@@ -416,6 +420,8 @@ interface WorkflowStoreState {
   checkpoints: CheckpointEvent[]
   promptsSent: PromptSentInfo[]
   executionHistory: ExecutionHistoryEntry[]
+  /** ID of the history entry currently being viewed (null = latest/live execution) */
+  viewingHistoryId: string | null
 
   // UI state
   isDirty: boolean
@@ -559,10 +565,11 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
     checkpoints: [],
     promptsSent: [],
     executionHistory: [],
+    viewingHistoryId: null,
     isDirty: false,
     isExecuting: false,
-    showMinimap: true,
-    showGrid: true,
+    showMinimap: false,
+    showGrid: false,
     toolbarDockPosition: 'top',
     dragState: null,
     dockingState: null,
@@ -591,6 +598,7 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         state.executionState = null
         state.executionResult = null
         state.executionHistory = []
+        state.viewingHistoryId = null
         state.checkpoints = []
         state.promptsSent = []
         state.contextMenu = null
@@ -2584,6 +2592,7 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
     setExecutionResult: (result) => {
       set(state => {
         state.executionResult = result
+        state.viewingHistoryId = null // New live result — clear history selection
       })
     },
 
@@ -2605,12 +2614,14 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
         state.checkpoints = []
         state.promptsSent = []
         state.executionState = null
+        state.viewingHistoryId = null
       })
     },
 
     addToExecutionHistory: (entry) => {
       set(state => {
         state.executionHistory.unshift(entry)
+        state.viewingHistoryId = entry.id // Mark the new entry as currently viewed
         if (state.executionHistory.length > 50) {
           state.executionHistory = state.executionHistory.slice(0, 50)
         }
@@ -2625,6 +2636,7 @@ export const useWorkflowStore = create<WorkflowStoreState>()(
           draft.executionResult = entry.result
           draft.checkpoints = entry.checkpoints
           draft.promptsSent = entry.promptsSent
+          draft.viewingHistoryId = id
         })
       }
     },

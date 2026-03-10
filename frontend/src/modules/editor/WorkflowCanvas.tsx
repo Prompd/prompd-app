@@ -1188,6 +1188,27 @@ function WorkflowCanvasInner({ content, activeTabId, onChange, readOnly = false,
 
     if (parsed.errors.length > 0) {
       console.error('Workflow has errors:', parsed.errors)
+      // Push parse errors to the build/errors panel
+      const currentTab = activeTabId ? tabs.find(t => t.id === activeTabId) : null
+      const fileName = currentTab?.name || workflowFile?.metadata?.name || 'Workflow'
+      const buildErrors = parsed.errors.map((error: { nodeId?: string; message: string }) => {
+        const nodeLabel = error.nodeId
+          ? nodes.find(n => n.id === error.nodeId)?.data?.label || error.nodeId
+          : undefined
+        return {
+          file: fileName,
+          message: nodeLabel ? `Node '${nodeLabel}': ${error.message}` : error.message,
+          line: undefined,
+          column: undefined,
+        }
+      })
+      setBuildOutput({
+        status: 'error',
+        message: `Workflow has ${parsed.errors.length} error${parsed.errors.length > 1 ? 's' : ''} — fix before running`,
+        errors: buildErrors,
+        timestamp: Date.now(),
+      })
+      setShowBuildPanel(true)
       return
     }
 

@@ -17,7 +17,7 @@
     "cron"
   ],
   "author": "Prompd Team",
-  "license": "MIT",
+  "license": "Elastic-2.0",
   "dependencies": {
     "@prompd/scheduler": "file:../packages/scheduler",
     "express": "^4.18.2",

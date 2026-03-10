@@ -721,7 +721,7 @@ export default function AiChatPanel({
             <PrompdIcon size={40} />
           </div>
           <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--prompd-text)' }}>
-            Prompd Agent
+            Hi, I'm Fox!
           </h2>
           <p className="max-w-md mx-auto mb-4" style={{ color: 'var(--prompd-muted)' }}>
             {hasOpenFile

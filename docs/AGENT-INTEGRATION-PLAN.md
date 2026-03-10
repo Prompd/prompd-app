@@ -1,4 +1,6 @@
-# Prompd Agent Integration Architecture
+# Fox Integration Architecture
+
+> **Fox** — *Friendly Orchestration eXecution Agent*
 
 ## Overview
 
