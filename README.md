@@ -158,7 +158,6 @@ At minimum, you need one LLM provider API key (e.g., Anthropic or OpenAI) config
 
 ## Documentation
 
-- [CLAUDE-ARCHITECTURE.md](CLAUDE-ARCHITECTURE.md) - Deep architecture reference (node types, state management, execution model)
 - [CONTRIBUTING.md](CONTRIBUTING.md) - How to contribute
 - [docs/editor.md](docs/editor.md) - Editor features and usage
 - [frontend/ELECTRON.md](frontend/ELECTRON.md) - Build and distribution
