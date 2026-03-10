@@ -129,7 +129,7 @@ function buildMenus(ms: MenuState): MenuDef[] {
         { label: 'Install Dependencies...', enabled: ms.hasWorkspace, action: () => api.triggerMenuAction('menu-run-install') },
         { label: 'Install Package...', action: () => api.triggerMenuAction('menu-package-install') },
         { type: 'separator' },
-        { label: 'Browse Registry', action: () => api.openExternal('https://www.prompdhub.ai') },
+        { label: 'Browse Registry', action: () => api.openExternal('https://prompdhub.ai') },
       ]
     },
     {
