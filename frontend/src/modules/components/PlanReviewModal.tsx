@@ -7,6 +7,7 @@
  */
 
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ClipboardList, PenLine, Shield, Zap, X } from 'lucide-react'
 import MarkdownPreview from './MarkdownPreview'
 
@@ -21,11 +22,11 @@ export default function PlanReviewModal({ content, onRefine, onApply, onCancel }
   const [showRefineInput, setShowRefineInput] = useState(false)
   const [refineFeedback, setRefineFeedback] = useState('')
 
-  return (
+  return createPortal(
     <div style={{
       position: 'fixed',
       inset: 0,
-      zIndex: 2000,
+      zIndex: 10000,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -268,6 +269,7 @@ export default function PlanReviewModal({ content, onRefine, onApply, onCancel }
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

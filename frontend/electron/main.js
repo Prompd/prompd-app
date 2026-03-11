@@ -2417,15 +2417,21 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient('prompd')
 }
 
-// Electron writes "URL:prompd" as the registry display name — override to "Prompd"
-// so browser dialogs show "Open Prompd?" instead of "Open URL:prompd?"
+// Override Windows registry so browser dialogs show "Open Prompd?" instead of "Open Electron?"
+// Chrome/Edge read ApplicationName from the Application subkey, not the default value.
 if (process.platform === 'win32') {
   try {
     const { execSync } = require('child_process')
-    execSync('reg add "HKCU\\Software\\Classes\\prompd" /ve /d "Prompd" /f', {
-      windowsHide: true,
-      stdio: 'ignore'
-    })
+    const exePath = process.execPath.replace(/\\/g, '\\\\')
+    const regCmds = [
+      'reg add "HKCU\\Software\\Classes\\prompd" /ve /d "Prompd" /f',
+      'reg add "HKCU\\Software\\Classes\\prompd\\Application" /v "ApplicationName" /d "Prompd" /f',
+      'reg add "HKCU\\Software\\Classes\\prompd\\Application" /v "ApplicationDescription" /d "Prompd - AI Workflow Studio" /f',
+      `reg add "HKCU\\Software\\Classes\\prompd\\Application" /v "ApplicationIcon" /d "${exePath},0" /f`,
+    ]
+    for (const cmd of regCmds) {
+      execSync(cmd, { windowsHide: true, stdio: 'ignore' })
+    }
   } catch (_) {
     // Non-critical — protocol handler still works
   }

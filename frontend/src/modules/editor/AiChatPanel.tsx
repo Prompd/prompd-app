@@ -26,6 +26,7 @@ import { ConversationSidebar } from '../components/ConversationSidebar'
 import { MessageSquare, ExternalLink, Plus, MoreVertical, ChevronDown, Loader2, Zap, ShieldCheck, ClipboardList, Undo2, Redo2, Play, Brain } from 'lucide-react'
 import { AskUserPanel } from '../components/AskUserPanel'
 import { SidebarPanelHeader } from '../components/SidebarPanelHeader'
+import { ProviderModelSelector } from '../components/ProviderModelSelector'
 import { PrompdIcon } from '../components/PrompdIcon'
 import { fetchChatModes, chatModesToArray, type ChatModeConfig } from '../services/chatModesApi'
 import { getBackendHost } from '../services/apiConfig'
@@ -130,12 +131,13 @@ export default function AiChatPanel({
   const { getToken, isLoaded, isAuthenticated } = useAuthenticatedUser()
   const { trackUsage } = usePrompdUsage()
 
-  // Centralized LLM provider state
-  const { llmProvider, setLLMProvider, setLLMModel, initializeLLMProviders, setLLMGenerationMode } = useUIStore(
+  // Centralized LLM provider state (execution uses llmProvider, chat uses chatLLMProvider)
+  const { llmProvider, chatLLMProvider, setChatLLMProvider, setChatLLMModel, initializeLLMProviders, setLLMGenerationMode } = useUIStore(
     useShallow(state => ({
       llmProvider: state.llmProvider,
-      setLLMProvider: state.setLLMProvider,
-      setLLMModel: state.setLLMModel,
+      chatLLMProvider: state.chatLLMProvider,
+      setChatLLMProvider: state.setChatLLMProvider,
+      setChatLLMModel: state.setChatLLMModel,
       initializeLLMProviders: state.initializeLLMProviders,
       setLLMGenerationMode: state.setLLMGenerationMode
     }))
@@ -651,8 +653,8 @@ export default function AiChatPanel({
   // Uses LLMClientRouter to route between local and remote execution
   const editorLLMClient = useMemo(() => {
     const baseClient = new LLMClientRouter({
-      provider: llmProvider.provider,
-      model: llmProvider.model,
+      provider: chatLLMProvider.provider,
+      model: chatLLMProvider.model,
       getAuthToken: async () => {
         try {
           return await getToken()
@@ -683,8 +685,8 @@ export default function AiChatPanel({
     // Use effective (capped) context window so compaction triggers at a practical
     // conversation length even for models with 1M+ token windows.
     const effectiveCtxWindow = resolveEffectiveContextWindow(
-      llmProvider.provider,
-      llmProvider.model,
+      chatLLMProvider.provider,
+      chatLLMProvider.model,
       llmProvider.providersWithPricing
     )
     const compactingClient = new CompactingLLMClient(
@@ -696,18 +698,18 @@ export default function AiChatPanel({
     // Use the shared agent LLM client wrapper (agent wrapper calls compactingClient.send())
     return agentActions.createAgentLLMClient(compactingClient, chatRef, getContextMessages)
   // Include activeTabId to trigger rebuild when active tab changes
-  }, [llmProvider.provider, llmProvider.model, getToken, getText, getActiveTabName, agentActions, activeTabId])
+  }, [chatLLMProvider.provider, chatLLMProvider.model, getToken, getText, getActiveTabName, agentActions, activeTabId])
 
   // Context utilization for status bar display (uses effective/capped context window)
   const contextUtilization = useMemo(() => {
     const totalIn = agentState.tokenUsage.promptTokens
     if (totalIn <= 0) return null
-    const ctxWindow = resolveEffectiveContextWindow(llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing)
+    const ctxWindow = resolveEffectiveContextWindow(chatLLMProvider.provider, chatLLMProvider.model, llmProvider.providersWithPricing)
     return {
       pct: Math.round((totalIn / ctxWindow) * 100),
       formatted: formatContextWindow(ctxWindow)
     }
-  }, [agentState.tokenUsage.promptTokens, llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing])
+  }, [agentState.tokenUsage.promptTokens, chatLLMProvider.provider, chatLLMProvider.model, llmProvider.providersWithPricing])
 
   // Custom empty state content - unified agent mode
   const emptyStateContent = useMemo(() => {
@@ -783,8 +785,8 @@ export default function AiChatPanel({
 
     const metadata = {
       source: 'ai-chat',
-      provider: llmProvider.provider,
-      model: llmProvider.model,
+      provider: chatLLMProvider.provider,
+      model: chatLLMProvider.model,
       conversationId: turnMetadata?.conversationId,
       turnNumber: turnMetadata?.turnNumber,
       generatedAt: new Date().toISOString()
@@ -1028,6 +1030,25 @@ export default function AiChatPanel({
           )}
         </div>
       </SidebarPanelHeader>
+
+      {/* Chat Provider/Model Selector - independent from execution provider */}
+      {llmProvider.providersWithPricing && llmProvider.providersWithPricing.length > 0 && (
+        <div style={{
+          padding: '4px 12px',
+          borderBottom: '1px solid var(--border)',
+        }}>
+          <ProviderModelSelector
+            providers={llmProvider.providersWithPricing}
+            selectedProvider={chatLLMProvider.provider}
+            selectedModel={chatLLMProvider.model}
+            onProviderChange={setChatLLMProvider}
+            onModelChange={setChatLLMModel}
+            layout="compact"
+            shrinkModel
+            forceDropdown
+          />
+        </div>
+      )}
 
       {/* Package Selector Modal - shown when AI suggests packages or when no packages found */}
       {showPackageSelector && (
@@ -1345,8 +1366,8 @@ export default function AiChatPanel({
                 </button>
                 {/* Thinking mode toggle - only shown when current model supports thinking */}
                 {(() => {
-                  const currentProvider = llmProvider.providersWithPricing?.find(p => p.providerId === llmProvider.provider)
-                  const currentModel = currentProvider?.models.find(m => m.model === llmProvider.model)
+                  const currentProvider = llmProvider.providersWithPricing?.find(p => p.providerId === chatLLMProvider.provider)
+                  const currentModel = currentProvider?.models.find(m => m.model === chatLLMProvider.model)
                   return currentModel?.supportsThinking === true
                 })() && (
                   <button
@@ -1588,8 +1609,8 @@ export default function AiChatPanel({
                       console.log('Generating new file:', newFileResult.filename)
                       onPrompdGenerated(newFileResult.content, newFileResult.filename, {
                         source: 'ai-chat',
-                        provider: llmProvider.provider,
-                        model: llmProvider.model
+                        provider: chatLLMProvider.provider,
+                        model: chatLLMProvider.model
                       })
                     } else {
                       console.warn('New file preparation failed:', newFileResult.message)

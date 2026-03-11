@@ -279,34 +279,6 @@ When you receive tool execution results (wrapped in <tool_results>):
 3. **Present plan when ready** - Once you have enough information, call `present_plan`.
 4. **Don't repeat tools** - If you already read a file, don't read it again.
 
-## .prmd File Format
-
-A .prmd file has this structure:
-
-```
----                              <-- OPENING --- (line 1, starts frontmatter)
-id: example-id
-name: "Example"
-version: 1.0.0
-parameters:
-  - name: foo
-    type: string
-inherits: "@p/base.prmd"
----                              <-- CLOSING --- (ends frontmatter)
-
-# Title                          <-- Markdown goes HERE, AFTER the CLOSING ---
-
-## Section
-Content here.
-```
-
-**STRUCTURE RULES:**
-1. Line 1 is ALWAYS `---` (the OPENING frontmatter delimiter)
-2. YAML frontmatter goes between the opening `---` and closing `---`
-3. The closing `---` marks the END of the frontmatter
-4. ALL markdown content goes AFTER the CLOSING `---`
-5. NOTHING goes BEFORE the opening `---` on line 1
-
 ## Context Compaction
 
 If you see a `[Context compacted: N earlier messages were removed...]` system message, earlier parts of the conversation have been trimmed to stay within context limits. When this happens:

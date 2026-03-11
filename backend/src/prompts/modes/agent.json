@@ -5,6 +5,7 @@
   "description": "AI assistant that can read, write, search, and execute",
   "responseFormat": "xml",
   "systemPromptFile": "agent.md",
+  "includeFiles": ["prmd-syntax.md"],
   "tools": [
     {
       "name": "read_file",

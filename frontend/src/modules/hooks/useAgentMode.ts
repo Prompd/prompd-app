@@ -214,6 +214,10 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
   // Track last write_file content to detect duplicate-write loops
   const lastWriteContentRef = useRef<{ path: string; hash: number } | null>(null)
   const duplicateWriteCountRef = useRef(0)
+  // Track total writes per file path to detect thrashing (different content, same file)
+  const fileWriteCountRef = useRef<Map<string, number>>(new Map())
+  /** Max writes to the same file before the loop is stopped (regardless of content) */
+  const MAX_FILE_WRITES = 4
   // Ref for per-session token accumulation (avoids stale closures in send())
   const tokenUsageRef = useRef({ promptTokens: 0, completionTokens: 0, totalTokens: 0 })
   // Sync refs with props — skip when an override is active (plan execution in progress)
@@ -825,6 +829,7 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
       agentLoopIterationRef.current = 0
       lastWriteContentRef.current = null
       duplicateWriteCountRef.current = 0
+      fileWriteCountRef.current.clear()
       setState(s => ({ ...s, isAgentLoopActive: false, iteration: 0 }))
     }
 
@@ -895,41 +900,74 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
           }
         }
 
-        // Detect duplicate write_file loops (same path + same content)
-        const writeCall = parsed.toolCalls.find(tc => tc.tool === 'write_file')
+        // Detect write loops — two checks:
+        // 1. Identical content hash (duplicate writes)
+        // 2. Too many writes to same file regardless of content (thrashing)
+        const writeCall = parsed.toolCalls.find(tc => tc.tool === 'write_file' || tc.tool === 'edit_file')
         if (writeCall) {
           const writePath = String(writeCall.params?.path || '')
-          const writeContent = String(writeCall.params?.content || '')
-          const contentHash = hashString(writeContent)
-          const last = lastWriteContentRef.current
 
-          if (last && last.path === writePath && last.hash === contentHash) {
-            duplicateWriteCountRef.current++
-            if (duplicateWriteCountRef.current >= MAX_DUPLICATE_WRITES) {
-              console.log(`[useAgentMode] Duplicate write detected ${duplicateWriteCountRef.current}x to "${writePath}" - stopping loop`)
-              restoreOverridesAndCleanup()
+          // Per-file write count — catches thrashing with different content
+          const prevCount = fileWriteCountRef.current.get(writePath) || 0
+          const newCount = prevCount + 1
+          fileWriteCountRef.current.set(writePath, newCount)
 
-              const stopMsg = (parsed.message || '') +
-                '\n\n*Stopped: repeated identical writes detected. The same content was being written multiple times.*'
+          if (newCount > MAX_FILE_WRITES) {
+            console.log(`[useAgentMode] File write thrashing detected: ${newCount} writes to "${writePath}" - stopping loop`)
+            restoreOverridesAndCleanup()
 
-              chatRef.current?.addMessage({
-                id: `dup_write_${Date.now()}`,
-                role: 'assistant',
-                content: stopMsg,
-                timestamp: new Date().toISOString(),
-                metadata: { type: 'system-stop' }
-              })
+            const stopMsg = (parsed.message || '') +
+              `\n\n*Stopped: wrote to "${writePath}" ${newCount} times in this loop. This suggests the approach isn't working. Please re-read the file and try a different strategy.*`
 
-              return {
-                ...response,
-                content: stopMsg,
-                metadata: { ...response.metadata, done: true, messageAlreadyRendered: true }
-              }
+            chatRef.current?.addMessage({
+              id: `thrash_write_${Date.now()}`,
+              role: 'assistant',
+              content: stopMsg,
+              timestamp: new Date().toISOString(),
+              metadata: { type: 'system-stop' }
+            })
+
+            return {
+              ...response,
+              content: stopMsg,
+              metadata: { ...response.metadata, done: true, messageAlreadyRendered: true }
             }
-          } else {
-            duplicateWriteCountRef.current = 0
           }
-          lastWriteContentRef.current = { path: writePath, hash: contentHash }
+
+          // Identical content hash detection (only for write_file which sends full content)
+          if (writeCall.tool === 'write_file') {
+            const writeContent = String(writeCall.params?.content || '')
+            const contentHash = hashString(writeContent)
+            const last = lastWriteContentRef.current
+
+            if (last && last.path === writePath && last.hash === contentHash) {
+              duplicateWriteCountRef.current++
+              if (duplicateWriteCountRef.current >= MAX_DUPLICATE_WRITES) {
+                console.log(`[useAgentMode] Duplicate write detected ${duplicateWriteCountRef.current}x to "${writePath}" - stopping loop`)
+                restoreOverridesAndCleanup()
+
+                const stopMsg = (parsed.message || '') +
+                  '\n\n*Stopped: repeated identical writes detected. The same content was being written multiple times.*'
+
+                chatRef.current?.addMessage({
+                  id: `dup_write_${Date.now()}`,
+                  role: 'assistant',
+                  content: stopMsg,
+                  timestamp: new Date().toISOString(),
+                  metadata: { type: 'system-stop' }
+                })
+
+                return {
+                  ...response,
+                  content: stopMsg,
+                  metadata: { ...response.metadata, done: true, messageAlreadyRendered: true }
+                }
+              }
+            } else {
+              duplicateWriteCountRef.current = 0
+            }
+            lastWriteContentRef.current = { path: writePath, hash: contentHash }
+          }
         }
 
         // Add agent's message to chat BEFORE tool execution so it appears first in the UI
@@ -1019,10 +1057,31 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
         })))
         lastToolResultsXmlRef.current = toolResultsXml
 
-        // Append loop detection hint if the same tool keeps failing
+        // Detect tool failure loops — hint at 3, hard stop at 5
         let contextXml = toolResultsXml
         const failTracker = lastFailedToolRef.current
-        if (failTracker && failTracker.count >= 3) {
+        if (failTracker && failTracker.count >= 5) {
+          // Hard stop — the LLM is stuck in a failure loop
+          console.log(`[useAgentMode] Consecutive failure limit reached: ${failTracker.tool} failed ${failTracker.count}x on ${failTracker.path} - stopping loop`)
+          restoreOverridesAndCleanup()
+
+          const stopMsg = (parsed.message || '') +
+            `\n\n*Stopped: "${failTracker.tool}" failed ${failTracker.count} consecutive times on "${failTracker.path}". Please re-read the file and try a different approach.*`
+
+          chatRef.current?.addMessage({
+            id: `fail_loop_${Date.now()}`,
+            role: 'assistant',
+            content: stopMsg,
+            timestamp: new Date().toISOString(),
+            metadata: { type: 'system-stop' }
+          })
+
+          return {
+            ...response,
+            content: stopMsg,
+            metadata: { ...response.metadata, done: true, messageAlreadyRendered: true }
+          }
+        } else if (failTracker && failTracker.count >= 3) {
           contextXml += `\n<system_hint>WARNING: Tool "${failTracker.tool}" has failed ${failTracker.count} times on "${failTracker.path}". Your search string likely does not match the file contents exactly. Try a different approach: re-read the file first, use a smaller/different search string, or use write_file instead of edit_file.</system_hint>`
           console.log(`[useAgentMode] Loop detection: ${failTracker.tool} failed ${failTracker.count}x on ${failTracker.path}`)
         }
@@ -1076,6 +1135,7 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
         agentLoopIterationRef.current = 0
         lastWriteContentRef.current = null
         duplicateWriteCountRef.current = 0
+        fileWriteCountRef.current.clear()
       }
 
       // Check if abort was requested (by stop())
@@ -1347,6 +1407,7 @@ export function useAgentMode(options: UseAgentModeOptions): [AgentState, AgentCh
     agentLoopIterationRef.current = 0
     lastWriteContentRef.current = null
     duplicateWriteCountRef.current = 0
+    fileWriteCountRef.current.clear()
     setState(s => ({
       ...s,
       isRunning: false,

@@ -3,7 +3,7 @@ import Editor, { OnChange, BeforeMount, OnMount } from '@monaco-editor/react'
 import type * as monacoEditor from 'monaco-editor'
 import { setupPrompdLanguage } from '../lib/textmate'
 import { parsePrompd } from '../lib/prompdParser'
-import { triggerValidation, setCurrentFilePath, setWorkspacePath } from '../lib/intellisense'
+import { triggerValidation, setCurrentFilePath, setModelFilePath, setWorkspacePath } from '../lib/intellisense'
 import { editorConfigManager, type MonacoEditorOptions } from '../lib/editorconfig'
 import { hotkeyManager } from '../services/hotkeyManager'
 // DISABLED: monacoDiff breaks Code Actions - see issue investigation
@@ -215,6 +215,12 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
   // This enables proper inherits validation when file is from disk
   useEffect(() => {
     setCurrentFilePath(currentFilePath || null)
+    // Also register the model URI → file path mapping for multi-tab support
+    const editor = editorRef.current
+    const model = editor?.getModel()
+    if (model) {
+      setModelFilePath(model.uri.toString(), currentFilePath || null)
+    }
   }, [currentFilePath])
 
   // Update the IntelliSense workspace path for package cache resolution
@@ -339,10 +345,15 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
     editorRef.current = editor
     monacoRef.current = monaco
 
+    // Register model URI → file path for multi-tab intellisense support
+    const model = editor.getModel()
+    if (model && currentFilePath) {
+      setModelFilePath(model.uri.toString(), currentFilePath)
+    }
+
     // Sync value prop to model on mount
     // This handles the case where keepCurrentModel={true} reuses a cached model
     // but the value prop has changed (e.g., from DesignView edits)
-    const model = editor.getModel()
     if (model) {
       const modelValue = model.getValue()
       const currentValue = valueRef.current

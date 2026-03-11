@@ -123,8 +123,15 @@ interface UIState {
   wizardState: any | null // WizardState type
   showWizard: boolean
 
-  // LLM Provider (centralized)
+  // LLM Provider (centralized) - used for prompt execution
   llmProvider: LLMProviderConfig
+
+  // Chat LLM Provider - separate provider/model for chat interfaces (AI Chat Panel, ChatTab)
+  // Shares the same providersWithPricing/availableProviders list but has independent provider/model selection
+  chatLLMProvider: {
+    provider: string
+    model: string
+  }
 
   // Recent projects for welcome screen
   recentProjects: RecentProject[]
@@ -197,9 +204,13 @@ interface UIActions {
   setWizardState: (state: any | null) => void
   setShowWizard: (show: boolean) => void
 
-  // LLM Provider
+  // LLM Provider (prompt execution)
   setLLMProvider: (provider: string) => void
   setLLMModel: (model: string) => void
+
+  // Chat LLM Provider (chat interfaces)
+  setChatLLMProvider: (provider: string) => void
+  setChatLLMModel: (model: string) => void
   setLLMMaxTokens: (maxTokens: number) => void
   setLLMTemperature: (temperature: number) => void
   setLLMGenerationMode: (mode: GenerationMode) => void
@@ -295,6 +306,10 @@ export const useUIStore = create<UIStore>()(
             isLoading: false,
             isInitialized: false
           },
+          chatLLMProvider: {
+            provider: 'anthropic',
+            model: 'claude-sonnet-4-20250514', // Default to stronger model for chat/generative AI
+          },
           recentProjects: [],
           selectedEnvFile: null,
           toasts: [],
@@ -306,7 +321,7 @@ export const useUIStore = create<UIStore>()(
           workflowPanelPinned: false,
           showConnectionsPanel: false,
           showNodePalette: true,
-          showBottomPanel: false,
+          showBottomPanel: true,
           activeBottomTab: 'errors',
           bottomPanelHeight: 200,
           bottomPanelPinned: false,
@@ -391,6 +406,27 @@ export const useUIStore = create<UIStore>()(
 
           setLLMModel: (model) => set((state) => {
             state.llmProvider.model = model
+          }),
+
+          // Chat LLM Provider (separate from execution)
+          setChatLLMProvider: (provider) => set((state) => {
+            state.chatLLMProvider.provider = provider
+            // Default to strongest model for chat
+            if (provider === 'openai') {
+              state.chatLLMProvider.model = 'gpt-4.1'
+            } else if (provider === 'anthropic') {
+              state.chatLLMProvider.model = 'claude-sonnet-4-20250514'
+            } else {
+              // For custom providers, pick first available model
+              const providerInfo = state.llmProvider.providersWithPricing?.find(p => p.providerId === provider)
+              if (providerInfo?.models.length) {
+                state.chatLLMProvider.model = providerInfo.models[0].model
+              }
+            }
+          }),
+
+          setChatLLMModel: (model) => set((state) => {
+            state.chatLLMProvider.model = model
           }),
 
           setLLMMaxTokens: (maxTokens) => set((state) => {

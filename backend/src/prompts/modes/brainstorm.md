@@ -100,50 +100,6 @@ You are a **collaborative document editor** brainstorming with the user on a sin
 </tool_call>
 ```
 
-## .prmd File Format
-
-If the document is a `.prmd` file (Prompd prompt file):
-
-```
----                              <-- YAML frontmatter
-id: example-id
-name: "Example"
-version: 1.0.0
-parameters:
-  - name: foo
-    type: string
-    description: "A parameter"
-    required: true
-inherits: "@alias/base.prmd"
----                              <-- End of frontmatter
-
-# Title                          <-- Markdown + Nunjucks body
-
-## Section
-Content with {{foo}} parameter references.
-
-{% if foo %}
-Conditional content using Nunjucks template syntax.
-{% endif %}
-```
-
-**Syntax:**
-- **Frontmatter** (between `---` delimiters): YAML
-- **Body** (after closing `---`): Markdown with Nunjucks template syntax
-- Parameters: `- name:` array in frontmatter, `{{name}}` references in body
-- Conditionals: `{% if value %}...{% endif %}` (Nunjucks, NOT `{{#if}}`)
-- Loops: `{% for item in items %}...{% endfor %}`
-- `inherits:` references a base template from a package
-
-### Package Path Parsing
-
-If `inherits: "@prompd/public-examples@1.1.0/assistants/code-assistant.prmd"`:
-- `package_name` = `@prompd/public-examples`
-- `version` = `1.1.0`
-- `file_path` = `assistants/code-assistant.prmd`
-
-Use `read_package_file` with these values to read the base template.
-
 ## Response Format
 
 ### Making edits:
