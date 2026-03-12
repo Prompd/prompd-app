@@ -16,6 +16,43 @@ const __dirname = path.dirname(__filename)
 const PROMPTS_DIR = path.join(__dirname, '../prompts/modes')
 
 /**
+ * Load a mode config from JSON, resolve systemPromptFile and includeFiles.
+ * - systemPromptFile: main system prompt markdown
+ * - includeFiles: array of shared reference files appended to the system prompt
+ */
+async function loadModeConfig(filePath) {
+  const content = await fs.readFile(filePath, 'utf-8')
+  const config = JSON.parse(content)
+
+  // Load the main system prompt file
+  if (config.systemPromptFile) {
+    const promptFilePath = path.join(PROMPTS_DIR, config.systemPromptFile)
+    config.systemPrompt = await fs.readFile(promptFilePath, 'utf-8')
+    delete config.systemPromptFile
+  }
+
+  // Merge any shared include files into the system prompt
+  if (config.includeFiles && Array.isArray(config.includeFiles)) {
+    const includes = []
+    for (const includeFile of config.includeFiles) {
+      try {
+        const includePath = path.join(PROMPTS_DIR, includeFile)
+        const includeContent = await fs.readFile(includePath, 'utf-8')
+        includes.push(includeContent)
+      } catch (err) {
+        console.error(`[chatModes] Failed to load include file "${includeFile}":`, err.message)
+      }
+    }
+    if (includes.length > 0 && config.systemPrompt) {
+      config.systemPrompt = config.systemPrompt + '\n\n' + includes.join('\n\n')
+    }
+    delete config.includeFiles
+  }
+
+  return config
+}
+
+/**
  * GET /api/chat-modes
  * Returns all available chat mode configurations
  */
@@ -36,17 +73,7 @@ router.get('/chat-modes', async (req, res) => {
     for (const { id, file } of modeFiles) {
       const filePath = path.join(PROMPTS_DIR, file)
       try {
-        const content = await fs.readFile(filePath, 'utf-8')
-        const config = JSON.parse(content)
-
-        // Load external system prompt file if specified
-        if (config.systemPromptFile) {
-          const promptFilePath = path.join(PROMPTS_DIR, config.systemPromptFile)
-          config.systemPrompt = await fs.readFile(promptFilePath, 'utf-8')
-          delete config.systemPromptFile
-        }
-
-        modes[id] = config
+        modes[id] = await loadModeConfig(filePath)
       } catch (error) {
         console.error(`Error loading mode ${id}:`, error.message)
         // Continue loading other modes even if one fails
@@ -73,16 +100,7 @@ router.get('/chat-modes/:modeId', async (req, res) => {
     const { modeId } = req.params
     const filePath = path.join(PROMPTS_DIR, `${modeId}.json`)
 
-    const content = await fs.readFile(filePath, 'utf-8')
-    const mode = JSON.parse(content)
-
-    // Load external system prompt file if specified
-    if (mode.systemPromptFile) {
-      const promptFilePath = path.join(PROMPTS_DIR, mode.systemPromptFile)
-      mode.systemPrompt = await fs.readFile(promptFilePath, 'utf-8')
-      delete mode.systemPromptFile
-    }
-
+    const mode = await loadModeConfig(filePath)
     res.json(mode)
   } catch (error) {
     if (error.code === 'ENOENT') {

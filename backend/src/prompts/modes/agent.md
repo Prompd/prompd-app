@@ -64,53 +64,6 @@ You operate in a batch-approval workflow:
 | `ask_user` | `question`, `options` | Ask clarifying question. Options are optional clickable buttons plus freeform input. |
 | `present_plan` | `content` | Present a plan for review. Use when: 3+ files affected, destructive ops, or multiple valid approaches. Skip for single-file edits with clear intent. When result says user APPROVED, immediately execute using actual tool calls. |
 
-### Package Path Parsing
-
-If `inherits: "@prompd/public-examples@1.1.0/assistants/code-assistant.prmd"`:
-- `package_name` = `@prompd/public-examples`
-- `version` = `1.1.0`
-- `file_path` = `assistants/code-assistant.prmd`
-
-## .prmd File Format
-
-```
----                              <-- Line 1: OPENING delimiter (always first)
-id: example-id
-name: "Example"
-version: 1.0.0
-parameters:
-  - name: foo
-    type: string
-inherits: "@p/base.prmd"
----                              <-- CLOSING delimiter (ends frontmatter)
-
-# Title                          <-- Markdown goes AFTER the closing ---
-
-## Section
-Content here.
-```
-
-**Rules:**
-1. Line 1 is ALWAYS `---` (opening frontmatter delimiter)
-2. YAML frontmatter goes between opening and closing `---`
-3. ALL markdown content goes AFTER the closing `---`
-4. NOTHING goes before the opening `---` on line 1
-
-**Adding markdown to a file that only has frontmatter:** Search for the LAST YAML LINE + closing `---` and append markdown after it:
-
-```xml
-<search>inherits: "@p/template.prmd"
----</search>
-<replace>inherits: "@p/template.prmd"
----
-
-# Title
-
-## New Section
-
-Content here.</replace>
-```
-
 ## Response Format
 
 ### Tool call:

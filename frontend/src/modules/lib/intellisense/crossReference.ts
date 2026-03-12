@@ -51,15 +51,18 @@ export function extractParameterDefinitions(
   let inParametersSection = false
   let parametersIndent = -1
   let parameterLevelIndent = -1 // Track the indentation level for parameter names
+  let foundTopLevelParameters = false // Only recognize the first top-level parameters: section
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
 
-    // Check if we're entering parameters section
-    if (line.match(/^\s*parameters:\s*$/)) {
+    // Check if we're entering the top-level parameters section (only the first one)
+    // Ignore nested `parameters:` keys inside default values of type: json params
+    if (!foundTopLevelParameters && line.match(/^parameters:\s*$/)) {
       inParametersSection = true
-      parametersIndent = line.search(/\S/)
-      parameterLevelIndent = -1 // Reset parameter level
+      foundTopLevelParameters = true
+      parametersIndent = 0
+      parameterLevelIndent = -1
       continue
     }
 
@@ -78,54 +81,16 @@ export function extractParameterDefinitions(
 
       const currentIndent = line.search(/\S/)
 
-      // Set parameter level indent on first parameter encountered
-      if (parameterLevelIndent === -1 && currentIndent > parametersIndent && line.trim() !== '') {
-        parameterLevelIndent = currentIndent
-      }
-
-      // Array format: "  - name: paramName"
-      // Only match at the parameter level indent to avoid matching nested
-      // "- name:" entries inside complex default values
+      // Array format: "- name: paramName"
+      // Set parameterLevelIndent from the FIRST "- name:" match so that
+      // nested "- name:" entries inside default values (at deeper indent) are ignored
       const arrayMatch = line.match(/^\s*-\s*name:\s*["']?(\w+)["']?/)
-      if (arrayMatch && (parameterLevelIndent === -1 || currentIndent === parameterLevelIndent)) {
-        const name = arrayMatch[1]
-        const lineNumber = fullContent.split('\n').findIndex(l => l.includes(line)) + 1
-        const column = line.indexOf(name) + 1
-
-        definitions.push({
-          name,
-          lineNumber,
-          column,
-          type: undefined,
-          description: undefined,
-          required: false
-        })
-        continue
-      }
-
-      // Known parameter property names that should never be detected as parameters
-      // Currently supported in .prmd format:
-      const parameterProperties = new Set([
-        'name', 'type', 'required', 'description',
-        'items', 'enum', 'default', 'properties'
-        // Future/common JSON Schema properties (not yet supported):
-        // 'min', 'max', 'minLength', 'maxLength', 'pattern', 'format',
-        // 'additionalProperties', 'examples'
-      ])
-
-      // Object format - only match at parameter level indent, not nested properties
-      // This prevents matching "default:", "type:", "description:" etc. as parameter names
-      if (parameterLevelIndent !== -1 && currentIndent === parameterLevelIndent) {
-        // Object format (multiline): "  paramName:" on its own line
-        const objectMultilineMatch = line.match(/^\s+([a-zA-Z_][a-zA-Z0-9_]*):\s*$/)
-        if (objectMultilineMatch) {
-          const name = objectMultilineMatch[1]
-
-          // Skip if this is a known parameter property name
-          if (parameterProperties.has(name)) {
-            continue
-          }
-
+      if (arrayMatch) {
+        if (parameterLevelIndent === -1) {
+          parameterLevelIndent = currentIndent
+        }
+        if (currentIndent === parameterLevelIndent) {
+          const name = arrayMatch[1]
           const lineNumber = fullContent.split('\n').findIndex(l => l.includes(line)) + 1
           const column = line.indexOf(name) + 1
 
@@ -139,28 +104,37 @@ export function extractParameterDefinitions(
           })
           continue
         }
+      }
 
-        // Inline object format: "  paramName: { type: string }"
-        const inlineObjectMatch = line.match(/^\s+([a-zA-Z_][a-zA-Z0-9_]*):\s*\{/)
-        if (inlineObjectMatch) {
-          const name = inlineObjectMatch[1]
+      // Known parameter property names that should never be detected as parameters
+      const parameterProperties = new Set([
+        'name', 'type', 'required', 'description',
+        'items', 'enum', 'default', 'properties'
+      ])
 
-          // Skip if this is a known parameter property name
-          if (parameterProperties.has(name)) {
-            continue
-          }
+      // Object format - only match at parameter level indent, not nested properties
+      if (parameterLevelIndent !== -1 && currentIndent === parameterLevelIndent) {
+        const objectMultilineMatch = line.match(/^\s+([a-zA-Z_][a-zA-Z0-9_]*):\s*$/)
+        if (objectMultilineMatch) {
+          const name = objectMultilineMatch[1]
+          if (parameterProperties.has(name)) continue
 
           const lineNumber = fullContent.split('\n').findIndex(l => l.includes(line)) + 1
           const column = line.indexOf(name) + 1
 
-          definitions.push({
-            name,
-            lineNumber,
-            column,
-            type: undefined,
-            description: undefined,
-            required: false
-          })
+          definitions.push({ name, lineNumber, column, type: undefined, description: undefined, required: false })
+          continue
+        }
+
+        const inlineObjectMatch = line.match(/^\s+([a-zA-Z_][a-zA-Z0-9_]*):\s*\{/)
+        if (inlineObjectMatch) {
+          const name = inlineObjectMatch[1]
+          if (parameterProperties.has(name)) continue
+
+          const lineNumber = fullContent.split('\n').findIndex(l => l.includes(line)) + 1
+          const column = line.indexOf(name) + 1
+
+          definitions.push({ name, lineNumber, column, type: undefined, description: undefined, required: false })
           continue
         }
       }

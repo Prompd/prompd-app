@@ -16,7 +16,7 @@ import { registerValidationListeners, validateModel, setCurrentFilePath, enableC
 
 // Re-export types
 export * from './types'
-export { setCurrentFilePath, setWorkspacePath, enableCompilerDiagnostics } from './validation'
+export { setCurrentFilePath, setModelFilePath, setWorkspacePath, enableCompilerDiagnostics } from './validation'
 export { ALL_FILTERS, PROMPD_FILTERS, NUNJUCKS_BUILTIN_FILTERS } from './filters'
 
 // Re-export new IntelliSense enhancements

@@ -264,6 +264,8 @@ class RegistryApiClient {
       reject = rej
     })
 
+    // Prevent unhandled rejection if no other caller is waiting on the deduplication promise
+    promise.catch(() => {})
     this.pendingRequests.set(cacheKey, { promise, resolve: resolve!, reject: reject! })
 
     try {

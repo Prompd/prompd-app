@@ -12,6 +12,8 @@ const LANGUAGE_ID = 'prompd'
 
 // Store file path for compiler diagnostics (set by editor when opening files)
 let currentFilePath: string | null = null
+// Map of model URI string → file path (for multi-tab support)
+const modelFilePathMap = new Map<string, string>()
 // Store workspace path for resolving package cache locations
 let currentWorkspacePath: string | null = null
 
@@ -33,6 +35,27 @@ export function setCurrentFilePath(filePath: string | null) {
  */
 export function getCurrentFilePath(): string | null {
   return currentFilePath
+}
+
+/**
+ * Associate a Monaco model URI with a file path (for multi-tab support).
+ * This allows validation and code actions to resolve the correct file path
+ * per-model rather than relying on the singleton currentFilePath.
+ */
+export function setModelFilePath(modelUri: string, filePath: string | null) {
+  if (filePath) {
+    modelFilePathMap.set(modelUri, filePath)
+  } else {
+    modelFilePathMap.delete(modelUri)
+  }
+}
+
+/**
+ * Get the file path associated with a specific model URI.
+ * Falls back to the singleton currentFilePath if no mapping exists.
+ */
+export function getModelFilePath(modelUri: string): string | null {
+  return modelFilePathMap.get(modelUri) ?? currentFilePath
 }
 
 /**
@@ -1382,8 +1405,10 @@ export async function validateModel(
         }
 
         // Check if id matches the filename (without extension)
-        if (currentFilePath) {
-          const fileName = currentFilePath.replace(/\\/g, '/').split('/').pop() || ''
+        // Derive filename from model-specific file path map, falling back to singleton
+        const modelFilePath = getModelFilePath(model.uri.toString())
+        if (modelFilePath) {
+          const fileName = modelFilePath.replace(/\\/g, '/').split('/').pop() || ''
           const fileBaseName = fileName.replace(/\.prmd$/i, '')
           if (fileBaseName && id !== fileBaseName) {
             markers.push({
@@ -1453,16 +1478,20 @@ export async function validateModel(
       let inParametersSection = false
       let parametersIndent = -1
       let parameterLevelIndent = -1
+      let foundTopLevelParameters = false
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]
 
-        // Check if we're entering parameters section
-        if (line.match(/^\s*parameters:\s*$/)) {
+        // Check if we're entering the top-level parameters section
+        // Only match the FIRST parameters: at indent 0 to avoid nested parameters:
+        // keys inside JSON default values being treated as .prmd parameter sections
+        if (!foundTopLevelParameters && line.match(/^parameters:\s*$/)) {
           inParametersSection = true
-          parametersIndent = line.search(/\S/)
+          foundTopLevelParameters = true
+          parametersIndent = 0
           parameterLevelIndent = -1
-          console.log('[intellisense] Found parameters section at indent', parametersIndent)
+          console.log('[intellisense] Found top-level parameters section')
           continue
         }
 
@@ -1482,19 +1511,19 @@ export async function validateModel(
 
           const currentIndent = line.search(/\S/)
 
-          // Set parameter level indent on first parameter encountered
-          if (parameterLevelIndent === -1 && currentIndent > parametersIndent && line.trim() !== '') {
-            parameterLevelIndent = currentIndent
-          }
-
-          // Array format: "  - name: paramName"
-          // Only match at the parameter level indent to avoid matching nested
-          // "- name:" entries inside complex default values
+          // Array format: "- name: paramName"
+          // Set parameterLevelIndent from the FIRST "- name:" match so that
+          // nested "- name:" entries inside default values (at deeper indent) are ignored
           const arrayMatch = line.match(/^\s*-\s*name:\s*["']?(\w+)["']?/)
-          if (arrayMatch && (parameterLevelIndent === -1 || currentIndent === parameterLevelIndent)) {
-            console.log('[intellisense] Found array-format param:', arrayMatch[1])
-            definedParams.add(arrayMatch[1])
-            continue
+          if (arrayMatch) {
+            if (parameterLevelIndent === -1) {
+              parameterLevelIndent = currentIndent
+            }
+            if (currentIndent === parameterLevelIndent) {
+              console.log('[intellisense] Found array-format param:', arrayMatch[1])
+              definedParams.add(arrayMatch[1])
+              continue
+            }
           }
 
           // Object format — only match at parameter level indent

@@ -190,6 +190,11 @@ export interface ElectronAPI {
   platform: string
   isElectron: boolean
 
+  // Auto-update events
+  onUpdateAvailable: (callback: (info: { version: string }) => void) => () => void
+  onUpdateDownloaded: (callback: (info: { version: string }) => void) => () => void
+  installUpdate: () => Promise<void>
+
   // Slash command execution (uses @prompd/cli in main process)
   executeSlashCommand?: (
     commandId: string,

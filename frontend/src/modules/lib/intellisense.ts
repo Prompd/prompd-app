@@ -21,6 +21,7 @@ export {
   triggerValidation,
   triggerValidationForAllModels,
   setCurrentFilePath,
+  setModelFilePath,
   setWorkspacePath,
   ALL_FILTERS,
   PROMPD_FILTERS,

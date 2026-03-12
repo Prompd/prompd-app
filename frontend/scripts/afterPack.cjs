@@ -3,7 +3,7 @@
  *
  * Runs after the app is packed but BEFORE installers are created.
  * Tasks:
- * 1. Bundle @prompd/cli into node_modules (resolves file: dependency)
+ * 1. Verify @prompd/cli is installed from npm
  * 2. Embed icon into Windows executable
  */
 
@@ -12,72 +12,22 @@ const fs = require('fs')
 const path = require('path')
 
 /**
- * Copy @prompd/cli from the linked location into the packed app's node_modules
+ * Verify @prompd/cli exists in the packed app's node_modules (installed from npm)
  */
-function bundlePrompdCli(context) {
-  const cliSourcePath = path.resolve(__dirname, '..', '..', '..', 'prompd-cli', 'cli', 'npm')
-  const appNodeModules = path.join(context.appOutDir, 'resources', 'app', 'node_modules')
-  const cliDestPath = path.join(appNodeModules, '@prompd', 'cli')
+function verifyPrompdCli(context) {
+  // @prompd/cli is in asarUnpack, so it lands in app.asar.unpacked/
+  const unpackedPath = path.join(context.appOutDir, 'resources', 'app.asar.unpacked', 'node_modules', '@prompd', 'cli')
+  const asarPath = path.join(context.appOutDir, 'resources', 'app', 'node_modules', '@prompd', 'cli')
+  const cliPath = fs.existsSync(path.join(unpackedPath, 'package.json')) ? unpackedPath : asarPath
 
-  console.log('[afterPack] Bundling @prompd/cli...')
-  console.log('[afterPack] Source:', cliSourcePath)
-  console.log('[afterPack] Destination:', cliDestPath)
+  console.log('[afterPack] Verifying @prompd/cli...')
 
-  if (!fs.existsSync(cliSourcePath)) {
-    console.warn('[afterPack] WARNING: @prompd/cli source not found at', cliSourcePath)
-    console.warn('[afterPack] Local compilation features will be unavailable')
-    return
-  }
-
-  // Create @prompd directory if needed
-  const prompdDir = path.join(appNodeModules, '@prompd')
-  if (!fs.existsSync(prompdDir)) {
-    fs.mkdirSync(prompdDir, { recursive: true })
-  }
-
-  // Copy the CLI dist and package.json (not the entire source)
-  const filesToCopy = ['dist', 'package.json']
-
-  if (fs.existsSync(cliDestPath)) {
-    fs.rmSync(cliDestPath, { recursive: true, force: true })
-  }
-  fs.mkdirSync(cliDestPath, { recursive: true })
-
-  for (const file of filesToCopy) {
-    const src = path.join(cliSourcePath, file)
-    const dest = path.join(cliDestPath, file)
-
-    if (fs.existsSync(src)) {
-      if (fs.statSync(src).isDirectory()) {
-        copyDirSync(src, dest)
-      } else {
-        fs.copyFileSync(src, dest)
-      }
-      console.log('[afterPack] Copied:', file)
-    } else {
-      console.warn('[afterPack] WARNING: Missing', file, '- run `npm run build` in prompd-cli/cli/npm first')
-    }
-  }
-
-  console.log('[afterPack] @prompd/cli bundled successfully')
-}
-
-/**
- * Recursively copy a directory
- */
-function copyDirSync(src, dest) {
-  fs.mkdirSync(dest, { recursive: true })
-  const entries = fs.readdirSync(src, { withFileTypes: true })
-
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name)
-    const destPath = path.join(dest, entry.name)
-
-    if (entry.isDirectory()) {
-      copyDirSync(srcPath, destPath)
-    } else {
-      fs.copyFileSync(srcPath, destPath)
-    }
+  if (fs.existsSync(path.join(cliPath, 'package.json'))) {
+    const pkg = JSON.parse(fs.readFileSync(path.join(cliPath, 'package.json'), 'utf8'))
+    console.log('[afterPack] @prompd/cli', pkg.version, 'found (npm) at', cliPath)
+  } else {
+    console.error('[afterPack] ERROR: @prompd/cli not found in packed node_modules')
+    console.error('[afterPack] Run `npm install` in frontend/ to install from npm')
   }
 }
 
@@ -106,8 +56,8 @@ function findRcedit() {
 }
 
 module.exports = async function(context) {
-  // Bundle @prompd/cli for all platforms
-  bundlePrompdCli(context)
+  // Verify @prompd/cli is installed from npm
+  verifyPrompdCli(context)
 
   // Only run icon embedding for Windows builds
   if (context.electronPlatformName !== 'win32') {

@@ -394,6 +394,24 @@ export class AnthropicProvider extends BaseProvider {
   readonly displayName = 'Anthropic'
   readonly baseUrl = 'https://api.anthropic.com'
 
+  /**
+   * Check if a model supports extended thinking.
+   * Only Claude 3.5+ (new versions) and Claude 4.x support thinking.
+   */
+  private modelSupportsThinking(model: string): boolean {
+    const m = model.toLowerCase()
+    // Claude 4.x models
+    if (/claude-4|claude-opus-4|claude-sonnet-4/.test(m)) return true
+    // Claude 3.7 models
+    if (/claude-3[.-]7/.test(m)) return true
+    // Claude 3.5 sonnet/haiku with dates >= 20241022 (new versions)
+    if (/claude-3-5-sonnet-20241022/.test(m)) return true
+    if (/claude-3-5-haiku-20241022/.test(m)) return true
+    // Versioned latest aliases
+    if (/claude-sonnet-4|claude-opus-4/.test(m)) return true
+    return false
+  }
+
   async execute(request: ExecutionRequest): Promise<ExecutionResult> {
     const startTime = Date.now()
 
@@ -404,7 +422,8 @@ export class AnthropicProvider extends BaseProvider {
 
       // For thinking mode, max_tokens must be strictly greater than budget_tokens.
       // We set budget_tokens to the user's maxTokens and max_tokens to budget + 16k for the response.
-      const isThinking = request.mode === 'thinking'
+      // Only enable thinking if the model actually supports it.
+      const isThinking = request.mode === 'thinking' && this.modelSupportsThinking(request.model)
       const budgetTokens = isThinking
         ? Math.max(1024, request.maxTokens || 4096)
         : 0
@@ -426,8 +445,10 @@ export class AnthropicProvider extends BaseProvider {
       }
 
       // Extended thinking mode - budget_tokens must be < max_tokens
+      // Anthropic requires temperature=1 when thinking is enabled
       if (isThinking) {
         body.thinking = { type: 'enabled', budget_tokens: budgetTokens }
+        body.temperature = 1
       }
 
       const response = await electronFetch(`${this.baseUrl}/v1/messages`, {
@@ -486,7 +507,8 @@ export class AnthropicProvider extends BaseProvider {
     ]
 
     // For thinking mode, max_tokens must be strictly greater than budget_tokens.
-    const isThinking = request.mode === 'thinking'
+    // Only enable thinking if the model actually supports it.
+    const isThinking = request.mode === 'thinking' && this.modelSupportsThinking(request.model)
     const budgetTokens = isThinking
       ? Math.max(1024, request.maxTokens || 4096)
       : 0
@@ -509,8 +531,10 @@ export class AnthropicProvider extends BaseProvider {
     }
 
     // Extended thinking mode - budget_tokens must be < max_tokens
+    // Anthropic requires temperature=1 when thinking is enabled
     if (isThinking) {
       body.thinking = { type: 'enabled', budget_tokens: budgetTokens }
+      body.temperature = 1
     }
 
     const response = await electronStreamFetch(`${this.baseUrl}/v1/messages`, {

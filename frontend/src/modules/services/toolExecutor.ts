@@ -382,6 +382,33 @@ export class ElectronToolExecutor implements IToolExecutor {
         // File doesn't exist yet - that's fine
       }
 
+      // Validate .prmd format before writing — same check edit_file uses
+      if (path.endsWith('.prmd') || path.endsWith('.prompd')) {
+        // Only validate when overwriting an existing file that had valid frontmatter
+        if (originalContent) {
+          const formatValidation = this.validatePrompdFormat(content)
+          if (!formatValidation.valid) {
+            console.error('[ToolExecutor:Electron] REJECTING write_file - invalid .prmd format:', formatValidation.error)
+            return {
+              success: false,
+              error: `WRITE REJECTED - INVALID .prmd FORMAT: ${formatValidation.error}
+
+CORRECT .prmd structure (you MUST follow this):
+---
+id: example
+version: 1.0.0
+---
+
+# Markdown Title (goes AFTER the closing ---)
+
+Content here.
+
+The file MUST start with --- on line 1, contain YAML frontmatter, and have a closing --- before any markdown content. Use edit_file instead of write_file to make targeted changes without losing the file structure.`
+            }
+          }
+        }
+      }
+
       const result = await api.writeFile(fullPath, content)
 
       if (result.success) {
@@ -1411,6 +1438,32 @@ export class BrowserToolExecutor implements IToolExecutor {
   async writeFile(path: string, content: string): Promise<ToolResult> {
     // Get original content for undo stack
     const originalContent = this.openFiles.get(path) || ''
+
+    // Validate .prmd format before writing — same check edit_file uses
+    if (path.endsWith('.prmd') || path.endsWith('.prompd')) {
+      if (originalContent) {
+        const formatValidation = this.validatePrompdFormat(content)
+        if (!formatValidation.valid) {
+          console.error('[ToolExecutor:Browser] REJECTING write_file - invalid .prmd format:', formatValidation.error)
+          return {
+            success: false,
+            error: `WRITE REJECTED - INVALID .prmd FORMAT: ${formatValidation.error}
+
+CORRECT .prmd structure (you MUST follow this):
+---
+id: example
+version: 1.0.0
+---
+
+# Markdown Title (goes AFTER the closing ---)
+
+Content here.
+
+The file MUST start with --- on line 1, contain YAML frontmatter, and have a closing --- before any markdown content. Use edit_file instead of write_file to make targeted changes without losing the file structure.`
+          }
+        }
+      }
+    }
 
     // In browser, we can only "write" to the in-memory map
     // The actual file save would need to be handled by the editor

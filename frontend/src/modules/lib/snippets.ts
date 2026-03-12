@@ -91,13 +91,13 @@ export const PROMPD_SNIPPETS = {
     label: 'param',
     kind: 'Snippet' as const,
     insertText: [
-      '${1:parameter_name}:',
+      '- name: ${1:parameter_name}',
       '  type: ${2:string}',
       '  required: ${3:true}',
-      '  description: ${4:Parameter description}',
+      '  description: "${4:Parameter description}"',
       '  ${5:default: ${6:default_value}}'
     ].join('\n'),
-    documentation: 'Parameter definition',
+    documentation: 'Parameter definition (array format)',
     range: null as any
   },
 

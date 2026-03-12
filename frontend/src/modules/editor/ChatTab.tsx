@@ -27,6 +27,7 @@ import type { Tab } from '../../stores/types'
 import { useEditorStore } from '../../stores/editorStore'
 import { useUIStore } from '../../stores/uiStore'
 import { Zap, ShieldCheck, ClipboardList, ChevronDown, FileText, Undo2, Lightbulb, Brain, Focus } from 'lucide-react'
+import { ProviderModelSelector } from '../components/ProviderModelSelector'
 import { AskUserPanel } from '../components/AskUserPanel'
 import { SlashCommandMenu, useSlashCommands, type SlashCommand } from '../components/SlashCommandMenu'
 import { executeSlashCommand, SLASH_COMMANDS } from '../services/slashCommands'
@@ -256,10 +257,13 @@ export function ChatTab({ tab, onPrompdGenerated, theme = 'dark', workspacePath,
   // Refs for imperative control
   const chatRef = useRef<PrompdChatHandle>(null)
 
-  // Centralized LLM provider state
-  const { llmProvider, initializeLLMProviders, setLLMGenerationMode } = useUIStore(
+  // Centralized LLM provider state (chat uses chatLLMProvider for provider/model)
+  const { llmProvider, chatLLMProvider, setChatLLMProvider, setChatLLMModel, initializeLLMProviders, setLLMGenerationMode } = useUIStore(
     useShallow(state => ({
       llmProvider: state.llmProvider,
+      chatLLMProvider: state.chatLLMProvider,
+      setChatLLMProvider: state.setChatLLMProvider,
+      setChatLLMModel: state.setChatLLMModel,
       initializeLLMProviders: state.initializeLLMProviders,
       setLLMGenerationMode: state.setLLMGenerationMode
     }))
@@ -548,8 +552,8 @@ export function ChatTab({ tab, onPrompdGenerated, theme = 'dark', workspacePath,
   // Uses LLMClientRouter to route between local and remote execution (same as AiChatPanel)
   const editorLLMClient = useMemo(() => {
     const baseClient = new LLMClientRouter({
-      provider: llmProvider.provider,
-      model: llmProvider.model,
+      provider: chatLLMProvider.provider,
+      model: chatLLMProvider.model,
       getAuthToken: async () => {
         try {
           return await getToken()
@@ -610,8 +614,8 @@ export function ChatTab({ tab, onPrompdGenerated, theme = 'dark', workspacePath,
     // Use effective (capped) context window so compaction triggers at a practical
     // conversation length even for models with 1M+ token windows.
     const effectiveCtxWindow = resolveEffectiveContextWindow(
-      llmProvider.provider,
-      llmProvider.model,
+      chatLLMProvider.provider,
+      chatLLMProvider.model,
       llmProvider.providersWithPricing
     )
     const compactingClient = new CompactingLLMClient(
@@ -622,18 +626,18 @@ export function ChatTab({ tab, onPrompdGenerated, theme = 'dark', workspacePath,
 
     // Use the shared agent LLM client wrapper
     return agentActions.createAgentLLMClient(compactingClient, chatRef, getContextMessages)
-  }, [llmProvider.provider, llmProvider.model, getToken, selectedFileTab, agentActions])
+  }, [chatLLMProvider.provider, chatLLMProvider.model, getToken, selectedFileTab, agentActions])
 
   // Context utilization for status bar display (uses effective/capped context window)
   const contextUtilization = useMemo(() => {
     const totalIn = agentState.tokenUsage.promptTokens
     if (totalIn <= 0) return null
-    const ctxWindow = resolveEffectiveContextWindow(llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing)
+    const ctxWindow = resolveEffectiveContextWindow(chatLLMProvider.provider, chatLLMProvider.model, llmProvider.providersWithPricing)
     return {
       pct: Math.round((totalIn / ctxWindow) * 100),
       formatted: formatContextWindow(ctxWindow)
     }
-  }, [agentState.tokenUsage.promptTokens, llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing])
+  }, [agentState.tokenUsage.promptTokens, chatLLMProvider.provider, chatLLMProvider.model, llmProvider.providersWithPricing])
 
   const editorIntegration = useMemo(() => new PrompdEditorIntegration(
     getSelectedFileText,
@@ -867,6 +871,25 @@ Write your prompt content here.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {!embedded && renderContextSelector()}
+
+      {/* Chat Provider/Model Selector */}
+      {llmProvider.providersWithPricing && llmProvider.providersWithPricing.length > 0 && (
+        <div style={{
+          padding: '4px 12px',
+          borderBottom: '1px solid var(--border)',
+        }}>
+          <ProviderModelSelector
+            providers={llmProvider.providersWithPricing}
+            selectedProvider={chatLLMProvider.provider}
+            selectedModel={chatLLMProvider.model}
+            onProviderChange={setChatLLMProvider}
+            onModelChange={setChatLLMModel}
+            layout="compact"
+            shrinkModel
+            forceDropdown
+          />
+        </div>
+      )}
 
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <PrompdProvider
@@ -1112,8 +1135,8 @@ Write your prompt content here.
                 </button>
                 {/* Thinking mode toggle - only shown when current model supports thinking */}
                 {(() => {
-                  const currentProvider = llmProvider.providersWithPricing?.find(p => p.providerId === llmProvider.provider)
-                  const currentModel = currentProvider?.models.find(m => m.model === llmProvider.model)
+                  const currentProvider = llmProvider.providersWithPricing?.find(p => p.providerId === chatLLMProvider.provider)
+                  const currentModel = currentProvider?.models.find(m => m.model === chatLLMProvider.model)
                   return currentModel?.supportsThinking === true
                 })() && (
                   <button

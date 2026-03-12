@@ -144,14 +144,10 @@ function setupAutoUpdater() {
 
   updater.on('update-available', (info) => {
     console.log('[AutoUpdater] Update available:', info.version)
+    // Don't show a dialog here — autoDownload is enabled so it downloads immediately.
+    // The 'update-downloaded' handler will prompt the user when it's ready to install.
     if (mainWindow) {
-      dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Update Available',
-        message: `A new version (${info.version}) is available!`,
-        detail: 'The update will be downloaded in the background. You will be notified when it is ready to install.',
-        buttons: ['OK']
-      })
+      mainWindow.webContents.send('update-available', { version: info.version })
     }
   })
 
@@ -171,17 +167,7 @@ function setupAutoUpdater() {
   updater.on('update-downloaded', (info) => {
     console.log('[AutoUpdater] Update downloaded:', info.version)
     if (mainWindow) {
-      dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Update Ready',
-        message: 'Update downloaded successfully!',
-        detail: 'The application will restart to install the update.',
-        buttons: ['Restart Now', 'Later']
-      }).then((result) => {
-        if (result.response === 0) {
-          updater.quitAndInstall()
-        }
-      })
+      mainWindow.webContents.send('update-downloaded', { version: info.version })
     }
   })
 }
@@ -2417,15 +2403,21 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient('prompd')
 }
 
-// Electron writes "URL:prompd" as the registry display name — override to "Prompd"
-// so browser dialogs show "Open Prompd?" instead of "Open URL:prompd?"
+// Override Windows registry so browser dialogs show "Open Prompd?" instead of "Open Electron?"
+// Chrome/Edge read ApplicationName from the Application subkey, not the default value.
 if (process.platform === 'win32') {
   try {
     const { execSync } = require('child_process')
-    execSync('reg add "HKCU\\Software\\Classes\\prompd" /ve /d "Prompd" /f', {
-      windowsHide: true,
-      stdio: 'ignore'
-    })
+    const exePath = process.execPath.replace(/\\/g, '\\\\')
+    const regCmds = [
+      'reg add "HKCU\\Software\\Classes\\prompd" /ve /d "Prompd" /f',
+      'reg add "HKCU\\Software\\Classes\\prompd\\Application" /v "ApplicationName" /d "Prompd" /f',
+      'reg add "HKCU\\Software\\Classes\\prompd\\Application" /v "ApplicationDescription" /d "Prompd - AI Workflow Studio" /f',
+      `reg add "HKCU\\Software\\Classes\\prompd\\Application" /v "ApplicationIcon" /d "${exePath},0" /f`,
+    ]
+    for (const cmd of regCmds) {
+      execSync(cmd, { windowsHide: true, stdio: 'ignore' })
+    }
   } catch (_) {
     // Non-critical — protocol handler still works
   }
@@ -2723,6 +2715,12 @@ ipcMain.handle('app:getWindowTitle', async () => {
 // Menu state query
 ipcMain.handle('app:getMenuState', async () => {
   return { ...menuState }
+})
+
+// Auto-update: install downloaded update and restart
+ipcMain.handle('update:install', async () => {
+  const updater = getAutoUpdater()
+  updater.quitAndInstall()
 })
 
 // Edit operations (for custom menu — proxy to webContents methods)

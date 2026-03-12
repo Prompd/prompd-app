@@ -216,21 +216,51 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
   const [sectionOverrides, setSectionOverrides] = useState<Record<string, string | null>>({})
   const prevParsedOverridesRef = useRef<Record<string, string | null>>({})
 
-  // Compute missing inherited parameters (params in base prompt but not in child)
-  const missingInheritedParams = useMemo(() => {
-    if (Object.keys(inheritedParams).length === 0) return []
+  // Auto-merge inherited parameters into editable params when they load
+  // Child-defined params take precedence; inherited params fill in the gaps with their defaults
+  const prevInheritedParamsRef = useRef<string>('')
+  const pendingInheritedMergeRef = useRef(false)
+  useEffect(() => {
+    if (Object.keys(inheritedParams).length === 0) return
 
-    const currentParamNames = Object.keys(parsed.paramsSchema)
-    const missingParams: Array<{ name: string; schema: any }> = []
+    // Only run when inheritedParams actually change (not on every render)
+    const inheritedKey = JSON.stringify(inheritedParams)
+    if (prevInheritedParamsRef.current === inheritedKey) return
+    prevInheritedParamsRef.current = inheritedKey
+
+    const currentParamNames = Object.keys(editableParams)
+    const paramsToAdd: Record<string, ParameterSchema> = {}
 
     for (const [name, schema] of Object.entries(inheritedParams)) {
       if (!currentParamNames.includes(name)) {
-        missingParams.push({ name, schema })
+        paramsToAdd[name] = { ...schema }
       }
     }
 
-    return missingParams
-  }, [inheritedParams, parsed.paramsSchema])
+    if (Object.keys(paramsToAdd).length > 0) {
+      setEditableParams(prev => ({ ...prev, ...paramsToAdd }))
+      setParamsWereModified(true)
+      pendingInheritedMergeRef.current = true
+    }
+  }, [inheritedParams, editableParams])
+
+  // Compute required inherited parameters that still need user input
+  // (required + no default = user must provide a value)
+  const requiredInheritedParams = useMemo(() => {
+    if (Object.keys(inheritedParams).length === 0) return []
+
+    const result: Array<{ name: string; schema: ParameterSchema }> = []
+    for (const [name, schema] of Object.entries(inheritedParams)) {
+      if (schema.required && schema.default === undefined) {
+        // Check if the child has already provided a value (overridden with a default)
+        const childSchema = editableParams[name]
+        if (!childSchema || childSchema.default === undefined) {
+          result.push({ name, schema })
+        }
+      }
+    }
+    return result
+  }, [inheritedParams, editableParams])
 
   // Compute available sections for SectionAdder (exclude already overridden ones)
   const availableSections = useMemo(() => {
@@ -795,6 +825,18 @@ ${parsed.body.replace(/^\n+/, '')}`.trim()
     generateFrontmatter(metadata, parsed.frontmatter.inherits || '')
   }, [metadata, parsed.frontmatter.inherits, generateFrontmatter])
 
+  // Persist auto-merged inherited params after state update
+  useEffect(() => {
+    if (pendingInheritedMergeRef.current && paramsWereModified) {
+      pendingInheritedMergeRef.current = false
+      // Defer to next tick so editableParams state is settled
+      const timer = setTimeout(() => {
+        generateFrontmatter(metadata, parsed.frontmatter.inherits || '')
+      }, 0)
+      return () => clearTimeout(timer)
+    }
+  }, [editableParams, paramsWereModified, metadata, parsed.frontmatter.inherits, generateFrontmatter])
+
   const handleMetadataChange = useCallback((field: string, value: string | string[]) => {
     // Build updated metadata and regenerate frontmatter
     // We pass the updated metadata directly to avoid React state timing issues
@@ -886,17 +928,16 @@ ${parsed.body.replace(/^\n+/, '')}`.trim()
     })
   }
 
-  // Add all missing inherited parameters at once
+  // Add all missing inherited parameters at once (manual fallback — auto-merge handles most cases)
   const addMissingParameters = () => {
-    if (missingInheritedParams.length === 0) return
+    const missing = Object.entries(inheritedParams).filter(([name]) => !editableParams[name])
+    if (missing.length === 0) return
 
+    setParamsWereModified(true)
     setEditableParams(prev => {
       const newParams = { ...prev }
-      for (const { name, schema } of missingInheritedParams) {
-        // Only add if not already present
-        if (!newParams[name]) {
-          newParams[name] = { ...schema }
-        }
+      for (const [name, schema] of missing) {
+        newParams[name] = { ...schema }
       }
       return newParams
     })
@@ -904,7 +945,7 @@ ${parsed.body.replace(/^\n+/, '')}`.trim()
     // Expand newly added parameters
     setExpandedParams(prev => {
       const next = new Set(prev)
-      for (const { name } of missingInheritedParams) {
+      for (const [name] of missing) {
         next.add(name)
       }
       return next
@@ -2719,13 +2760,13 @@ ${parsed.body.replace(/^\n+/, '')}`
                   </div>
                 )}
 
-                {/* Warning for missing inherited parameters */}
-                {missingInheritedParams.length > 0 && (
+                {/* Warning for required inherited parameters that need values */}
+                {requiredInheritedParams.length > 0 && (
                   <div style={{
                     marginTop: Object.keys(parsed.paramsSchema).length > 0 ? '12px' : '0',
                     padding: '10px 12px',
-                    background: 'rgba(245, 158, 11, 0.1)',
-                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
                     borderRadius: '6px',
                     display: 'flex',
                     flexDirection: 'column',
@@ -2737,25 +2778,25 @@ ${parsed.body.replace(/^\n+/, '')}`
                       gap: '6px',
                       fontSize: '12px',
                       fontWeight: 600,
-                      color: '#d97706'
+                      color: '#ef4444'
                     }}>
                       <AlertTriangle size={14} />
-                      Missing Base Parameters
+                      Required Parameters Need Values
                     </div>
                     <div style={{
                       fontSize: '11px',
                       color: 'var(--text-secondary)',
                       lineHeight: 1.4
                     }}>
-                      The following parameters are defined in the base template but not in this prompt.
-                      They won't be available during compilation unless you add them here:
+                      These required parameters from the base template have no default value.
+                      Set a default or they will fail at compile time:
                     </div>
                     <div style={{
                       display: 'flex',
                       flexWrap: 'wrap',
                       gap: '6px'
                     }}>
-                      {missingInheritedParams.map(({ name, schema }) => {
+                      {requiredInheritedParams.map(({ name, schema }) => {
                         const TypeIcon = getTypeIcon(schema.type)
                         return (
                           <div
@@ -2765,54 +2806,31 @@ ${parsed.body.replace(/^\n+/, '')}`
                               alignItems: 'center',
                               gap: '4px',
                               padding: '4px 8px',
-                              background: 'rgba(245, 158, 11, 0.15)',
-                              border: '1px dashed rgba(245, 158, 11, 0.5)',
+                              background: 'rgba(239, 68, 68, 0.15)',
+                              border: '1px dashed rgba(239, 68, 68, 0.5)',
                               borderRadius: '4px',
-                              fontSize: '11px'
+                              fontSize: '11px',
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => {
+                              setExpandedParams(prev => {
+                                const next = new Set(prev)
+                                next.add(name)
+                                return next
+                              })
                             }}
                           >
-                            <TypeIcon size={10} style={{ color: '#d97706' }} />
-                            <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#d97706' }}>
+                            <TypeIcon size={10} style={{ color: '#ef4444' }} />
+                            <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#ef4444' }}>
                               {name}
                             </span>
                             <span style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>
-                              ({schema.type})
+                              ({schema.type}, required)
                             </span>
-                            {schema.default !== undefined && (
-                              <span style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>
-                                = {JSON.stringify(schema.default)}
-                              </span>
-                            )}
                           </div>
                         )
                       })}
                     </div>
-                    {/* Add Missing Parameters button */}
-                    {!readOnly && (
-                      <button
-                        onClick={addMissingParameters}
-                        style={{
-                          marginTop: '8px',
-                          padding: '6px 12px',
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          background: '#d97706',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          transition: 'background 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#b45309'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = '#d97706'}
-                      >
-                        <span>+</span>
-                        Add Missing Parameters
-                      </button>
-                    )}
                   </div>
                 )}
               </div>

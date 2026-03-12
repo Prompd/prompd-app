@@ -5,6 +5,7 @@
   "description": "AI planning assistant that explores and designs before executing",
   "responseFormat": "xml",
   "systemPromptFile": "planner.md",
+  "includeFiles": ["prmd-syntax.md"],
   "tools": [
     {
       "name": "read_file",

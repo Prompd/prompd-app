@@ -5,6 +5,7 @@
   "description": "Collaborative document editor that iterates with you on a working copy",
   "responseFormat": "xml",
   "systemPromptFile": "brainstorm.md",
+  "includeFiles": ["prmd-syntax.md"],
   "tools": [
     {
       "name": "edit_file",

@@ -3,7 +3,7 @@
  */
 import type * as monacoEditor from 'monaco-editor'
 import { fixObjectParamsToArray } from './utils'
-import { getCurrentFilePath, setCurrentFilePath } from './validation'
+import { getCurrentFilePath, setCurrentFilePath, getModelFilePath } from './validation'
 import { logger } from '../logger'
 
 // Scoped logger for code actions (can be disabled in production)
@@ -34,6 +34,10 @@ export const CODE_ACTION_IDS = {
   WRAP_IN_QUOTES: 'prompd.wrap-in-quotes',
   REMOVE_QUOTES: 'prompd.remove-quotes',
   SWITCH_QUOTE_TYPE: 'prompd.switch-quote-type',
+  // Version bumping
+  BUMP_PATCH: 'prompd.bump-version-patch',
+  BUMP_MINOR: 'prompd.bump-version-minor',
+  BUMP_MAJOR: 'prompd.bump-version-major',
 } as const
 
 /**
@@ -294,6 +298,63 @@ function findYamlValueAtPosition(
 }
 
 /**
+ * Find the version field in frontmatter and parse it as semver.
+ * Returns bump targets if the cursor is on the version line.
+ */
+function findVersionAtPosition(
+  model: monacoEditor.editor.ITextModel,
+  position: monacoEditor.Position,
+  content: string
+): {
+  current: string
+  major: number
+  minor: number
+  patch: number
+  valueRange: monacoEditor.IRange
+} | null {
+  const lineNumber = position.lineNumber
+  const lineContent = model.getLineContent(lineNumber)
+  const frontmatterEnd = findFrontmatterEnd(content)
+
+  if (lineNumber >= frontmatterEnd || lineNumber <= 1) {
+    return null
+  }
+
+  const versionMatch = lineContent.match(/^(\s*)version:\s*["']?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.+-]*)?)["']?\s*$/)
+  if (!versionMatch) {
+    return null
+  }
+
+  const versionStr = versionMatch[2]
+  const parts = versionStr.split('-')
+  const nums = parts[0].split('.').map(Number)
+  if (nums.length !== 3 || nums.some(isNaN)) {
+    return null
+  }
+
+  // Calculate value position from colon
+  const colonIdx = lineContent.indexOf(':')
+  const afterColon = lineContent.substring(colonIdx + 1)
+  const trimmedStart = afterColon.length - afterColon.trimStart().length
+  const valStartCol = colonIdx + 1 + trimmedStart + 1 // 1-based
+  const trimmedVal = afterColon.trimStart()
+  const quoted = trimmedVal.startsWith('"') || trimmedVal.startsWith("'")
+
+  return {
+    current: versionStr,
+    major: nums[0],
+    minor: nums[1],
+    patch: nums[2],
+    valueRange: {
+      startLineNumber: lineNumber,
+      startColumn: valStartCol,
+      endLineNumber: lineNumber,
+      endColumn: valStartCol + versionStr.length + (quoted ? 2 : 0)
+    }
+  }
+}
+
+/**
  * Register the code action provider
  */
 export function registerCodeActionProvider(
@@ -457,6 +518,55 @@ export function registerCodeActionProvider(
             }
           })
         }
+      }
+
+      // Check if cursor is on version line - offer bump actions
+      const versionInfo = findVersionAtPosition(model, position, content)
+      if (versionInfo) {
+        const { major, minor, patch, valueRange } = versionInfo
+        actions.push({
+          title: `Bump patch: ${major}.${minor}.${patch + 1}`,
+          kind: 'refactor',
+          isPreferred: true,
+          edit: {
+            edits: [{
+              resource: model.uri,
+              textEdit: {
+                range: valueRange,
+                text: `${major}.${minor}.${patch + 1}`
+              },
+              versionId: model.getVersionId()
+            }]
+          }
+        })
+        actions.push({
+          title: `Bump minor: ${major}.${minor + 1}.0`,
+          kind: 'refactor',
+          edit: {
+            edits: [{
+              resource: model.uri,
+              textEdit: {
+                range: valueRange,
+                text: `${major}.${minor + 1}.0`
+              },
+              versionId: model.getVersionId()
+            }]
+          }
+        })
+        actions.push({
+          title: `Bump major: ${major + 1}.0.0`,
+          kind: 'refactor',
+          edit: {
+            edits: [{
+              resource: model.uri,
+              textEdit: {
+                range: valueRange,
+                text: `${major + 1}.0.0`
+              },
+              versionId: model.getVersionId()
+            }]
+          }
+        })
       }
 
       // Check if document has any variables - offer bulk conversion
@@ -646,7 +756,8 @@ export function registerCodeActionProvider(
             })
 
             // Option 2: Rename file to match id (command)
-            const filePath = getCurrentFilePath()
+            // Use model-specific file path map with singleton fallback
+            const filePath = getModelFilePath(model.uri.toString())
             if (filePath) {
               actions.push({
                 title: `Rename file to '${currentId}.prmd'`,
