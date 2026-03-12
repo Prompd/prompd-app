@@ -154,19 +154,13 @@
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\@pkgjs\\parseargs",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\@pkgjs\\parseargs\\LICENSE"
   },
-  "@prompd/app@0.5.0-beta.2": {
+  "@prompd/app@0.5.0-beta.3": {
     "licenses": "UNLICENSED",
     "private": true,
     "publisher": "Prompd LLC",
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend"
   },
-  "@prompd/cli@0.5.0-beta.4": {
-    "licenses": "Elastic-2.0",
-    "publisher": "Prompd LLC",
-    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\@prompd\\cli",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\@prompd\\cli\\README.md"
-  },
-  "@prompd/cli@0.5.0-beta.5": {
+  "@prompd/cli@0.5.0-beta.6": {
     "licenses": "Elastic-2.0",
     "publisher": "Prompd LLC",
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli",
@@ -845,14 +839,6 @@
     "email": "t.jameson.little@gmail.com",
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\base64-js",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\base64-js\\LICENSE"
-  },
-  "bcrypt@6.0.0": {
-    "licenses": "MIT",
-    "repository": "https://github.com/kelektiv/node.bcrypt.js",
-    "publisher": "Nick Campbell",
-    "url": "https://github.com/ncb000gt",
-    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\bcrypt",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\bcrypt\\LICENSE"
   },
   "better-sqlite3@12.6.2": {
     "licenses": "MIT",
@@ -3538,26 +3524,12 @@
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\node-abi",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\node-abi\\LICENSE"
   },
-  "node-addon-api@8.6.0": {
-    "licenses": "MIT",
-    "repository": "https://github.com/nodejs/node-addon-api",
-    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\node-addon-api",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\node-addon-api\\LICENSE.md"
-  },
   "node-cron@3.0.3": {
     "licenses": "ISC",
     "repository": "https://github.com/merencia/node-cron",
     "publisher": "Lucas Merencia",
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\node-cron",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\node-cron\\LICENSE.md"
-  },
-  "node-gyp-build@4.8.4": {
-    "licenses": "MIT",
-    "repository": "https://github.com/prebuild/node-gyp-build",
-    "publisher": "Mathias Buus",
-    "url": "@mafintosh",
-    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\node-gyp-build",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\node-gyp-build\\LICENSE"
   },
   "normalize-path@3.0.0": {
     "licenses": "MIT",
