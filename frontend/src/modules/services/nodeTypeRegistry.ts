@@ -5,7 +5,7 @@
  * is defined here. Consumers import and derive what they need instead of
  * maintaining their own hardcoded lists.
  *
- * CLI counterpart: C:\git\github\Logikbug\prompd-cli\cli\npm\src\lib\nodeTypeRegistry.ts
+ * CLI counterpart: C:\git\github\Prompd\prompd-cli\typescript\src\lib\nodeTypeRegistry.ts
  * Future: Consolidate both into a shared @prompd/shared package.
  *
  * When adding a new node type:
