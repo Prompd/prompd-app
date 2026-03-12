@@ -144,14 +144,10 @@ function setupAutoUpdater() {
 
   updater.on('update-available', (info) => {
     console.log('[AutoUpdater] Update available:', info.version)
+    // Don't show a dialog here — autoDownload is enabled so it downloads immediately.
+    // The 'update-downloaded' handler will prompt the user when it's ready to install.
     if (mainWindow) {
-      dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Update Available',
-        message: `A new version (${info.version}) is available!`,
-        detail: 'The update will be downloaded in the background. You will be notified when it is ready to install.',
-        buttons: ['OK']
-      })
+      mainWindow.webContents.send('update-available', { version: info.version })
     }
   })
 
@@ -171,17 +167,7 @@ function setupAutoUpdater() {
   updater.on('update-downloaded', (info) => {
     console.log('[AutoUpdater] Update downloaded:', info.version)
     if (mainWindow) {
-      dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Update Ready',
-        message: 'Update downloaded successfully!',
-        detail: 'The application will restart to install the update.',
-        buttons: ['Restart Now', 'Later']
-      }).then((result) => {
-        if (result.response === 0) {
-          updater.quitAndInstall()
-        }
-      })
+      mainWindow.webContents.send('update-downloaded', { version: info.version })
     }
   })
 }
@@ -2729,6 +2715,12 @@ ipcMain.handle('app:getWindowTitle', async () => {
 // Menu state query
 ipcMain.handle('app:getMenuState', async () => {
   return { ...menuState }
+})
+
+// Auto-update: install downloaded update and restart
+ipcMain.handle('update:install', async () => {
+  const updater = getAutoUpdater()
+  updater.quitAndInstall()
 })
 
 // Edit operations (for custom menu — proxy to webContents methods)

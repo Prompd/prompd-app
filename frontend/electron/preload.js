@@ -325,6 +325,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   isElectron: true,
 
+  // Auto-update events
+  onUpdateAvailable: (callback) => {
+    const handler = (_event, info) => callback(info)
+    ipcRenderer.on('update-available', handler)
+    return () => ipcRenderer.removeListener('update-available', handler)
+  },
+  onUpdateDownloaded: (callback) => {
+    const handler = (_event, info) => callback(info)
+    ipcRenderer.on('update-downloaded', handler)
+    return () => ipcRenderer.removeListener('update-downloaded', handler)
+  },
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+
   // Slash command execution (uses @prompd/cli in main process)
   executeSlashCommand: (commandId, args, context) =>
     ipcRenderer.invoke('slashCommand:execute', commandId, args, context),
