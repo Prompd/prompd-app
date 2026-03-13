@@ -3757,6 +3757,28 @@ version: 1.0.0
     }
   }, [])
 
+  // Auto-update notifications via toasts
+  useEffect(() => {
+    const api = window.electronAPI
+    if (!api?.isElectron) return
+
+    const cleanups: (() => void)[] = []
+
+    cleanups.push(api.onUpdateAvailable((info) => {
+      addToast(`Version ${info.version} is available and downloading...`, 'update', 10000)
+    }))
+
+    cleanups.push(api.onUpdateDownloaded((info) => {
+      addToast(`Version ${info.version} is ready to install`, 'update', 0, {
+        label: 'Restart & Update',
+        onClick: () => api.installUpdate(),
+      })
+    }))
+
+    return () => cleanups.forEach(fn => fn())
+  }, [addToast])
+
+
   // Add file to content reference field
   const addToContentField = useCallback((filePath: string, field: 'system' | 'assistant' | 'context' | 'user' | 'response', currentFilePath?: string) => {
     let pathToInsert = filePath

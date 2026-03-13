@@ -230,7 +230,7 @@ interface UIActions {
   setSelectedEnvFile: (file: string | null) => void
 
   // Toast notifications
-  addToast: (message: string, type?: Toast['type'], duration?: number) => string
+  addToast: (message: string, type?: Toast['type'], duration?: number, action?: Toast['action']) => string
   removeToast: (id: string) => void
   clearToasts: () => void
 
@@ -896,10 +896,10 @@ export const useUIStore = create<UIStore>()(
           }),
 
           // Toast notifications
-          addToast: (message, type = 'info', duration = 5000) => {
+          addToast: (message, type = 'info', duration = 5000, action) => {
             const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
             set((state) => {
-              state.toasts.push({ id, message, type, duration })
+              state.toasts.push({ id, message, type, duration, action })
             })
             // Auto-remove after duration (if not persistent)
             if (duration > 0) {

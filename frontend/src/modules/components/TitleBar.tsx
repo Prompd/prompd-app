@@ -149,7 +149,7 @@ function buildMenus(ms: MenuState): MenuDef[] {
       label: 'Help',
       items: [
         { label: 'Documentation', action: () => api.openExternal('https://prompd.io/docs') },
-        { label: 'Report Issue', action: () => api.openExternal('https://github.com/Logikbug/prompd.app/issues') },
+        { label: 'Report Issue', action: () => api.openExternal('https://github.com/Prompd/prompd-app/issues') },
         { type: 'separator' },
         { label: 'Check for Updates', action: () => api.checkForUpdates() },
         { type: 'separator' },

@@ -745,23 +745,14 @@ function createMenu() {
         {
           label: 'Report Issue',
           click: () => {
-            shell.openExternal('https://github.com/Logikbug/prompd.app/issues')
+            shell.openExternal('https://github.com/Prompd/prompd-app/issues')
           }
         },
         { type: 'separator' },
         {
           label: 'Check for Updates',
           click: () => {
-            getAutoUpdater().checkForUpdatesAndNotify()
-            if (mainWindow) {
-              dialog.showMessageBox(mainWindow, {
-                type: 'info',
-                title: 'Checking for Updates',
-                message: 'Checking for updates...',
-                detail: 'You will be notified if an update is available.',
-                buttons: ['OK']
-              })
-            }
+            getAutoUpdater().checkForUpdates()
           }
         },
         { type: 'separator' },
@@ -825,7 +816,7 @@ app.whenReady().then(() => {
   // Check for updates on startup (only in production)
   if (!process.env.ELECTRON_START_URL) {
     console.log('[Electron] Checking for updates...')
-    getAutoUpdater().checkForUpdatesAndNotify()
+    getAutoUpdater().checkForUpdates()
   }
 
   // Initialize GA4 analytics (opt-in, anonymous)
@@ -2787,7 +2778,7 @@ ipcMain.handle('app:quit', async () => { app.quit() })
 ipcMain.handle('app:checkForUpdates', async () => {
   try {
     const updater = getAutoUpdater()
-    updater.checkForUpdatesAndNotify()
+    updater.checkForUpdates()
   } catch (e) {
     console.warn('[Electron] Auto-updater check failed:', e.message)
   }
