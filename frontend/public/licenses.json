@@ -154,7 +154,7 @@
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\@pkgjs\\parseargs",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\@pkgjs\\parseargs\\LICENSE"
   },
-  "@prompd/app@0.5.0-beta.3": {
+  "@prompd/app@0.5.0-beta.4": {
     "licenses": "UNLICENSED",
     "private": true,
     "publisher": "Prompd LLC",
