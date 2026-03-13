@@ -4,7 +4,8 @@
  * Runs after the app is packed but BEFORE installers are created.
  * Tasks:
  * 1. Verify @prompd/cli is installed from npm
- * 2. Embed icon into Windows executable
+ * 2. Embed icon and product metadata into Windows executable
+ *    (needed because signAndEditExecutable is false — no code signing cert)
  */
 
 const { execSync } = require('child_process')
@@ -93,12 +94,24 @@ module.exports = async function(context) {
 
   console.log('[afterPack] Using rcedit:', rceditPath)
 
+  const appInfo = context.packager.appInfo
+  const version = appInfo.version
+
   try {
-    execSync(`"${rceditPath}" "${exePath}" --set-icon "${iconPath}"`, {
-      stdio: 'inherit'
-    })
+    // Set icon
+    execSync(`"${rceditPath}" "${exePath}" --set-icon "${iconPath}"`, { stdio: 'inherit' })
     console.log('[afterPack] Icon embedded successfully!')
+
+    // Set product metadata so Task Manager shows "Prompd" instead of "Electron"
+    execSync(`"${rceditPath}" "${exePath}" --set-version-string "ProductName" "Prompd"`, { stdio: 'inherit' })
+    execSync(`"${rceditPath}" "${exePath}" --set-version-string "FileDescription" "Prompd"`, { stdio: 'inherit' })
+    execSync(`"${rceditPath}" "${exePath}" --set-version-string "CompanyName" "Prompd LLC"`, { stdio: 'inherit' })
+    execSync(`"${rceditPath}" "${exePath}" --set-version-string "LegalCopyright" "Copyright Prompd LLC"`, { stdio: 'inherit' })
+    execSync(`"${rceditPath}" "${exePath}" --set-version-string "OriginalFilename" "Prompd.exe"`, { stdio: 'inherit' })
+    execSync(`"${rceditPath}" "${exePath}" --set-product-version "${version}"`, { stdio: 'inherit' })
+    execSync(`"${rceditPath}" "${exePath}" --set-file-version "${version}"`, { stdio: 'inherit' })
+    console.log('[afterPack] Product metadata embedded successfully!')
   } catch (error) {
-    console.error('[afterPack] ERROR: Failed to embed icon:', error.message)
+    console.error('[afterPack] ERROR: Failed to embed exe metadata:', error.message)
   }
 }
