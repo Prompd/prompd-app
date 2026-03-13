@@ -39,6 +39,7 @@ import WelcomeView from './components/WelcomeView'
 import CloseWorkspaceDialog from './components/CloseWorkspaceDialog'
 import FileChangesModal from './components/FileChangesModal'
 import ToastContainer from './components/ToastContainer'
+import { UpdateBanner } from './components/UpdateBanner'
 import BottomPanelTabs from './components/BottomPanelTabs'
 import { CommandPalette } from './components/CommandPalette'
 import { FirstTimeSetupWizard, isOnboardingComplete, isWizardDismissed } from './components/FirstTimeSetupWizard'
@@ -4031,6 +4032,7 @@ version: 1.0.0
         />
       )}
       <TitleBar theme={theme} />
+      <UpdateBanner />
       <EditorHeader
         theme={theme}
         onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
