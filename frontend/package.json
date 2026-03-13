@@ -90,7 +90,6 @@
       "icon": "public/logo.ico",
       "executableName": "Prompd",
       "requestedExecutionLevel": "asInvoker",
-      "signAndEditExecutable": false,
       "forceCodeSigning": false
     },
     "mac": {
@@ -110,6 +109,7 @@
       "category": "Development"
     },
     "nsis": {
+      "artifactName": "${productName}-Setup-${version}.${ext}",
       "guid": "app.prompd",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,

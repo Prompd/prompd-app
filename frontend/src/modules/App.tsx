@@ -39,7 +39,6 @@ import WelcomeView from './components/WelcomeView'
 import CloseWorkspaceDialog from './components/CloseWorkspaceDialog'
 import FileChangesModal from './components/FileChangesModal'
 import ToastContainer from './components/ToastContainer'
-import { UpdateBanner } from './components/UpdateBanner'
 import BottomPanelTabs from './components/BottomPanelTabs'
 import { CommandPalette } from './components/CommandPalette'
 import { FirstTimeSetupWizard, isOnboardingComplete, isWizardDismissed } from './components/FirstTimeSetupWizard'
@@ -3757,6 +3756,28 @@ version: 1.0.0
     }
   }, [])
 
+  // Auto-update notifications via toasts
+  useEffect(() => {
+    const api = window.electronAPI
+    if (!api?.isElectron) return
+
+    const cleanups: (() => void)[] = []
+
+    cleanups.push(api.onUpdateAvailable((info) => {
+      addToast(`Version ${info.version} is available and downloading...`, 'update', 10000)
+    }))
+
+    cleanups.push(api.onUpdateDownloaded((info) => {
+      addToast(`Version ${info.version} is ready to install`, 'update', 0, {
+        label: 'Restart & Update',
+        onClick: () => api.installUpdate(),
+      })
+    }))
+
+    return () => cleanups.forEach(fn => fn())
+  }, [addToast])
+
+
   // Add file to content reference field
   const addToContentField = useCallback((filePath: string, field: 'system' | 'assistant' | 'context' | 'user' | 'response', currentFilePath?: string) => {
     let pathToInsert = filePath
@@ -4010,7 +4031,6 @@ version: 1.0.0
         />
       )}
       <TitleBar theme={theme} />
-      <UpdateBanner />
       <EditorHeader
         theme={theme}
         onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}

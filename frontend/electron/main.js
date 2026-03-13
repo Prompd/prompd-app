@@ -745,7 +745,7 @@ function createMenu() {
         {
           label: 'Report Issue',
           click: () => {
-            shell.openExternal('https://github.com/Logikbug/prompd.app/issues')
+            shell.openExternal('https://github.com/Prompd/prompd-app/issues')
           }
         },
         { type: 'separator' },

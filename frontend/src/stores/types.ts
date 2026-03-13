@@ -95,8 +95,9 @@ export type ModalType =
 export interface Toast {
   id: string
   message: string
-  type: 'info' | 'warning' | 'error' | 'success'
+  type: 'info' | 'warning' | 'error' | 'success' | 'update'
   duration?: number // milliseconds, 0 = persistent
+  action?: { label: string; onClick: () => void }
 }
 
 /**
