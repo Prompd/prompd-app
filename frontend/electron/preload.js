@@ -480,6 +480,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('resource:getManifest', resourcePath),
   },
 
+  // Package cache - disk-based cache at ~/.prompd/cache/
+  cache: {
+    list: () =>
+      ipcRenderer.invoke('cache:list'),
+    readFile: (filePath) =>
+      ipcRenderer.invoke('cache:readFile', filePath),
+    download: (packageName, version) =>
+      ipcRenderer.invoke('cache:download', packageName, version),
+    delete: (cachePath) =>
+      ipcRenderer.invoke('cache:delete', cachePath),
+    getPath: () =>
+      ipcRenderer.invoke('cache:getPath'),
+    fileTree: (dirPath) =>
+      ipcRenderer.invoke('cache:fileTree', dirPath),
+  },
+
   // Skill discovery - scan installed skills for workflow SkillNode usage
   skill: {
     list: (workspacePath) =>

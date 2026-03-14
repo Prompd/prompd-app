@@ -46,7 +46,7 @@ export default function ActivityBar({ showSidebar, active, onSelect, onToggleSid
         </button>
         <button
           className={`ab-item ${active === 'packages' && showSidebar ? 'active' : ''}`}
-          title="Packages"
+          title="Package Explorer"
           onClick={() => handleClick('packages')}
         >
           <Package

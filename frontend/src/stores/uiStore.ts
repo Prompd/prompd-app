@@ -1076,6 +1076,11 @@ export const useUIStore = create<UIStore>()(
               state.mode = state.defaultViewMode
               console.log('[uiStore] Initialized mode from defaultViewMode:', state.defaultViewMode)
             }
+            // Sync persisted analytics preference to main process after hydration
+            if (state?.analyticsEnabled && window.electronAPI?.analytics) {
+              window.electronAPI.analytics.setEnabled(true)
+              window.electronAPI.analytics.trackEvent('app_open', { event_category: 'app' })
+            }
           }
         }
       )

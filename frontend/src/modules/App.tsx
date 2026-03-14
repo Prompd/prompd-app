@@ -18,6 +18,7 @@ import GitPanel from './editor/GitPanel'
 import { ExecutionHistoryPanel } from './components/ExecutionHistoryPanel'
 import { ResourcePanel } from './components/ResourcePanel'
 import InstalledResourcesPanel from './editor/InstalledResourcesPanel'
+import PackageExplorerPanel from './editor/PackageExplorerPanel'
 import type { PackageManifest } from './services/packageService'
 import { LocalStorageModal } from './components/LocalStorageModal'
 import { PublishModal } from './components/PublishModal'
@@ -461,6 +462,9 @@ export default function App() {
   // Registry package details modal state (from AI Explore mode)
   const [selectedRegistryPackage, setSelectedRegistryPackage] = useState<RegistryPackage | null>(null)
 
+  // Package explorer auto-expand (set when search result clicked on welcome view)
+  const [expandPackageInExplorer, setExpandPackageInExplorer] = useState<string | null>(null)
+
   // Ref to store the execute function for menu triggering
   const executePrompdRef = useRef<(() => void) | null>(null)
   const stopExecutionRef = useRef<(() => void) | null>(null)
@@ -500,18 +504,7 @@ export default function App() {
     }
   }, [])
 
-  // Sync analytics opt-in state to main process on mount
-  const analyticsEnabled = useUIStore(state => state.analyticsEnabled)
-  useEffect(() => {
-    const electronAPI = (window as any).electronAPI
-    if (!electronAPI?.analytics) return
-    // Sync persisted preference to main process
-    electronAPI.analytics.setEnabled(analyticsEnabled)
-    // Track app_open if opted in
-    if (analyticsEnabled) {
-      electronAPI.analytics.trackEvent('app_open', { event_category: 'app' })
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Analytics opt-in sync moved to uiStore onRehydrateStorage (runs after localStorage hydration)
 
   // Auto-restore workspace on startup (Electron only)
   // If we have a persisted explorerDirPath but no handle, restore it
@@ -2518,13 +2511,17 @@ version: 1.0.0
       type: 'execution',
       handle: activeTab.handle,
       filePath: activeTab.filePath,
+      packageSource: activeTab.packageSource,
       executionConfig: {
         sourceTabId: activeTab.id,
         prompdSource: {
-          type: 'file',
+          type: activeTab.packageSource ? 'package' : 'file',
           content: activeTab.text,
           originalParams,
-          filePath: activeTab.filePath
+          filePath: activeTab.filePath,
+          packageRef: activeTab.packageSource
+            ? `${activeTab.packageSource.packageId}/${activeTab.packageSource.filePath}`
+            : undefined
         },
         parameters: activeTab.previewParams || {},
         customParameters: [],
@@ -2561,13 +2558,18 @@ version: 1.0.0
     // Set executing state
     setIsExecutingPreview(true)
 
+    // For package files, resolve source path from packageSource
+    const packageSourceFilePath = activeTab.packageSource?.filePath
+    const packageSourceId = activeTab.packageSource?.packageId
+
     // Build execution config
     const executionConfig = {
       prompdSource: {
-        type: 'file' as const,
+        type: (packageSourceId ? 'package' : 'file') as 'file' | 'package',
         content: activeTab.text,
         originalParams: [],
-        filePath: activeTab.filePath
+        filePath: activeTab.filePath,
+        packageRef: packageSourceId ? `${packageSourceId}/${packageSourceFilePath}` : undefined
       },
       parameters: activeTab.previewParams || {},
       customParameters: [],
@@ -2590,11 +2592,12 @@ version: 1.0.0
           return token
         },
         readFileFromWorkspace,
-        activeTab.filePath || undefined,
+        activeTab.filePath || packageSourceFilePath || undefined,
         {
           workspacePath: explorerDirPath,
           selectedEnvFile
-        }
+        },
+        packageSourceId  // Pass package ID for resolving file references from package cache
       )
 
       if (result.status === 'success') {
@@ -4271,14 +4274,17 @@ version: 1.0.0
           pointerEvents: activeSide === 'packages' ? 'auto' : 'none',
           overflow: 'hidden'
         }}>
-          <PackagePanel
+          <PackageExplorerPanel
             theme={theme}
-            onOpenInEditor={onOpenPackageFile}
-            onUseAsTemplate={onUsePackageAsTemplate}
-            initialSearchQuery={packageSearchQuery}
-            onCollapse={() => setShowSidebar(false)}
             workspacePath={explorerDirPath}
-            onShowNotification={aiShowNotification}
+            onCollapse={() => setShowSidebar(false)}
+            onOpenFile={onOpenFile}
+            onShowNotification={(msg, type) => {
+              addToast(msg, type || 'info')
+            }}
+            expandPackage={expandPackageInExplorer}
+            onExpandHandled={() => setExpandPackageInExplorer(null)}
+            visible={activeSide === 'packages' && showSidebar}
           />
         </div>
         <div style={{
@@ -4756,12 +4762,27 @@ version: 1.0.0
                         }
 
                         // Fallback: extract from package reference
+                        let execPackageId: string | undefined
                         if (!sourceFilePath && executionConfig.prompdSource.type === 'package' && executionConfig.prompdSource.packageRef) {
                           // Example: "@prompd/blog@1.0.0/prompts/writer.prmd" → "prompts/writer.prmd"
                           const match = executionConfig.prompdSource.packageRef.match(/\/([^@]+)$/)
                           if (match) {
                             sourceFilePath = match[1]
                             console.log('[App.tsx] Source file path from packageRef:', sourceFilePath)
+                          }
+                          // Extract packageId: "@prompd/blog@1.0.0/prompts/writer.prmd" → "@prompd/blog@1.0.0"
+                          const pkgMatch = executionConfig.prompdSource.packageRef.match(/^(@[^/]+\/[^@]+@[^/]+)/)
+                          if (pkgMatch) {
+                            execPackageId = pkgMatch[1]
+                          }
+                        }
+
+                        // Also check tab's packageSource directly
+                        if (!execPackageId && currentTab.packageSource?.packageId) {
+                          execPackageId = currentTab.packageSource.packageId
+                          if (!sourceFilePath && currentTab.packageSource.filePath) {
+                            sourceFilePath = currentTab.packageSource.filePath
+                            console.log('[App.tsx] Source file path from tab.packageSource:', sourceFilePath)
                           }
                         }
 
@@ -4776,7 +4797,8 @@ version: 1.0.0
                           {  // Env options for compile-time variable substitution
                             workspacePath: explorerDirPath,
                             selectedEnvFile
-                          }
+                          },
+                          execPackageId  // Pass package ID for resolving file references from package cache
                         )
 
                         console.log('[App.tsx] Execution result received:', {
@@ -5638,6 +5660,27 @@ version: 1.0.0
               }
 
               console.log('[App] Workspace state restored successfully')
+            }}
+            onOpenPackageDetails={async (pkg) => {
+              const eApi = (window as unknown as Record<string, unknown>).electronAPI as {
+                cache?: { download: (name: string, version?: string) => Promise<{ success: boolean; error?: string }> }
+              } | undefined
+              if (eApi?.cache) {
+                const ref = pkg.version ? `${pkg.name}@${pkg.version}` : pkg.name
+                addToast(`Downloading ${ref} to cache...`, 'info')
+                const result = await eApi.cache.download(pkg.name, pkg.version)
+                if (result.success) {
+                  setExpandPackageInExplorer(`${pkg.name}@${pkg.version}`)
+                  setActiveSide('packages')
+                  setShowSidebar(true)
+                  window.dispatchEvent(new Event('prompd:resources-changed'))
+                } else {
+                  addToast(`Failed to download: ${result.error}`, 'error')
+                }
+              } else {
+                // Fallback: open modal if not in Electron
+                setSelectedRegistryPackage(pkg)
+              }
             }}
           />
         )}

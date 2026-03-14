@@ -282,7 +282,8 @@ export async function executePrompdConfig(
   getToken: () => Promise<string | null>,
   readFile?: FileReader,  // Optional file reader for local file references
   sourceFilePath?: string,  // Optional source file path for resolving relative references
-  envOptions?: EnvOptions  // Optional env file options for compile-time variable substitution
+  envOptions?: EnvOptions,  // Optional env file options for compile-time variable substitution
+  sourcePackageId?: string  // Optional package ID for resolving file references from package cache
 ): Promise<ExecutionResult> {
   const startTime = Date.now()
 
@@ -347,7 +348,11 @@ export async function executePrompdConfig(
       prompdFile,  // Use the built prompt file (has frontmatter with file references)
       readFile,  // File reader callback (optional)
       3,  // Maximum depth to prevent infinite inheritance chains
-      resolvedSourcePath  // Source file path for relative resolution
+      resolvedSourcePath,  // Source file path for relative resolution
+      0,  // currentDepth
+      {},  // collected
+      prefixMap,  // prefix map from 'using' block
+      sourcePackageId  // Package ID for resolving file references from package cache
     )
 
     console.log('[executionService] Collected files:', Object.keys(files))

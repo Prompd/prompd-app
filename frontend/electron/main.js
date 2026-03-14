@@ -30,6 +30,7 @@ const { McpServerIpcRegistration } = require('./ipc/McpServerIpcRegistration')
 const { TemplateIpcRegistration } = require('./ipc/TemplateIpcRegistration')
 const { ResourceIpcRegistration } = require('./ipc/ResourceIpcRegistration')
 const { SkillIpcRegistration } = require('./ipc/SkillIpcRegistration')
+const { CacheIpcRegistration } = require('./ipc/CacheIpcRegistration')
 const mcpService = require('./services/mcpService')
 const { mcpServerService } = require('./services/mcpServerService')
 const ipcModules = [
@@ -38,6 +39,7 @@ const ipcModules = [
   new TemplateIpcRegistration(),
   new ResourceIpcRegistration(),
   new SkillIpcRegistration(),
+  new CacheIpcRegistration(),
 ]
 
 // Tray and trigger services for background workflow execution
@@ -4686,7 +4688,7 @@ ipcMain.handle('package:createLocal', async (_event, workspacePath, outputDir) =
 })
 
 // Install all dependencies from prompd.json using @prompd/cli RegistryClient
-// Reads dependencies from prompd.json and installs each one to .prompd/cache/
+// Reads dependencies from prompd.json and installs each one to {workspace}/.prompd/packages/
 ipcMain.handle('package:installAll', async (_event, workspacePath) => {
   console.log('[Package] Installing all dependencies from:', workspacePath)
   console.log('[Package] workspacePath type:', typeof workspacePath)
