@@ -284,6 +284,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu-command-palette', handler)
     return () => ipcRenderer.removeListener('menu-command-palette', handler)
   },
+  onMenuSearchRegistry: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-search-registry', handler)
+    return () => ipcRenderer.removeListener('menu-search-registry', handler)
+  },
   // Clerk OAuth authentication
   auth: {
     startOAuth: () => ipcRenderer.invoke('auth:startOAuth'),

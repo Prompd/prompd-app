@@ -725,7 +725,7 @@ export default function PackageExplorerPanel({
                 fontStyle: 'italic',
               }}>
                 {section === 'cache'
-                  ? 'Search PrompdHub to browse packages'
+                  ? 'Search for classifiers, evaluators, guardrails...'
                   : 'No packages installed'}
               </div>
             )}

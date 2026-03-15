@@ -1658,7 +1658,7 @@ export default function WelcomeView({
       overflow: 'auto'
     }}>
       <div style={{
-        maxWidth: '640px',
+        maxWidth: '720px',
         width: '100%',
         margin: 'auto 0'
       }}>

@@ -168,6 +168,7 @@ export interface ElectronAPI {
   onMenuToggleTheme: (callback: () => void) => () => void
   onMenuToggleProblemsPanel: (callback: () => void) => () => void
   onMenuCommandPalette: (callback: () => void) => () => void
+  onMenuSearchRegistry: (callback: () => void) => () => void
 
   // Clerk OAuth authentication
   auth: {

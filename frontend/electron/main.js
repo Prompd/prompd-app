@@ -542,6 +542,15 @@ function createMenu() {
             }
           }
         },
+        {
+          label: 'Search Registry',
+          accelerator: getAccelerator('searchRegistry', 'CmdOrCtrl+Shift+D'),
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-search-registry')
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'Wizard View',
@@ -4800,8 +4809,9 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath, opti
   if (!packageRef || typeof packageRef !== 'string') {
     return { success: false, error: 'No package reference provided' }
   }
-  if (!workspacePath || typeof workspacePath !== 'string') {
-    return { success: false, error: 'No workspace folder open' }
+  // Global installs don't need a workspace path
+  if (!installOptions.global && (!workspacePath || typeof workspacePath !== 'string')) {
+    return { success: false, error: 'No workspace folder open. Use global install or open a folder first.' }
   }
 
   try {
@@ -4809,6 +4819,7 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath, opti
     const client = new RegistryClient()
     await client.install(packageRef, {
       workspaceRoot: installOptions.global ? os.homedir() : workspacePath,
+      global: installOptions.global || false,
       skipCache: false,
       type: installOptions.type || undefined
     })

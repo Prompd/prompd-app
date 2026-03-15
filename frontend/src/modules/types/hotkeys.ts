@@ -111,6 +111,15 @@ export const DEFAULT_HOTKEYS: Record<string, HotkeyAction> = {
     config: { key: 'p', ctrl: true, shift: true }
   },
 
+  // Registry
+  searchRegistry: {
+    id: 'searchRegistry',
+    name: 'Search Registry',
+    description: 'Search PrompdHub for packages',
+    defaultConfig: { key: 'd', ctrl: true, shift: true },
+    config: { key: 'd', ctrl: true, shift: true }
+  },
+
   // Build/compile
   compile: {
     id: 'compile',

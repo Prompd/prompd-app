@@ -11,6 +11,7 @@ export interface PackageStatus {
   namespace: string
   name: string
   version: string
+  description?: string
   deprecated?: boolean
   deprecationMessage?: string
   replacedBy?: string
@@ -152,6 +153,7 @@ export class RegistrySync {
         namespace: pkg.namespace?.name || pkg.scope || '@unknown',
         name: pkg.name,
         version: pkg.version || 'latest',
+        description: pkg.description || undefined,
         deprecated: false, // TODO: Add to registry API response when available
         deprecationMessage: undefined,
         replacedBy: undefined,

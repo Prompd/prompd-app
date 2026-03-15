@@ -43,6 +43,7 @@ import ToastContainer from './components/ToastContainer'
 import { UpdateBanner } from './components/UpdateBanner'
 import BottomPanelTabs from './components/BottomPanelTabs'
 import { CommandPalette } from './components/CommandPalette'
+import RegistrySearchOverlay from './components/RegistrySearchOverlay'
 import { FirstTimeSetupWizard, isOnboardingComplete, isWizardDismissed } from './components/FirstTimeSetupWizard'
 import { InlineHints } from './components/InlineHints'
 import { HelpChatPopover } from './components/HelpChatPopover'
@@ -399,6 +400,9 @@ export default function App() {
   // Command palette state
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [commandPaletteInitialQuery, setCommandPaletteInitialQuery] = useState('')
+
+  // Registry search overlay state
+  const [showRegistrySearch, setShowRegistrySearch] = useState(false)
 
   // First-time setup wizard state - show if user hasn't dismissed it
   const [showFirstTimeWizard, setShowFirstTimeWizard] = useState(() => !isWizardDismissed())
@@ -3624,6 +3628,13 @@ version: 1.0.0
     })
     if (unsubCommandPalette) cleanups.push(unsubCommandPalette)
 
+    // Menu: Search Registry (Ctrl+Shift+D)
+    const unsubSearchRegistry = electronAPI.onMenuSearchRegistry?.(() => {
+      console.log('[App.tsx] Menu search registry')
+      openRegistrySearch()
+    })
+    if (unsubSearchRegistry) cleanups.push(unsubSearchRegistry)
+
     // Workflow: Handle scheduled/deployed workflow execution requests
     const unsubWorkflowExecute = electronAPI.workflow?.onExecuteRequest?.(async (data: { workflowPath: string; parameters?: Record<string, unknown>; trigger?: string; scheduleId?: string }) => {
       console.log('[App.tsx] Scheduled workflow execution requested:', data)
@@ -3856,6 +3867,48 @@ version: 1.0.0
       window.removeEventListener('toggle-command-palette', handleToggleCommandPalette)
     }
   }, [openCommandPalette])
+
+  // Registry package select handler (shared by WelcomeView search bar and overlay)
+  const handleRegistryPackageSelect = useCallback(async (pkg: RegistryPackage) => {
+    const eApi = (window as unknown as Record<string, unknown>).electronAPI as {
+      cache?: { download: (name: string, version?: string) => Promise<{ success: boolean; error?: string }> }
+    } | undefined
+    if (eApi?.cache) {
+      const ref = pkg.version ? `${pkg.name}@${pkg.version}` : pkg.name
+      addToast(`Downloading ${ref} to cache...`, 'info')
+      const result = await eApi.cache.download(pkg.name, pkg.version)
+      if (result.success) {
+        setExpandPackageInExplorer(`${pkg.name}@${pkg.version}`)
+        setActiveSide('packages')
+        setShowSidebar(true)
+        window.dispatchEvent(new Event('prompd:resources-changed'))
+      } else {
+        addToast(`Failed to download: ${result.error}`, 'error')
+      }
+    } else {
+      setSelectedRegistryPackage(pkg)
+    }
+  }, [addToast, setActiveSide, setShowSidebar])
+
+  // Registry search hotkey handler (Ctrl+Shift+D)
+  const openRegistrySearch = useCallback(() => {
+    const hasTabs = tabs.length > 0 && !!activeTabId
+    if (hasTabs) {
+      // Tabs open - show overlay
+      setShowRegistrySearch(true)
+    } else {
+      // WelcomeView visible - focus the search bar
+      const searchInput = document.querySelector<HTMLInputElement>('[placeholder*="Search for classifiers"]')
+      if (searchInput) {
+        searchInput.focus()
+      }
+    }
+  }, [tabs.length, activeTabId])
+
+  useEffect(() => {
+    hotkeyManager.registerHandler('searchRegistry', openRegistrySearch)
+    return () => hotkeyManager.unregisterHandler('searchRegistry')
+  }, [openRegistrySearch])
 
   // Sidebar resize
   const beginResize = (e: React.MouseEvent) => {
@@ -5661,27 +5714,7 @@ version: 1.0.0
 
               console.log('[App] Workspace state restored successfully')
             }}
-            onOpenPackageDetails={async (pkg) => {
-              const eApi = (window as unknown as Record<string, unknown>).electronAPI as {
-                cache?: { download: (name: string, version?: string) => Promise<{ success: boolean; error?: string }> }
-              } | undefined
-              if (eApi?.cache) {
-                const ref = pkg.version ? `${pkg.name}@${pkg.version}` : pkg.name
-                addToast(`Downloading ${ref} to cache...`, 'info')
-                const result = await eApi.cache.download(pkg.name, pkg.version)
-                if (result.success) {
-                  setExpandPackageInExplorer(`${pkg.name}@${pkg.version}`)
-                  setActiveSide('packages')
-                  setShowSidebar(true)
-                  window.dispatchEvent(new Event('prompd:resources-changed'))
-                } else {
-                  addToast(`Failed to download: ${result.error}`, 'error')
-                }
-              } else {
-                // Fallback: open modal if not in Electron
-                setSelectedRegistryPackage(pkg)
-              }
-            }}
+            onOpenPackageDetails={handleRegistryPackageSelect}
           />
         )}
       </div>
@@ -6037,6 +6070,18 @@ version: 1.0.0
         onShowNotification={aiShowNotification}
         initialQuery={commandPaletteInitialQuery}
       />
+
+      {/* Registry Search Overlay (Ctrl+Shift+D) */}
+      {showRegistrySearch && (
+        <RegistrySearchOverlay
+          theme={theme}
+          onSelectPackage={(pkg) => {
+            handleRegistryPackageSelect(pkg)
+            setShowRegistrySearch(false)
+          }}
+          onClose={() => setShowRegistrySearch(false)}
+        />
+      )}
     </div>
   )
 }
