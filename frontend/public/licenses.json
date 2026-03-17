@@ -154,13 +154,13 @@
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\@pkgjs\\parseargs",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\@pkgjs\\parseargs\\LICENSE"
   },
-  "@prompd/app@0.5.0-beta.7": {
+  "@prompd/app@0.5.0-beta.8": {
     "licenses": "UNLICENSED",
     "private": true,
     "publisher": "Prompd LLC",
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend"
   },
-  "@prompd/cli@0.5.0-beta.6": {
+  "@prompd/cli@0.5.0-beta.7": {
     "licenses": "Elastic-2.0",
     "publisher": "Prompd LLC",
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli",
