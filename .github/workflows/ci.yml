@@ -40,9 +40,15 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: |
-          rm -f package-lock.json
-          npm install
+        run: npm install
+
+      - name: Resolve @prompd/cli for CI
+        working-directory: frontend
+        run: npm pkg set dependencies.@prompd/cli="^0.5.0-beta.7"
+
+      - name: Install @prompd/cli from npm
+        working-directory: frontend
+        run: npm install @prompd/cli@"^0.5.0-beta.7"
 
       - name: TypeScript check
         working-directory: frontend

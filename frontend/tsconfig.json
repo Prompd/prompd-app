@@ -16,6 +16,11 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/modules/components/WysiwygEditor.tsx",
+    "src/modules/components/WysiwygToolbar.tsx",
+    "src/modules/lib/tiptap"
+  ]
 }
 
