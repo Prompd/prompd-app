@@ -40,7 +40,6 @@ import WelcomeView from './components/WelcomeView'
 import CloseWorkspaceDialog from './components/CloseWorkspaceDialog'
 import FileChangesModal from './components/FileChangesModal'
 import ToastContainer from './components/ToastContainer'
-import { UpdateBanner } from './components/UpdateBanner'
 import BottomPanelTabs from './components/BottomPanelTabs'
 import { CommandPalette } from './components/CommandPalette'
 import RegistrySearchOverlay from './components/RegistrySearchOverlay'
@@ -69,6 +68,7 @@ import { buildPrompdFile, executePrompdConfig } from './services/executionServic
 import { parseWorkflow } from './services/workflowParser'
 import { usageTracker } from './services/usageTracker'
 import { initializeRegistrySync, cleanupRegistrySync } from './lib/intellisense/registrySync'
+import { setProviderModelHints } from './lib/intellisense'
 import { useMonaco } from '@monaco-editor/react'
 import { initializeMonaco } from './lib/monacoConfig'
 import { getLanguageFromExtension } from './lib/languageDetection'
@@ -368,6 +368,22 @@ export default function App() {
   const llmProvider = useUIStore(state => state.llmProvider)
   const initializeLLMProviders = useUIStore(state => state.initializeLLMProviders)
   const refreshLLMProviders = useUIStore(state => state.refreshLLMProviders)
+
+  // Sync current provider/model selection into Monaco IntelliSense hints
+  useEffect(() => {
+    const providers = (llmProvider.providersWithPricing || []).map(p => ({
+      id: p.providerId,
+      displayName: p.displayName,
+      models: p.models.map(m => ({ id: m.model, displayName: m.displayName }))
+    }))
+    if (providers.length > 0) {
+      setProviderModelHints({
+        currentProvider: llmProvider.provider,
+        currentModel: llmProvider.model,
+        availableProviders: providers
+      })
+    }
+  }, [llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing])
 
   // Auto-save setting
   const autoSaveEnabled = useUIStore(state => state.autoSaveEnabled)
@@ -1168,6 +1184,11 @@ export default function App() {
             })
           }
 
+          const ext = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() || 'unknown' : 'unknown'
+          ;(window as any).electronAPI?.analytics?.trackEvent('file_open', {
+            event_category: 'editor',
+            file_type: ext,
+          })
           onOpenFile({
             name: fileName,
             handle: pseudoHandle,
@@ -1997,6 +2018,42 @@ version: 1.0.0
       })
     }
 
+    // Validate prompd.json config — check that the main entry point exists on disk
+    const prompdJsonEntry = explorerEntries.find(entry =>
+      entry.kind === 'file' && entry.name === 'prompd.json'
+    )
+    if (prompdJsonEntry) {
+      try {
+        const fullPath = `${electronPath}/${(prompdJsonEntry as { path?: string }).path || prompdJsonEntry.name}`
+        const configResult = await window.electronAPI.readFile(fullPath)
+        if (configResult.success && configResult.content) {
+          const prompdConfig = JSON.parse(configResult.content) as { main?: string; [key: string]: unknown }
+          if (prompdConfig.main) {
+            const normalizedMain = prompdConfig.main.replace(/\\/g, '/')
+            const mainExists = explorerEntries.some(entry => {
+              const entryPath = ((entry as { path?: string }).path || entry.name).replace(/\\/g, '/')
+              return entry.kind === 'file' && entryPath === normalizedMain
+            })
+            if (!mainExists) {
+              setBuildOutput({
+                status: 'error',
+                message: 'Build cancelled: Main entry point not found',
+                errors: [{ file: 'prompd.json', message: `Main file not found: ${prompdConfig.main}` }],
+                timestamp: Date.now(),
+              })
+              setShowBottomPanel(true)
+              setActiveBottomTab('output')
+              aiShowNotification(`Build cancelled: Main file not found: ${prompdConfig.main}`, 'error', 8000)
+              console.error('[App] Build cancelled: prompd.json main file not found:', prompdConfig.main)
+              return
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[App] Error validating prompd.json config:', err)
+      }
+    }
+
     // Show building notification (short duration, will be replaced by result)
     const buildingToastId = addToast('Building package...', 'info', 0) // 0 = persistent until removed
 
@@ -2043,6 +2100,12 @@ version: 1.0.0
         })
         // Don't change panel state on success - show toast notification (8s auto-dismiss)
         aiShowNotification('Package created successfully!', 'success', 8000)
+        ;(window as any).electronAPI?.analytics?.trackEvent('package_build', {
+          event_category: 'package',
+          success: 1,
+          file_count: result.fileCount || 0,
+          error_count: 0,
+        })
         console.log('[App] Package created at:', result.outputPath)
       } else {
         // Parse structured errors from CLI output
@@ -2069,6 +2132,12 @@ version: 1.0.0
         // Show output panel on error (no toast - panel shows details)
         setShowBottomPanel(true)
         setActiveBottomTab('output')
+        ;(window as any).electronAPI?.analytics?.trackEvent('package_build', {
+          event_category: 'package',
+          success: 0,
+          file_count: 0,
+          error_count: errors.length || 1,
+        })
         console.error('[App] Package build failed:', result.error)
       }
     } catch (err) {
@@ -2649,6 +2718,7 @@ version: 1.0.0
         ;(window as any).electronAPI?.analytics?.trackEvent('prompt_execute', {
           event_category: 'execution',
           provider: result.metadata?.provider || executionConfig.provider,
+          model: result.metadata?.model || executionConfig.model || 'unknown',
         })
 
         // Show bottom panel with Prompds tab, expand if minimized
@@ -2704,6 +2774,13 @@ version: 1.0.0
           context: activeTab.name || 'preview'
         }).catch(err => {
           console.warn('[App.tsx] Failed to record failed execution to IndexedDB:', err)
+        })
+
+        // GA4 analytics (anonymous)
+        ;(window as any).electronAPI?.analytics?.trackEvent('prompt_execute_error', {
+          event_category: 'execution',
+          provider: result.metadata?.provider || executionConfig.provider,
+          model: result.metadata?.model || executionConfig.model || 'unknown',
         })
 
         // Show bottom panel with Prompds tab, expand if minimized
@@ -3631,7 +3708,7 @@ version: 1.0.0
     // Menu: Search Registry (Ctrl+Shift+D)
     const unsubSearchRegistry = electronAPI.onMenuSearchRegistry?.(() => {
       console.log('[App.tsx] Menu search registry')
-      openRegistrySearch()
+      window.dispatchEvent(new CustomEvent('menu:search-registry'))
     })
     if (unsubSearchRegistry) cleanups.push(unsubSearchRegistry)
 
@@ -3871,17 +3948,23 @@ version: 1.0.0
   // Registry package select handler (shared by WelcomeView search bar and overlay)
   const handleRegistryPackageSelect = useCallback(async (pkg: RegistryPackage) => {
     const eApi = (window as unknown as Record<string, unknown>).electronAPI as {
-      cache?: { download: (name: string, version?: string) => Promise<{ success: boolean; error?: string }> }
+      cache?: { download: (name: string, version?: string, registryUrl?: string) => Promise<{ success: boolean; error?: string }> }
     } | undefined
     if (eApi?.cache) {
       const ref = pkg.version ? `${pkg.name}@${pkg.version}` : pkg.name
       addToast(`Downloading ${ref} to cache...`, 'info')
-      const result = await eApi.cache.download(pkg.name, pkg.version)
+      const activeRegistryUrl = await registryApi.getActiveRegistryUrl()
+      const result = await eApi.cache.download(pkg.name, pkg.version, activeRegistryUrl)
       if (result.success) {
         setExpandPackageInExplorer(`${pkg.name}@${pkg.version}`)
         setActiveSide('packages')
         setShowSidebar(true)
         window.dispatchEvent(new Event('prompd:resources-changed'))
+        const ns = pkg.name?.split('/').slice(0, 2).join('/') || 'unknown'
+        ;(window as any).electronAPI?.analytics?.trackEvent('registry_package_download', {
+          event_category: 'registry',
+          package_namespace: ns,
+        })
       } else {
         addToast(`Failed to download: ${result.error}`, 'error')
       }
@@ -3907,7 +3990,12 @@ version: 1.0.0
 
   useEffect(() => {
     hotkeyManager.registerHandler('searchRegistry', openRegistrySearch)
-    return () => hotkeyManager.unregisterHandler('searchRegistry')
+    const handleMenuSearch = () => openRegistrySearch()
+    window.addEventListener('menu:search-registry', handleMenuSearch)
+    return () => {
+      hotkeyManager.unregisterHandler('searchRegistry')
+      window.removeEventListener('menu:search-registry', handleMenuSearch)
+    }
   }, [openRegistrySearch])
 
   // Sidebar resize
@@ -4088,7 +4176,6 @@ version: 1.0.0
         />
       )}
       <TitleBar theme={theme} />
-      <UpdateBanner />
       <EditorHeader
         theme={theme}
         onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -4125,7 +4212,11 @@ version: 1.0.0
           // Dispatch event for WorkflowCanvas to handle
           window.dispatchEvent(new CustomEvent('execute-workflow'))
           // GA4 analytics (anonymous)
-          ;(window as any).electronAPI?.analytics?.trackEvent('workflow_execute', { event_category: 'execution' })
+          const nodeCount = useWorkflowStore.getState().nodes?.length ?? 0
+          ;(window as any).electronAPI?.analytics?.trackEvent('workflow_execute', {
+            event_category: 'execution',
+            node_count: nodeCount,
+          })
         }}
         workspacePath={explorerDirPath}
         showPreview={getActiveTab()?.showPreview || false}
@@ -4509,6 +4600,10 @@ version: 1.0.0
                           chatConfig: { mode: 'brainstorm', contextFile: tab.id, conversationId: tab.chatConfig?.conversationId }
                         })
                         chatMountedTabsRef.current.add(tab.id)
+                        ;(window as any).electronAPI?.analytics?.trackEvent('chat_mode_select', {
+                          event_category: 'feature',
+                          mode: 'brainstorm',
+                        })
                       }}
                       style={{
                         position: 'absolute',
@@ -5432,6 +5527,10 @@ version: 1.0.0
                                 chatConfig: { mode: 'brainstorm', contextFile: activeTabId, conversationId: activeTab?.chatConfig?.conversationId }
                               })
                               chatMountedTabsRef.current.add(activeTabId)
+                              ;(window as any).electronAPI?.analytics?.trackEvent('chat_mode_select', {
+                                event_category: 'feature',
+                                mode: 'brainstorm',
+                              })
                             }
                           }}
                           style={{

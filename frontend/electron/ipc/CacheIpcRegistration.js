@@ -265,7 +265,7 @@ class CacheIpcRegistration extends BaseIpcRegistration {
     })
 
     // Download a package from registry and extract to cache
-    ipcMain.handle('cache:download', async (_event, packageName, version) => {
+    ipcMain.handle('cache:download', async (_event, packageName, version, registryUrl) => {
       console.log('[Cache] Downloading package:', packageName, version || 'latest')
 
       try {
@@ -283,16 +283,18 @@ class CacheIpcRegistration extends BaseIpcRegistration {
         }
 
         // Build download URL from registry
-        // Read registry URL from config, falling back to env vars
-        let registryUrl = process.env.VITE_REGISTRY_URL || 'https://registry.prompdhub.ai'
-        try {
-          const configPath = path.join(os.homedir(), '.prompd', 'config.yaml')
-          if (fs.existsSync(configPath)) {
-            const configContent = fs.readFileSync(configPath, 'utf8')
-            const registryMatch = configContent.match(/registry_url:\s*['"]?([^\s'"]+)/)
-            if (registryMatch) registryUrl = registryMatch[1]
-          }
-        } catch { /* use default */ }
+        // Use the URL passed by the caller (active registry), falling back to config then env
+        if (!registryUrl) {
+          try {
+            const configPath = path.join(os.homedir(), '.prompd', 'config.yaml')
+            if (fs.existsSync(configPath)) {
+              const configContent = fs.readFileSync(configPath, 'utf8')
+              const registryMatch = configContent.match(/registry_url:\s*['"]?([^\s'"]+)/)
+              if (registryMatch) registryUrl = registryMatch[1]
+            }
+          } catch { /* use default */ }
+          if (!registryUrl) registryUrl = process.env.VITE_REGISTRY_URL || 'https://registry.prompdhub.ai'
+        }
         const downloadUrl = buildDownloadUrl(registryUrl, packageName, version)
         console.log('[Cache] Downloading from:', downloadUrl)
 
@@ -313,9 +315,10 @@ class CacheIpcRegistration extends BaseIpcRegistration {
         for (const entry of zipEntries) {
           if (entry.isDirectory) continue
 
-          // Security: prevent path traversal
+          // Security: prevent path traversal and absolute paths
           const entryPath = entry.entryName.replace(/\\/g, '/')
           if (entryPath.includes('..')) continue
+          if (path.isAbsolute(entryPath) || entryPath.startsWith('/')) continue
 
           const outputPath = path.join(targetPath, entryPath)
           fs.ensureDirSync(path.dirname(outputPath))
@@ -365,10 +368,10 @@ class CacheIpcRegistration extends BaseIpcRegistration {
     // Delete a cached package
     ipcMain.handle('cache:delete', async (_event, cachePath) => {
       try {
-        // Security: ensure the path is within the cache directory
-        const baseCachePath = getCachePath()
+        // Security: ensure the path is within the cache directory (with separator boundary)
+        const baseCachePath = path.resolve(getCachePath())
         const resolved = path.resolve(cachePath)
-        if (!resolved.startsWith(baseCachePath)) {
+        if (!resolved.startsWith(baseCachePath + path.sep) && resolved !== baseCachePath) {
           return { success: false, error: 'Path outside cache directory' }
         }
 
