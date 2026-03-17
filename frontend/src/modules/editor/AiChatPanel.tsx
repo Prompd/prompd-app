@@ -702,14 +702,14 @@ export default function AiChatPanel({
 
   // Context utilization for status bar display (uses effective/capped context window)
   const contextUtilization = useMemo(() => {
-    const totalIn = agentState.tokenUsage.promptTokens
+    const totalIn = agentState.lastPromptTokens
     if (totalIn <= 0) return null
     const ctxWindow = resolveEffectiveContextWindow(chatLLMProvider.provider, chatLLMProvider.model, llmProvider.providersWithPricing)
     return {
       pct: Math.round((totalIn / ctxWindow) * 100),
       formatted: formatContextWindow(ctxWindow)
     }
-  }, [agentState.tokenUsage.promptTokens, chatLLMProvider.provider, chatLLMProvider.model, llmProvider.providersWithPricing])
+  }, [agentState.lastPromptTokens, chatLLMProvider.provider, chatLLMProvider.model, llmProvider.providersWithPricing])
 
   // Custom empty state content - unified agent mode
   const emptyStateContent = useMemo(() => {

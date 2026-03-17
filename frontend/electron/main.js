@@ -5213,6 +5213,7 @@ ipcMain.handle('deployment:toggleStatus', async (_event, deploymentId) => {
 
   try {
     const result = await deploymentService.toggleStatus(deploymentId)
+    analytics.trackDeploymentToggle(result?.status === 'enabled' ? 'enable' : 'disable')
     return { success: true, deployment: result }
   } catch (err) {
     return { success: false, error: err.message }
@@ -5871,7 +5872,7 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
           })
         },
         // Centralized .prmd execution — single path for all workflow prompt execution
-        executePrompt: async (source, promptParams, provider, model) => {
+        executePrompt: async (source, promptParams, provider, model, temperature, maxTokens) => {
           // Merge workflow-level params (includes defaults) into node-level prompt params
           // Node params take priority over workflow params
           const mergedParams = { ...params, ...promptParams }
@@ -5935,7 +5936,9 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               model: model || 'gpt-4o',
               apiKey,
               params: mergedParams,
-              workspaceRoot: resolvedWorkspaceRoot || currentWorkspacePath
+              workspaceRoot: resolvedWorkspaceRoot || currentWorkspacePath,
+              ...(temperature !== undefined && { temperature }),
+              ...(maxTokens !== undefined && { maxTokens })
             })
 
             // Clean up temp file

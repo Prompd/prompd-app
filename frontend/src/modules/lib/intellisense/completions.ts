@@ -11,6 +11,80 @@ import { getIncludableFiles, getContextFiles, getFolders } from '../../services/
 import { getSuggestedParameters } from './promptPatterns'
 
 /**
+ * Module-level cache of the current provider/model selection from the UI store.
+ * Updated via setProviderModelHints() called from React when the selection changes.
+ */
+interface ProviderModelHints {
+  currentProvider: string
+  currentModel: string
+  availableProviders: Array<{ id: string; displayName: string; models: Array<{ id: string; displayName?: string }> }>
+}
+
+let providerModelHints: ProviderModelHints | null = null
+
+export function setProviderModelHints(hints: ProviderModelHints): void {
+  providerModelHints = hints
+}
+
+/**
+ * Static fallback map of well-known providers and their models.
+ * Used when the provider isn't in availableProviders (e.g. no API key configured locally).
+ * Keeps model completions accurate regardless of local key setup.
+ */
+const KNOWN_PROVIDER_MODELS: Record<string, Array<{ id: string; displayName: string }>> = {
+  openai: [
+    { id: 'gpt-4o', displayName: 'GPT-4o' },
+    { id: 'gpt-4o-mini', displayName: 'GPT-4o Mini' },
+    { id: 'gpt-4.1', displayName: 'GPT-4.1' },
+    { id: 'gpt-4.1-mini', displayName: 'GPT-4.1 Mini' },
+    { id: 'gpt-4.1-nano', displayName: 'GPT-4.1 Nano' },
+    { id: 'o1', displayName: 'o1' },
+    { id: 'o1-mini', displayName: 'o1 Mini' },
+    { id: 'o3', displayName: 'o3' },
+    { id: 'o3-mini', displayName: 'o3 Mini' },
+    { id: 'o4-mini', displayName: 'o4 Mini' }
+  ],
+  anthropic: [
+    { id: 'claude-opus-4-6', displayName: 'Claude Opus 4.6' },
+    { id: 'claude-sonnet-4-5-20250929', displayName: 'Claude Sonnet 4.5' },
+    { id: 'claude-haiku-4-5-20251001', displayName: 'Claude Haiku 4.5' },
+    { id: 'claude-3-5-sonnet-20241022', displayName: 'Claude 3.5 Sonnet' },
+    { id: 'claude-3-5-haiku-20241022', displayName: 'Claude 3.5 Haiku' },
+    { id: 'claude-3-opus-20240229', displayName: 'Claude 3 Opus' }
+  ],
+  groq: [
+    { id: 'llama-3.3-70b-versatile', displayName: 'Llama 3.3 70B' },
+    { id: 'llama-3.1-8b-instant', displayName: 'Llama 3.1 8B' },
+    { id: 'mixtral-8x7b-32768', displayName: 'Mixtral 8x7B' },
+    { id: 'gemma2-9b-it', displayName: 'Gemma 2 9B' }
+  ],
+  ollama: [
+    { id: 'llama3', displayName: 'Llama 3' },
+    { id: 'mistral', displayName: 'Mistral' },
+    { id: 'codellama', displayName: 'Code Llama' },
+    { id: 'phi3', displayName: 'Phi 3' }
+  ]
+}
+
+/**
+ * Resolve models for a given provider ID.
+ * Prefers live availableProviders data, falls back to KNOWN_PROVIDER_MODELS.
+ */
+function resolveModelsForProvider(
+  providerId: string,
+  hints: ProviderModelHints
+): Array<{ id: string; displayName?: string }> {
+  // Exact match first
+  const entry = hints.availableProviders.find(p => p.id === providerId)
+  if (entry) return entry.models
+  // Case-insensitive match (handles 'Anthropic' vs 'anthropic')
+  const entryCI = hints.availableProviders.find(p => p.id.toLowerCase() === providerId.toLowerCase())
+  if (entryCI) return entryCI.models
+  // Fall back to static known map
+  return KNOWN_PROVIDER_MODELS[providerId.toLowerCase()] || []
+}
+
+/**
  * Register the completion item provider
  */
 export function registerCompletionProvider(
@@ -36,6 +110,25 @@ export function registerCompletionProvider(
         endLineNumber: position.lineNumber,
         startColumn: word.startColumn,
         endColumn: word.endColumn
+      }
+
+      /**
+       * Build a range that replaces the entire value on a `key: <value>` line.
+       * Used for provider/model completions so `gpt-` → `gpt-4o-mini` replaces the whole typed prefix.
+       */
+      const buildValueRange = (lineContent: string): monacoEditor.languages.CompletionItem['range'] => {
+        const colonIdx = lineContent.indexOf(':')
+        if (colonIdx === -1) return range
+        // start right after `: ` (or just `:`)
+        const valueStart = colonIdx + 1 + (lineContent[colonIdx + 1] === ' ' ? 1 : 0)
+        // end at first comment character or end of trimmed line content
+        const trimmedEnd = lineContent.trimEnd().length
+        return {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: valueStart + 1, // 1-based
+          endColumn: Math.max(trimmedEnd + 1, position.column) // 1-based, at least cursor
+        }
       }
 
       const suggestions: monacoEditor.languages.CompletionItem[] = []
@@ -561,26 +654,152 @@ export function registerCompletionProvider(
 
         // Provider suggestions
         if (context.field === 'provider') {
-          BUILTIN_SUGGESTIONS.providers.forEach(provider => {
+          const vRange = buildValueRange(model.getLineContent(position.lineNumber))
+          if (providerModelHints) {
             suggestions.push({
-              label: provider,
+              label: providerModelHints.currentProvider,
               kind: monaco.languages.CompletionItemKind.Value,
-              insertText: provider,
-              detail: 'AI Provider',
-              range
+              insertText: providerModelHints.currentProvider,
+              detail: 'Current provider',
+              documentation: 'Your currently selected provider',
+              range: vRange,
+              sortText: '0_current'
             })
-          })
+            providerModelHints.availableProviders
+              .filter(p => p.id !== providerModelHints!.currentProvider)
+              .forEach((p, i) => {
+                suggestions.push({
+                  label: p.id,
+                  kind: monaco.languages.CompletionItemKind.Value,
+                  insertText: p.id,
+                  detail: p.displayName,
+                  range: vRange,
+                  sortText: `1_${String(i).padStart(3, '0')}`
+                })
+              })
+          } else {
+            BUILTIN_SUGGESTIONS.providers.forEach(provider => {
+              suggestions.push({
+                label: provider,
+                kind: monaco.languages.CompletionItemKind.Value,
+                insertText: provider,
+                detail: 'AI Provider',
+                range: vRange
+              })
+            })
+          }
         }
 
         // Model suggestions
         if (context.field === 'model') {
-          BUILTIN_SUGGESTIONS.models.forEach(model => {
+          const vRange = buildValueRange(model.getLineContent(position.lineNumber))
+          if (providerModelHints) {
+            const content = model.getValue()
+            const providerMatch = content.match(/^provider:\s*["']?(\S+?)["']?\s*$/m)
+            const frontmatterProvider = providerMatch?.[1]
+            const targetProvider = frontmatterProvider || providerModelHints.currentProvider
+            const providerModels = resolveModelsForProvider(targetProvider, providerModelHints)
+
+            // Pin the active model first when targeting the same provider as UI selection
+            if (targetProvider.toLowerCase() === providerModelHints.currentProvider.toLowerCase()) {
+              suggestions.push({
+                label: providerModelHints.currentModel,
+                kind: monaco.languages.CompletionItemKind.Value,
+                insertText: providerModelHints.currentModel,
+                detail: 'Current model',
+                documentation: 'Your currently selected model',
+                range: vRange,
+                sortText: '0_current'
+              })
+            }
+
+            if (providerModels.length > 0) {
+              providerModels
+                .filter(m => m.id !== providerModelHints!.currentModel || targetProvider.toLowerCase() !== providerModelHints!.currentProvider.toLowerCase())
+                .forEach((m, i) => {
+                  suggestions.push({
+                    label: m.id,
+                    kind: monaco.languages.CompletionItemKind.Value,
+                    insertText: m.id,
+                    detail: m.displayName || targetProvider,
+                    range: vRange,
+                    sortText: `1_${String(i).padStart(3, '0')}`
+                  })
+                })
+            } else {
+              // Unknown provider — show all known models across all providers
+              Object.entries(KNOWN_PROVIDER_MODELS).forEach(([, models], pi) => {
+                models.forEach((m, mi) => {
+                  suggestions.push({
+                    label: m.id,
+                    kind: monaco.languages.CompletionItemKind.Value,
+                    insertText: m.id,
+                    detail: m.displayName,
+                    range: vRange,
+                    sortText: `2_${String(pi).padStart(2, '0')}_${String(mi).padStart(3, '0')}`
+                  })
+                })
+              })
+            }
+          } else {
+            BUILTIN_SUGGESTIONS.models.forEach(m => {
+              suggestions.push({
+                label: m,
+                kind: monaco.languages.CompletionItemKind.Value,
+                insertText: m,
+                detail: 'AI Model',
+                range: vRange
+              })
+            })
+          }
+        }
+
+        // Temperature suggestions
+        if (context.field === 'temperature') {
+          const vRange = buildValueRange(model.getLineContent(position.lineNumber))
+          const temperaturePresets = [
+            { value: '0', detail: 'Deterministic — same output every time' },
+            { value: '0.1', detail: 'Very focused — minimal variation' },
+            { value: '0.3', detail: 'Focused — low creativity' },
+            { value: '0.5', detail: 'Balanced' },
+            { value: '0.7', detail: 'Default — moderate creativity' },
+            { value: '1.0', detail: 'Creative — more variation' },
+            { value: '1.5', detail: 'Very creative — high variation' },
+            { value: '2.0', detail: 'Maximum — most random' }
+          ]
+          temperaturePresets.forEach(({ value, detail }, i) => {
             suggestions.push({
-              label: model,
+              label: value,
               kind: monaco.languages.CompletionItemKind.Value,
-              insertText: model,
-              detail: 'AI Model',
-              range
+              insertText: value,
+              detail,
+              range: vRange,
+              sortText: `0_${String(i).padStart(3, '0')}`
+            })
+          })
+        }
+
+        // Max tokens suggestions
+        if (context.field === 'max_tokens') {
+          const vRange = buildValueRange(model.getLineContent(position.lineNumber))
+          const maxTokensPresets = [
+            { value: '256', detail: 'Very short response' },
+            { value: '512', detail: 'Short response' },
+            { value: '1024', detail: 'Medium response' },
+            { value: '2048', detail: 'Standard response' },
+            { value: '4096', detail: 'Default — long response' },
+            { value: '8192', detail: 'Extended response' },
+            { value: '16384', detail: 'Very long response' },
+            { value: '32768', detail: 'Maximum — context-dependent' }
+          ]
+          maxTokensPresets.forEach(({ value, detail }, i) => {
+            suggestions.push({
+              label: value,
+              kind: monaco.languages.CompletionItemKind.Value,
+              insertText: value,
+              detail,
+              range: vRange,
+              sortText: `0_${String(i).padStart(3, '0')}`
             })
           })
         }
@@ -952,17 +1171,140 @@ export function registerCompletionProvider(
         const isInFrontmatter = (textUntilPosition.match(/^---/m) && !textUntilPosition.match(/^---\s*\n[\s\S]*?^---/m))
 
         if (isInFrontmatter) {
-          // Provide frontmatter field suggestions
-          const frontmatterFields = ['id', 'name', 'description', 'version', 'author', 'tags', 'parameters', 'using', 'inherits', 'context', 'provider', 'model']
-          frontmatterFields.forEach(field => {
+          // Check if cursor is on the value side of a provider: or model: field
+          const currentLineContent = (model as monacoEditor.editor.ITextModel).getLineContent(position.lineNumber)
+          const beforeCursorOnLine = currentLineContent.substring(0, position.column - 1)
+          const onProviderValue = beforeCursorOnLine.match(/^\s*provider:\s*[\w.-]*$/)
+          const onModelValue = beforeCursorOnLine.match(/^\s*model:\s*[\w.:-]*$/)
+          const onTemperatureValue = beforeCursorOnLine.match(/^\s*temperature:\s*[\d.]*$/)
+          const onMaxTokensValue = beforeCursorOnLine.match(/^\s*max_tokens:\s*\d*$/)
+
+          if (onProviderValue && providerModelHints) {
+            const vRange = buildValueRange(currentLineContent)
             suggestions.push({
-              label: field,
-              kind: monaco.languages.CompletionItemKind.Property,
-              insertText: `${field}: `,
-              detail: 'Frontmatter field',
-              range
+              label: providerModelHints.currentProvider,
+              kind: monaco.languages.CompletionItemKind.Value,
+              insertText: providerModelHints.currentProvider,
+              detail: 'Current provider',
+              documentation: 'Your currently selected provider',
+              range: vRange,
+              sortText: '0_current'
             })
-          })
+            providerModelHints.availableProviders
+              .filter(p => p.id !== providerModelHints!.currentProvider)
+              .forEach((p, i) => {
+                suggestions.push({
+                  label: p.id,
+                  kind: monaco.languages.CompletionItemKind.Value,
+                  insertText: p.id,
+                  detail: p.displayName,
+                  range: vRange,
+                  sortText: `1_${String(i).padStart(3, '0')}`
+                })
+              })
+          } else if (onModelValue && providerModelHints) {
+            // Detect provider from frontmatter content
+            const fullContent = (model as monacoEditor.editor.ITextModel).getValue()
+            const providerMatch = fullContent.match(/^provider:\s*["']?(\S+?)["']?\s*$/m)
+            const targetProvider = providerMatch?.[1] || providerModelHints.currentProvider
+            const providerModels = resolveModelsForProvider(targetProvider, providerModelHints)
+            const vRange = buildValueRange(currentLineContent)
+
+            if (targetProvider.toLowerCase() === providerModelHints.currentProvider.toLowerCase()) {
+              suggestions.push({
+                label: providerModelHints.currentModel,
+                kind: monaco.languages.CompletionItemKind.Value,
+                insertText: providerModelHints.currentModel,
+                detail: 'Current model',
+                documentation: 'Your currently selected model',
+                range: vRange,
+                sortText: '0_current'
+              })
+            }
+            if (providerModels.length > 0) {
+              providerModels
+                .filter(m => m.id !== providerModelHints!.currentModel || targetProvider.toLowerCase() !== providerModelHints!.currentProvider.toLowerCase())
+                .forEach((m, i) => {
+                  suggestions.push({
+                    label: m.id,
+                    kind: monaco.languages.CompletionItemKind.Value,
+                    insertText: m.id,
+                    detail: m.displayName || targetProvider,
+                    range: vRange,
+                    sortText: `1_${String(i).padStart(3, '0')}`
+                  })
+                })
+            } else {
+              Object.entries(KNOWN_PROVIDER_MODELS).forEach(([, models], pi) => {
+                models.forEach((m, mi) => {
+                  suggestions.push({
+                    label: m.id,
+                    kind: monaco.languages.CompletionItemKind.Value,
+                    insertText: m.id,
+                    detail: m.displayName,
+                    range: vRange,
+                    sortText: `2_${String(pi).padStart(2, '0')}_${String(mi).padStart(3, '0')}`
+                  })
+                })
+              })
+            }
+          } else if (onTemperatureValue) {
+            const vRange = buildValueRange(currentLineContent)
+            const temperaturePresets = [
+              { value: '0', detail: 'Deterministic — same output every time' },
+              { value: '0.1', detail: 'Very focused — minimal variation' },
+              { value: '0.3', detail: 'Focused — low creativity' },
+              { value: '0.5', detail: 'Balanced' },
+              { value: '0.7', detail: 'Default — moderate creativity' },
+              { value: '1.0', detail: 'Creative — more variation' },
+              { value: '1.5', detail: 'Very creative — high variation' },
+              { value: '2.0', detail: 'Maximum — most random' }
+            ]
+            temperaturePresets.forEach(({ value, detail }, i) => {
+              suggestions.push({
+                label: value,
+                kind: monaco.languages.CompletionItemKind.Value,
+                insertText: value,
+                detail,
+                range: vRange,
+                sortText: `0_${String(i).padStart(3, '0')}`
+              })
+            })
+          } else if (onMaxTokensValue) {
+            const vRange = buildValueRange(currentLineContent)
+            const maxTokensPresets = [
+              { value: '256', detail: 'Very short response' },
+              { value: '512', detail: 'Short response' },
+              { value: '1024', detail: 'Medium response' },
+              { value: '2048', detail: 'Standard response' },
+              { value: '4096', detail: 'Default — long response' },
+              { value: '8192', detail: 'Extended response' },
+              { value: '16384', detail: 'Very long response' },
+              { value: '32768', detail: 'Maximum — context-dependent' }
+            ]
+            maxTokensPresets.forEach(({ value, detail }, i) => {
+              suggestions.push({
+                label: value,
+                kind: monaco.languages.CompletionItemKind.Value,
+                insertText: value,
+                detail,
+                range: vRange,
+                sortText: `0_${String(i).padStart(3, '0')}`
+              })
+            })
+          } else {
+            // Provide frontmatter field suggestions
+            const frontmatterFields = ['id', 'name', 'description', 'version', 'author', 'tags', 'parameters', 'using', 'inherits', 'context', 'provider', 'model']
+            frontmatterFields.forEach(field => {
+              suggestions.push({
+                label: field,
+                kind: monaco.languages.CompletionItemKind.Property,
+                insertText: `${field}: `,
+                detail: 'Frontmatter field',
+                range
+              })
+            })
+          }
         } else {
           // Only provide section suggestions if user typed # at beginning of line
           const currentLine = model.getLineContent(position.lineNumber)

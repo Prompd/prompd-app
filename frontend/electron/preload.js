@@ -491,8 +491,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('cache:list'),
     readFile: (filePath) =>
       ipcRenderer.invoke('cache:readFile', filePath),
-    download: (packageName, version) =>
-      ipcRenderer.invoke('cache:download', packageName, version),
+    download: (packageName, version, registryUrl) =>
+      ipcRenderer.invoke('cache:download', packageName, version, registryUrl),
     delete: (cachePath) =>
       ipcRenderer.invoke('cache:delete', cachePath),
     getPath: () =>

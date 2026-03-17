@@ -431,6 +431,7 @@ export function ToolNodeProperties({ data, onChange, onExpandEditor }: ToolNodeP
                   scrollBeyondLastLine: false,
                   automaticLayout: true,
                   wordWrap: 'on',
+                  fixedOverflowWidgets: true,
                 }}
               />
             </div>

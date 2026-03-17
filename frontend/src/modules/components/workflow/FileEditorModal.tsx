@@ -345,6 +345,7 @@ export function FileEditorModal(props: FileEditorModalProps) {
                 scrollBeyondLastLine: false,
                 automaticLayout: true,
                 wordWrap: 'on',
+                fixedOverflowWidgets: true,
                 renderWhitespace: 'selection',
               }}
             />

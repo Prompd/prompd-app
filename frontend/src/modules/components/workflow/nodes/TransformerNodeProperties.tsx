@@ -188,6 +188,7 @@ input.data.map(item => ({
               scrollBeyondLastLine: false,
               automaticLayout: true,
               wordWrap: 'on',
+              fixedOverflowWidgets: true,
             }}
           />
         </div>

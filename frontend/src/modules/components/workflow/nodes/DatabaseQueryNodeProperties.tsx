@@ -184,6 +184,7 @@ export function DatabaseQueryNodeProperties({ data, onChange, onExpandEditor }: 
               scrollBeyondLastLine: false,
               automaticLayout: true,
               wordWrap: 'on',
+              fixedOverflowWidgets: true,
             }}
           />
         </div>

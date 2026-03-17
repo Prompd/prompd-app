@@ -18,6 +18,7 @@ import {
 } from '../services/aiApi'
 import { configService } from '../services/configService'
 import { prompdSettings } from '../services/prompdSettings'
+import { electronFetch } from '../services/electronFetch'
 import { usePrompdUsage, formatCost, formatTokens } from '@prompd/react'
 import type { NamespaceInfo } from '../services/namespacesApi'
 import { useConfirmDialog } from './ConfirmDialog'
@@ -422,7 +423,7 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
         authToken = await getToken() || undefined
       }
 
-      const response = await fetch(namespacesUrl, {
+      const response = await electronFetch(namespacesUrl, {
         headers: {
           'Content-Type': 'application/json',
           ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
@@ -477,7 +478,7 @@ export function SettingsModal({ isOpen, onClose, theme, onProvidersChanged, init
         authToken = await getToken() || undefined
       }
 
-      const response = await fetch(createUrl, {
+      const response = await electronFetch(createUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

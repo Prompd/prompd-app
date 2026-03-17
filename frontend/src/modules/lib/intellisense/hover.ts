@@ -67,6 +67,213 @@ function registerOpenPackageCommand(monaco: typeof monacoEditor): void {
 }
 
 /**
+ * Documentation for parameter sub-fields inside a `parameters:` block.
+ */
+const PARAMETER_FIELD_DOCS: Record<string, {
+  summary: string
+  type: string
+  required?: boolean
+  example?: string
+  values?: string
+  notes?: string
+}> = {
+  name: {
+    summary: 'Parameter identifier — used to reference this value in templates.',
+    type: 'string',
+    required: true,
+    example: 'name: query',
+    notes: 'Use snake_case. Referenced in content as `{{ query }}` or `{{ workflow.query }}`.'
+  },
+  type: {
+    summary: 'Data type of the parameter — used for validation and UI generation.',
+    type: 'string',
+    required: true,
+    example: 'type: string',
+    values: 'string, number, integer, boolean, array, object, file'
+  },
+  required: {
+    summary: 'Whether this parameter must be provided at runtime.',
+    type: 'boolean',
+    example: 'required: true',
+    values: 'true, false',
+    notes: 'When `true`, execution will fail if the parameter is not supplied.'
+  },
+  default: {
+    summary: 'Default value used when the parameter is not provided.',
+    type: 'any',
+    example: 'default: "auto"\n# or for arrays:\ndefault: ["item1", "item2"]',
+    notes: 'Must be compatible with the declared `type`.'
+  },
+  description: {
+    summary: 'Human-readable explanation of what this parameter does.',
+    type: 'string',
+    example: 'description: "The user query to process"',
+    notes: 'Shown in UI tooltips and generated documentation.'
+  },
+  enum: {
+    summary: 'Restricts the parameter to a fixed set of allowed values.',
+    type: 'string[]',
+    example: 'enum: ["low", "medium", "high"]',
+    notes: 'The value at runtime must exactly match one of these strings.'
+  },
+  min: {
+    summary: 'Minimum allowed value (for `number` or `integer` types).',
+    type: 'number',
+    example: 'min: 0',
+    notes: 'Only applies to numeric types.'
+  },
+  max: {
+    summary: 'Maximum allowed value (for `number` or `integer` types).',
+    type: 'number',
+    example: 'max: 100',
+    notes: 'Only applies to numeric types.'
+  },
+  pattern: {
+    summary: 'Regular expression the value must match (for `string` type).',
+    type: 'string',
+    example: 'pattern: "^[a-z0-9-]+$"',
+    notes: 'Applied as a regex test at runtime.'
+  }
+}
+
+/**
+ * Documentation for YAML frontmatter fields.
+ * Shown when hovering over a key name in the frontmatter block.
+ */
+const FRONTMATTER_FIELD_DOCS: Record<string, {
+  summary: string
+  type: string
+  required?: boolean
+  example?: string
+  values?: string
+  notes?: string
+}> = {
+  id: {
+    summary: 'Unique kebab-case identifier for this prompt.',
+    type: 'string',
+    required: true,
+    example: 'id: my-prompt',
+    notes: 'Must match the filename (without `.prmd`). Use lowercase letters, numbers, and hyphens only.'
+  },
+  name: {
+    summary: 'Human-readable display name.',
+    type: 'string',
+    required: true,
+    example: 'name: "My Prompt"'
+  },
+  version: {
+    summary: 'Semantic version following semver (MAJOR.MINOR.PATCH).',
+    type: 'string',
+    required: true,
+    example: 'version: 1.0.0',
+    notes: 'Increment PATCH for fixes, MINOR for new features, MAJOR for breaking changes.'
+  },
+  description: {
+    summary: 'Human-readable description of what this prompt does.',
+    type: 'string',
+    example: 'description: "Analyzes code for security vulnerabilities"'
+  },
+  author: {
+    summary: 'Name or email of the prompt author.',
+    type: 'string',
+    example: 'author: "Jane Smith"'
+  },
+  license: {
+    summary: 'License identifier for this prompt.',
+    type: 'string',
+    example: 'license: MIT',
+    values: 'MIT, Apache-2.0, GPL-3.0, BSD-3-Clause, Elastic-2.0, Proprietary'
+  },
+  tags: {
+    summary: 'Categorization tags for search and discovery.',
+    type: 'string[]',
+    example: 'tags: [code-review, security, typescript]'
+  },
+  provider: {
+    summary: 'Execution hint — AI provider to use when running this prompt.',
+    type: 'string',
+    example: 'provider: anthropic',
+    values: 'openai, anthropic, groq, ollama',
+    notes: 'Overridden by CLI `--provider` flag and workflow node provider settings. Requires `model` to also be set.'
+  },
+  model: {
+    summary: 'Execution hint — specific model ID to use when running this prompt.',
+    type: 'string',
+    example: 'model: claude-sonnet-4-5-20250929',
+    notes: 'Overridden by CLI `--model` flag and workflow node model settings. Requires `provider` to also be set.'
+  },
+  temperature: {
+    summary: 'Execution hint — controls response randomness.',
+    type: 'number',
+    example: 'temperature: 0.7',
+    values: '0.0 – 2.0',
+    notes: '0 = deterministic, 0.7 = default, 2.0 = maximum creativity. Overridden by CLI options.'
+  },
+  max_tokens: {
+    summary: 'Execution hint — maximum number of tokens in the response.',
+    type: 'integer',
+    example: 'max_tokens: 4096',
+    notes: 'Actual limit depends on the model\'s context window. Overridden by CLI options.'
+  },
+  parameters: {
+    summary: 'Input parameter definitions — declares variables the prompt accepts.',
+    type: 'object[]',
+    example: 'parameters:\n  - name: query\n    type: string\n    required: true',
+    notes: 'Referenced in content as `{{ param_name }}` or `{{ workflow.param_name }}` in workflows.'
+  },
+  inherits: {
+    summary: 'Inherit content and parameters from another `.prmd` file or registry package.',
+    type: 'string',
+    example: 'inherits: "./base-reviewer.prmd"\n# or from registry:\ninherits: "@prompd.io/code-review@^1.0.0/review.prmd"',
+    notes: 'Parameters and sections are merged. Local content overrides inherited content.'
+  },
+  using: {
+    summary: 'Package dependencies to install from the registry.',
+    type: 'string[]',
+    example: 'using:\n  - "@prompd.io/helpers@^1.0.0"',
+    notes: 'Run `prompd install` to resolve and cache these packages locally.'
+  },
+  context: {
+    summary: 'File(s) to include as context at compile time.',
+    type: 'string | string[]',
+    example: 'context: "./docs/api.md"\n# or multiple:\ncontext:\n  - "./docs/api.md"\n  - "./schema.json"',
+    notes: 'Files are read and injected into the compiled prompt. Paths are relative to the `.prmd` file.'
+  },
+  contexts: {
+    summary: 'File(s) to include as context at compile time (plural form, same as `context`).',
+    type: 'string | string[]',
+    example: 'contexts:\n  - "./data.json"\n  - "./readme.md"'
+  },
+  system: {
+    summary: 'System prompt file reference — path to a `.md` file used as the system message.',
+    type: 'string',
+    example: 'system: "./systems/reviewer.md"',
+    notes: 'File is compiled and injected as the `## System` section.'
+  },
+  user: {
+    summary: 'User message file reference — path to a `.md` file used as the user turn.',
+    type: 'string',
+    example: 'user: "./prompts/user.md"'
+  },
+  task: {
+    summary: 'Task specification file reference.',
+    type: 'string',
+    example: 'task: "./task.md"'
+  },
+  output: {
+    summary: 'Output format specification file reference.',
+    type: 'string',
+    example: 'output: "./output-schema.md"'
+  },
+  override: {
+    summary: 'Override specific sections inherited from a parent `.prmd` file.',
+    type: 'object',
+    example: 'override:\n  system: "./custom-system.md"\n  user: null  # Hide this section',
+    notes: 'Keys are section IDs. Set to a file path to replace, or `null` to suppress.'
+  }
+}
+
+/**
  * Register the hover provider
  */
 export function registerHoverProvider(
@@ -147,6 +354,90 @@ export function registerHoverProvider(
         contents.push({ value: 'When run outside a workflow, properties resolve to empty.' })
 
         return { range, contents }
+      }
+
+      // Frontmatter field key hover — detect `key:` pattern in the frontmatter block
+      if (wordText && FRONTMATTER_FIELD_DOCS[wordText]) {
+        // Confirm: (a) the word is followed by `:` on the same line, (b) we're inside frontmatter
+        const afterWord = line.substring(word.endColumn - 1).trimStart()
+        const isKey = afterWord.startsWith(':')
+        if (isKey) {
+          const allLines = model.getValue().split('\n')
+          let fmStart = -1
+          let fmEnd = -1
+          for (let i = 0; i < allLines.length; i++) {
+            if (allLines[i].trim() === '---') {
+              if (fmStart === -1) { fmStart = i; continue }
+              fmEnd = i; break
+            }
+          }
+          const lineIdx = position.lineNumber - 1
+          const inFrontmatter = fmStart !== -1 && fmEnd !== -1 && lineIdx > fmStart && lineIdx < fmEnd
+          if (inFrontmatter) {
+            const doc = FRONTMATTER_FIELD_DOCS[wordText]
+            const contents: monacoEditor.IMarkdownString[] = []
+            const reqBadge = doc.required ? ' *(required)*' : ''
+            contents.push({ value: `**\`${wordText}\`**${reqBadge} — \`${doc.type}\`` })
+            contents.push({ value: doc.summary })
+            if (doc.values) {
+              contents.push({ value: `**Allowed values:** ${doc.values}` })
+            }
+            if (doc.example) {
+              contents.push({ value: `**Example:**\n\`\`\`yaml\n${doc.example}\n\`\`\`` })
+            }
+            if (doc.notes) {
+              contents.push({ value: `> ${doc.notes}` })
+            }
+            return { range, contents }
+          }
+        }
+      }
+
+      // Parameter sub-field hover — detect indented `key:` inside a parameters: block
+      if (wordText && PARAMETER_FIELD_DOCS[wordText]) {
+        const afterWord = line.substring(word.endColumn - 1).trimStart()
+        const isKey = afterWord.startsWith(':')
+        const isIndented = line.match(/^\s{2,}/)
+        if (isKey && isIndented) {
+          const allLines = model.getValue().split('\n')
+          let fmStart = -1
+          let fmEnd = -1
+          for (let i = 0; i < allLines.length; i++) {
+            if (allLines[i].trim() === '---') {
+              if (fmStart === -1) { fmStart = i; continue }
+              fmEnd = i; break
+            }
+          }
+          const lineIdx = position.lineNumber - 1
+          const inFrontmatter = fmStart !== -1 && fmEnd !== -1 && lineIdx > fmStart && lineIdx < fmEnd
+          if (inFrontmatter) {
+            // Walk back to see if we're inside a parameters: block
+            let inParameters = false
+            for (let i = lineIdx - 1; i >= fmStart; i--) {
+              const checkLine = allLines[i]
+              if (checkLine.match(/^\s*parameters:\s*$/)) { inParameters = true; break }
+              // Stop if we hit another unindented top-level key
+              if (checkLine.match(/^\w+:/) && !checkLine.match(/^\s/)) break
+            }
+            if (inParameters) {
+              const doc = PARAMETER_FIELD_DOCS[wordText]
+              const contents: monacoEditor.IMarkdownString[] = []
+              const reqBadge = doc.required ? ' *(required)*' : ''
+              contents.push({ value: `**\`${wordText}\`**${reqBadge} — \`${doc.type}\`` })
+              contents.push({ value: doc.summary })
+              if (doc.values) {
+                contents.push({ value: `**Allowed values:** ${doc.values}` })
+              }
+              if (doc.example) {
+                contents.push({ value: `**Example:**\n\`\`\`yaml\n${doc.example}\n\`\`\`` })
+              }
+              if (doc.notes) {
+                contents.push({ value: `> ${doc.notes}` })
+              }
+              return { range, contents }
+            }
+          }
+        }
       }
 
       // Nunjucks/Jinja2 syntax help - check if hovering over keywords

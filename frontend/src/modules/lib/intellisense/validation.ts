@@ -1424,6 +1424,32 @@ export async function validateModel(
         }
       }
 
+      // Validate provider/model co-requirement
+      const providerLine = yamlContent.match(/^\s*provider:\s*(.+)$/m)
+      const modelLine = yamlContent.match(/^\s*model:\s*(.+)$/m)
+      if (providerLine && !modelLine) {
+        const lineNumber = content.substring(0, content.indexOf(providerLine[0])).split('\n').length
+        markers.push({
+          severity: monaco.MarkerSeverity.Warning,
+          startLineNumber: lineNumber,
+          startColumn: 1,
+          endLineNumber: lineNumber,
+          endColumn: providerLine[0].length + 1,
+          message: `'model' is required when 'provider' is set.`
+        })
+      }
+      if (modelLine && !providerLine) {
+        const lineNumber = content.substring(0, content.indexOf(modelLine[0])).split('\n').length
+        markers.push({
+          severity: monaco.MarkerSeverity.Warning,
+          startLineNumber: lineNumber,
+          startColumn: 1,
+          endLineNumber: lineNumber,
+          endColumn: modelLine[0].length + 1,
+          message: `'provider' is required when 'model' is set.`
+        })
+      }
+
       // Validate package references (inherits + using)
       const pkgRefMarkers = await validatePackageReferences(yamlContent, content, monaco)
       markers.push(...pkgRefMarkers)

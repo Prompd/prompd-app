@@ -45,6 +45,12 @@ export function detectContext(text: string, lineNumber: number, column: number):
     if (cleanLine.match(/^\s*model:\s*\w*$/)) {
       return { type: 'frontmatter', field: 'model' }
     }
+    if (cleanLine.match(/^\s*temperature:\s*[\d.]*$/)) {
+      return { type: 'frontmatter', field: 'temperature' }
+    }
+    if (cleanLine.match(/^\s*max_tokens:\s*\d*$/)) {
+      return { type: 'frontmatter', field: 'max_tokens' }
+    }
 
     // Detect 'using:' array context more accurately
     if (cleanLine.match(/^\s*using:\s*$/)) {

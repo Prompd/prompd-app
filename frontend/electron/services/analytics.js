@@ -37,6 +37,8 @@ const MAX_BATCH_SIZE = 25 // GA4 MP max per request
 // State
 // ---------------------------------------------------------------------------
 
+const INTERNAL_MARKER_FILE = path.join(os.homedir(), '.prompd', '.internal')
+
 let measurementId = ''
 let apiSecret = ''
 let clientId = ''
@@ -46,6 +48,7 @@ let initialized = false
 let appVersion = ''
 let electronVersion = ''
 let platform = ''
+let isInternal = false
 
 /** @type {Array<{name: string, params: Record<string, unknown>}>} */
 let eventBuffer = []
@@ -107,6 +110,7 @@ function init(opts) {
 
   clientId = getOrCreateClientId()
   sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+  isInternal = fs.existsSync(INTERNAL_MARKER_FILE)
 
   initialized = true
 
@@ -184,10 +188,15 @@ function flush() {
   // Take current batch
   const batch = eventBuffer.splice(0, MAX_BATCH_SIZE)
 
-  const payload = JSON.stringify({
+  const body = {
     client_id: clientId,
     events: batch,
-  })
+  }
+  // Tag internal traffic so GA4 Data Filters can exclude it
+  if (isInternal) {
+    body.user_properties = { traffic_type: { value: 'internal' } }
+  }
+  const payload = JSON.stringify(body)
 
   const url = new URL(GA4_ENDPOINT)
   url.searchParams.set('measurement_id', measurementId)
@@ -234,12 +243,17 @@ function shutdown() {
 // Convenience event helpers
 // ---------------------------------------------------------------------------
 
+/** @type {number} */
+let sessionStartMs = 0
+
 function trackAppOpen() {
+  sessionStartMs = Date.now()
   trackEvent('app_open', { event_category: 'app' })
 }
 
 function trackAppClose() {
-  trackEvent('app_close', { event_category: 'app' })
+  const durationSec = sessionStartMs > 0 ? Math.round((Date.now() - sessionStartMs) / 1000) : 0
+  trackEvent('app_close', { event_category: 'app', session_duration_sec: durationSec })
 }
 
 function trackPromptCompile(provider) {
@@ -257,6 +271,18 @@ function trackPromptExecute(provider, model) {
   })
 }
 
+/**
+ * @param {string} provider
+ * @param {string} model
+ */
+function trackPromptExecuteError(provider, model) {
+  trackEvent('prompt_execute_error', {
+    event_category: 'execution',
+    provider: provider || 'unknown',
+    model: model || 'unknown',
+  })
+}
+
 function trackWorkflowExecute(nodeCount) {
   trackEvent('workflow_execute', {
     event_category: 'execution',
@@ -268,12 +294,56 @@ function trackDeploymentCreate() {
   trackEvent('deployment_create', { event_category: 'deployment' })
 }
 
+/**
+ * @param {'enable' | 'disable'} action
+ */
+function trackDeploymentToggle(action) {
+  trackEvent('deployment_toggle', {
+    event_category: 'deployment',
+    action: action || 'unknown',
+  })
+}
+
 function trackPackageInstall(packageName) {
   // Only send the package namespace, not full path
   const ns = packageName?.split('/').slice(0, 2).join('/') || 'unknown'
   trackEvent('package_install', {
     event_category: 'package',
     package_namespace: ns,
+  })
+}
+
+/**
+ * @param {boolean} success
+ * @param {number} fileCount
+ * @param {number} errorCount
+ */
+function trackPackageBuild(success, fileCount, errorCount) {
+  trackEvent('package_build', {
+    event_category: 'package',
+    success: success ? 1 : 0,
+    file_count: fileCount || 0,
+    error_count: errorCount || 0,
+  })
+}
+
+/**
+ * @param {number} resultCount
+ */
+function trackRegistrySearch(resultCount) {
+  trackEvent('registry_search', {
+    event_category: 'registry',
+    result_count: resultCount ?? -1,
+  })
+}
+
+/**
+ * @param {string} mode
+ */
+function trackChatModeSelect(mode) {
+  trackEvent('chat_mode_select', {
+    event_category: 'feature',
+    mode: mode || 'unknown',
   })
 }
 
@@ -306,9 +376,14 @@ module.exports = {
   trackAppClose,
   trackPromptCompile,
   trackPromptExecute,
+  trackPromptExecuteError,
   trackWorkflowExecute,
   trackDeploymentCreate,
+  trackDeploymentToggle,
   trackPackageInstall,
+  trackPackageBuild,
+  trackRegistrySearch,
+  trackChatModeSelect,
   trackFileOpen,
   trackFeatureUse,
 }

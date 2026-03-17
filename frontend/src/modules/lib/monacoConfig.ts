@@ -398,7 +398,10 @@ export const defaultEditorOptions: monaco.editor.IStandaloneEditorConstructionOp
   mouseWheelZoom: false,
 
   // Accessibility
-  ariaLabel: 'Code Editor'
+  ariaLabel: 'Code Editor',
+
+  // Render hover/popup widgets to document.body to prevent clipping at window bounds
+  fixedOverflowWidgets: true
 }
 
 /**

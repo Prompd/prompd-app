@@ -259,7 +259,8 @@ export default function CodeEditor({
           wordWrap: 'on',
           scrollBeyondLastLine: false,
           automaticLayout: true,
-          padding: { top: 10, bottom: 10 }
+          padding: { top: 10, bottom: 10 },
+          fixedOverflowWidgets: true
         }}
       />
     </div>
