@@ -30,6 +30,7 @@ const { McpServerIpcRegistration } = require('./ipc/McpServerIpcRegistration')
 const { TemplateIpcRegistration } = require('./ipc/TemplateIpcRegistration')
 const { ResourceIpcRegistration } = require('./ipc/ResourceIpcRegistration')
 const { SkillIpcRegistration } = require('./ipc/SkillIpcRegistration')
+const { CacheIpcRegistration } = require('./ipc/CacheIpcRegistration')
 const mcpService = require('./services/mcpService')
 const { mcpServerService } = require('./services/mcpServerService')
 const ipcModules = [
@@ -38,6 +39,7 @@ const ipcModules = [
   new TemplateIpcRegistration(),
   new ResourceIpcRegistration(),
   new SkillIpcRegistration(),
+  new CacheIpcRegistration(),
 ]
 
 // Tray and trigger services for background workflow execution
@@ -537,6 +539,15 @@ function createMenu() {
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu-command-palette')
+            }
+          }
+        },
+        {
+          label: 'Search Registry',
+          accelerator: getAccelerator('searchRegistry', 'CmdOrCtrl+Shift+D'),
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-search-registry')
             }
           }
         },
@@ -4686,7 +4697,7 @@ ipcMain.handle('package:createLocal', async (_event, workspacePath, outputDir) =
 })
 
 // Install all dependencies from prompd.json using @prompd/cli RegistryClient
-// Reads dependencies from prompd.json and installs each one to .prompd/cache/
+// Reads dependencies from prompd.json and installs each one to {workspace}/.prompd/packages/
 ipcMain.handle('package:installAll', async (_event, workspacePath) => {
   console.log('[Package] Installing all dependencies from:', workspacePath)
   console.log('[Package] workspacePath type:', typeof workspacePath)
@@ -4798,8 +4809,9 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath, opti
   if (!packageRef || typeof packageRef !== 'string') {
     return { success: false, error: 'No package reference provided' }
   }
-  if (!workspacePath || typeof workspacePath !== 'string') {
-    return { success: false, error: 'No workspace folder open' }
+  // Global installs don't need a workspace path
+  if (!installOptions.global && (!workspacePath || typeof workspacePath !== 'string')) {
+    return { success: false, error: 'No workspace folder open. Use global install or open a folder first.' }
   }
 
   try {
@@ -4807,6 +4819,7 @@ ipcMain.handle('package:install', async (_event, packageRef, workspacePath, opti
     const client = new RegistryClient()
     await client.install(packageRef, {
       workspaceRoot: installOptions.global ? os.homedir() : workspacePath,
+      global: installOptions.global || false,
       skipCache: false,
       type: installOptions.type || undefined
     })
@@ -5200,6 +5213,7 @@ ipcMain.handle('deployment:toggleStatus', async (_event, deploymentId) => {
 
   try {
     const result = await deploymentService.toggleStatus(deploymentId)
+    analytics.trackDeploymentToggle(result?.status === 'enabled' ? 'enable' : 'disable')
     return { success: true, deployment: result }
   } catch (err) {
     return { success: false, error: err.message }
@@ -5858,7 +5872,7 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
           })
         },
         // Centralized .prmd execution — single path for all workflow prompt execution
-        executePrompt: async (source, promptParams, provider, model) => {
+        executePrompt: async (source, promptParams, provider, model, temperature, maxTokens) => {
           // Merge workflow-level params (includes defaults) into node-level prompt params
           // Node params take priority over workflow params
           const mergedParams = { ...params, ...promptParams }
@@ -5922,7 +5936,9 @@ ipcMain.handle('workflow:execute', async (event, workflow, params, options) => {
               model: model || 'gpt-4o',
               apiKey,
               params: mergedParams,
-              workspaceRoot: resolvedWorkspaceRoot || currentWorkspacePath
+              workspaceRoot: resolvedWorkspaceRoot || currentWorkspacePath,
+              ...(temperature !== undefined && { temperature }),
+              ...(maxTokens !== undefined && { maxTokens })
             })
 
             // Clean up temp file

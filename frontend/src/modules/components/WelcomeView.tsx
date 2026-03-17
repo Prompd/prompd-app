@@ -13,6 +13,8 @@ import { useEditorStore, type WorkspaceState } from '../../stores/editorStore'
 import RestoreStatePrompt from './RestoreStatePrompt'
 import { useConfirmDialog } from './ConfirmDialog'
 import { fetchStartupData, filterVisibleNews, dismissNews, type NewsItem, type StartupData } from '../services/startupApi'
+import RegistrySearchBar from './RegistrySearchBar'
+import type { RegistryPackage } from '../services/registryApi'
 
 /**
  * Recent file entry within a project
@@ -55,6 +57,8 @@ interface WelcomeViewProps {
   workspacePath?: string | null
   /** Current workspace name */
   workspaceName?: string
+  /** Called when user selects a package from the search bar */
+  onOpenPackageDetails?: (pkg: RegistryPackage) => void
 }
 
 /**
@@ -1071,7 +1075,8 @@ export default function WelcomeView({
   onRestoreState,
   theme,
   workspacePath,
-  workspaceName
+  workspaceName,
+  onOpenPackageDetails
 }: WelcomeViewProps) {
   const allRecentProjects = useUIStore(state => state.recentProjects)
   const removeRecentProject = useUIStore(state => state.removeRecentProject)
@@ -1653,7 +1658,7 @@ export default function WelcomeView({
       overflow: 'auto'
     }}>
       <div style={{
-        maxWidth: '640px',
+        maxWidth: '720px',
         width: '100%',
         margin: 'auto 0'
       }}>
@@ -1695,6 +1700,14 @@ export default function WelcomeView({
             Create, manage, and share AI prompts
           </p>
         </div>
+
+        {/* Registry Search Bar */}
+        {onOpenPackageDetails && (
+          <RegistrySearchBar
+            theme={theme}
+            onSelectPackage={onOpenPackageDetails}
+          />
+        )}
 
         {/* Tabbed Interface */}
         <div style={{

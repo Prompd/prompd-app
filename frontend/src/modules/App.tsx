@@ -18,6 +18,7 @@ import GitPanel from './editor/GitPanel'
 import { ExecutionHistoryPanel } from './components/ExecutionHistoryPanel'
 import { ResourcePanel } from './components/ResourcePanel'
 import InstalledResourcesPanel from './editor/InstalledResourcesPanel'
+import PackageExplorerPanel from './editor/PackageExplorerPanel'
 import type { PackageManifest } from './services/packageService'
 import { LocalStorageModal } from './components/LocalStorageModal'
 import { PublishModal } from './components/PublishModal'
@@ -39,9 +40,9 @@ import WelcomeView from './components/WelcomeView'
 import CloseWorkspaceDialog from './components/CloseWorkspaceDialog'
 import FileChangesModal from './components/FileChangesModal'
 import ToastContainer from './components/ToastContainer'
-import { UpdateBanner } from './components/UpdateBanner'
 import BottomPanelTabs from './components/BottomPanelTabs'
 import { CommandPalette } from './components/CommandPalette'
+import RegistrySearchOverlay from './components/RegistrySearchOverlay'
 import { FirstTimeSetupWizard, isOnboardingComplete, isWizardDismissed } from './components/FirstTimeSetupWizard'
 import { InlineHints } from './components/InlineHints'
 import { HelpChatPopover } from './components/HelpChatPopover'
@@ -67,6 +68,7 @@ import { buildPrompdFile, executePrompdConfig } from './services/executionServic
 import { parseWorkflow } from './services/workflowParser'
 import { usageTracker } from './services/usageTracker'
 import { initializeRegistrySync, cleanupRegistrySync } from './lib/intellisense/registrySync'
+import { setProviderModelHints } from './lib/intellisense'
 import { useMonaco } from '@monaco-editor/react'
 import { initializeMonaco } from './lib/monacoConfig'
 import { getLanguageFromExtension } from './lib/languageDetection'
@@ -367,6 +369,22 @@ export default function App() {
   const initializeLLMProviders = useUIStore(state => state.initializeLLMProviders)
   const refreshLLMProviders = useUIStore(state => state.refreshLLMProviders)
 
+  // Sync current provider/model selection into Monaco IntelliSense hints
+  useEffect(() => {
+    const providers = (llmProvider.providersWithPricing || []).map(p => ({
+      id: p.providerId,
+      displayName: p.displayName,
+      models: p.models.map(m => ({ id: m.model, displayName: m.displayName }))
+    }))
+    if (providers.length > 0) {
+      setProviderModelHints({
+        currentProvider: llmProvider.provider,
+        currentModel: llmProvider.model,
+        availableProviders: providers
+      })
+    }
+  }, [llmProvider.provider, llmProvider.model, llmProvider.providersWithPricing])
+
   // Auto-save setting
   const autoSaveEnabled = useUIStore(state => state.autoSaveEnabled)
 
@@ -398,6 +416,9 @@ export default function App() {
   // Command palette state
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [commandPaletteInitialQuery, setCommandPaletteInitialQuery] = useState('')
+
+  // Registry search overlay state
+  const [showRegistrySearch, setShowRegistrySearch] = useState(false)
 
   // First-time setup wizard state - show if user hasn't dismissed it
   const [showFirstTimeWizard, setShowFirstTimeWizard] = useState(() => !isWizardDismissed())
@@ -461,6 +482,9 @@ export default function App() {
   // Registry package details modal state (from AI Explore mode)
   const [selectedRegistryPackage, setSelectedRegistryPackage] = useState<RegistryPackage | null>(null)
 
+  // Package explorer auto-expand (set when search result clicked on welcome view)
+  const [expandPackageInExplorer, setExpandPackageInExplorer] = useState<string | null>(null)
+
   // Ref to store the execute function for menu triggering
   const executePrompdRef = useRef<(() => void) | null>(null)
   const stopExecutionRef = useRef<(() => void) | null>(null)
@@ -500,18 +524,7 @@ export default function App() {
     }
   }, [])
 
-  // Sync analytics opt-in state to main process on mount
-  const analyticsEnabled = useUIStore(state => state.analyticsEnabled)
-  useEffect(() => {
-    const electronAPI = (window as any).electronAPI
-    if (!electronAPI?.analytics) return
-    // Sync persisted preference to main process
-    electronAPI.analytics.setEnabled(analyticsEnabled)
-    // Track app_open if opted in
-    if (analyticsEnabled) {
-      electronAPI.analytics.trackEvent('app_open', { event_category: 'app' })
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Analytics opt-in sync moved to uiStore onRehydrateStorage (runs after localStorage hydration)
 
   // Auto-restore workspace on startup (Electron only)
   // If we have a persisted explorerDirPath but no handle, restore it
@@ -1171,6 +1184,11 @@ export default function App() {
             })
           }
 
+          const ext = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() || 'unknown' : 'unknown'
+          ;(window as any).electronAPI?.analytics?.trackEvent('file_open', {
+            event_category: 'editor',
+            file_type: ext,
+          })
           onOpenFile({
             name: fileName,
             handle: pseudoHandle,
@@ -2000,6 +2018,42 @@ version: 1.0.0
       })
     }
 
+    // Validate prompd.json config — check that the main entry point exists on disk
+    const prompdJsonEntry = explorerEntries.find(entry =>
+      entry.kind === 'file' && entry.name === 'prompd.json'
+    )
+    if (prompdJsonEntry) {
+      try {
+        const fullPath = `${electronPath}/${(prompdJsonEntry as { path?: string }).path || prompdJsonEntry.name}`
+        const configResult = await window.electronAPI.readFile(fullPath)
+        if (configResult.success && configResult.content) {
+          const prompdConfig = JSON.parse(configResult.content) as { main?: string; [key: string]: unknown }
+          if (prompdConfig.main) {
+            const normalizedMain = prompdConfig.main.replace(/\\/g, '/')
+            const mainExists = explorerEntries.some(entry => {
+              const entryPath = ((entry as { path?: string }).path || entry.name).replace(/\\/g, '/')
+              return entry.kind === 'file' && entryPath === normalizedMain
+            })
+            if (!mainExists) {
+              setBuildOutput({
+                status: 'error',
+                message: 'Build cancelled: Main entry point not found',
+                errors: [{ file: 'prompd.json', message: `Main file not found: ${prompdConfig.main}` }],
+                timestamp: Date.now(),
+              })
+              setShowBottomPanel(true)
+              setActiveBottomTab('output')
+              aiShowNotification(`Build cancelled: Main file not found: ${prompdConfig.main}`, 'error', 8000)
+              console.error('[App] Build cancelled: prompd.json main file not found:', prompdConfig.main)
+              return
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[App] Error validating prompd.json config:', err)
+      }
+    }
+
     // Show building notification (short duration, will be replaced by result)
     const buildingToastId = addToast('Building package...', 'info', 0) // 0 = persistent until removed
 
@@ -2046,6 +2100,12 @@ version: 1.0.0
         })
         // Don't change panel state on success - show toast notification (8s auto-dismiss)
         aiShowNotification('Package created successfully!', 'success', 8000)
+        ;(window as any).electronAPI?.analytics?.trackEvent('package_build', {
+          event_category: 'package',
+          success: 1,
+          file_count: result.fileCount || 0,
+          error_count: 0,
+        })
         console.log('[App] Package created at:', result.outputPath)
       } else {
         // Parse structured errors from CLI output
@@ -2072,6 +2132,12 @@ version: 1.0.0
         // Show output panel on error (no toast - panel shows details)
         setShowBottomPanel(true)
         setActiveBottomTab('output')
+        ;(window as any).electronAPI?.analytics?.trackEvent('package_build', {
+          event_category: 'package',
+          success: 0,
+          file_count: 0,
+          error_count: errors.length || 1,
+        })
         console.error('[App] Package build failed:', result.error)
       }
     } catch (err) {
@@ -2518,13 +2584,17 @@ version: 1.0.0
       type: 'execution',
       handle: activeTab.handle,
       filePath: activeTab.filePath,
+      packageSource: activeTab.packageSource,
       executionConfig: {
         sourceTabId: activeTab.id,
         prompdSource: {
-          type: 'file',
+          type: activeTab.packageSource ? 'package' : 'file',
           content: activeTab.text,
           originalParams,
-          filePath: activeTab.filePath
+          filePath: activeTab.filePath,
+          packageRef: activeTab.packageSource
+            ? `${activeTab.packageSource.packageId}/${activeTab.packageSource.filePath}`
+            : undefined
         },
         parameters: activeTab.previewParams || {},
         customParameters: [],
@@ -2561,13 +2631,18 @@ version: 1.0.0
     // Set executing state
     setIsExecutingPreview(true)
 
+    // For package files, resolve source path from packageSource
+    const packageSourceFilePath = activeTab.packageSource?.filePath
+    const packageSourceId = activeTab.packageSource?.packageId
+
     // Build execution config
     const executionConfig = {
       prompdSource: {
-        type: 'file' as const,
+        type: (packageSourceId ? 'package' : 'file') as 'file' | 'package',
         content: activeTab.text,
         originalParams: [],
-        filePath: activeTab.filePath
+        filePath: activeTab.filePath,
+        packageRef: packageSourceId ? `${packageSourceId}/${packageSourceFilePath}` : undefined
       },
       parameters: activeTab.previewParams || {},
       customParameters: [],
@@ -2590,11 +2665,12 @@ version: 1.0.0
           return token
         },
         readFileFromWorkspace,
-        activeTab.filePath || undefined,
+        activeTab.filePath || packageSourceFilePath || undefined,
         {
           workspacePath: explorerDirPath,
           selectedEnvFile
-        }
+        },
+        packageSourceId  // Pass package ID for resolving file references from package cache
       )
 
       if (result.status === 'success') {
@@ -2642,6 +2718,7 @@ version: 1.0.0
         ;(window as any).electronAPI?.analytics?.trackEvent('prompt_execute', {
           event_category: 'execution',
           provider: result.metadata?.provider || executionConfig.provider,
+          model: result.metadata?.model || executionConfig.model || 'unknown',
         })
 
         // Show bottom panel with Prompds tab, expand if minimized
@@ -2697,6 +2774,13 @@ version: 1.0.0
           context: activeTab.name || 'preview'
         }).catch(err => {
           console.warn('[App.tsx] Failed to record failed execution to IndexedDB:', err)
+        })
+
+        // GA4 analytics (anonymous)
+        ;(window as any).electronAPI?.analytics?.trackEvent('prompt_execute_error', {
+          event_category: 'execution',
+          provider: result.metadata?.provider || executionConfig.provider,
+          model: result.metadata?.model || executionConfig.model || 'unknown',
         })
 
         // Show bottom panel with Prompds tab, expand if minimized
@@ -3621,6 +3705,13 @@ version: 1.0.0
     })
     if (unsubCommandPalette) cleanups.push(unsubCommandPalette)
 
+    // Menu: Search Registry (Ctrl+Shift+D)
+    const unsubSearchRegistry = electronAPI.onMenuSearchRegistry?.(() => {
+      console.log('[App.tsx] Menu search registry')
+      window.dispatchEvent(new CustomEvent('menu:search-registry'))
+    })
+    if (unsubSearchRegistry) cleanups.push(unsubSearchRegistry)
+
     // Workflow: Handle scheduled/deployed workflow execution requests
     const unsubWorkflowExecute = electronAPI.workflow?.onExecuteRequest?.(async (data: { workflowPath: string; parameters?: Record<string, unknown>; trigger?: string; scheduleId?: string }) => {
       console.log('[App.tsx] Scheduled workflow execution requested:', data)
@@ -3854,6 +3945,59 @@ version: 1.0.0
     }
   }, [openCommandPalette])
 
+  // Registry package select handler (shared by WelcomeView search bar and overlay)
+  const handleRegistryPackageSelect = useCallback(async (pkg: RegistryPackage) => {
+    const eApi = (window as unknown as Record<string, unknown>).electronAPI as {
+      cache?: { download: (name: string, version?: string, registryUrl?: string) => Promise<{ success: boolean; error?: string }> }
+    } | undefined
+    if (eApi?.cache) {
+      const ref = pkg.version ? `${pkg.name}@${pkg.version}` : pkg.name
+      addToast(`Downloading ${ref} to cache...`, 'info')
+      const activeRegistryUrl = await registryApi.getActiveRegistryUrl()
+      const result = await eApi.cache.download(pkg.name, pkg.version, activeRegistryUrl)
+      if (result.success) {
+        setExpandPackageInExplorer(`${pkg.name}@${pkg.version}`)
+        setActiveSide('packages')
+        setShowSidebar(true)
+        window.dispatchEvent(new Event('prompd:resources-changed'))
+        const ns = pkg.name?.split('/').slice(0, 2).join('/') || 'unknown'
+        ;(window as any).electronAPI?.analytics?.trackEvent('registry_package_download', {
+          event_category: 'registry',
+          package_namespace: ns,
+        })
+      } else {
+        addToast(`Failed to download: ${result.error}`, 'error')
+      }
+    } else {
+      setSelectedRegistryPackage(pkg)
+    }
+  }, [addToast, setActiveSide, setShowSidebar])
+
+  // Registry search hotkey handler (Ctrl+Shift+D)
+  const openRegistrySearch = useCallback(() => {
+    const hasTabs = tabs.length > 0 && !!activeTabId
+    if (hasTabs) {
+      // Tabs open - show overlay
+      setShowRegistrySearch(true)
+    } else {
+      // WelcomeView visible - focus the search bar
+      const searchInput = document.querySelector<HTMLInputElement>('[placeholder*="Search for classifiers"]')
+      if (searchInput) {
+        searchInput.focus()
+      }
+    }
+  }, [tabs.length, activeTabId])
+
+  useEffect(() => {
+    hotkeyManager.registerHandler('searchRegistry', openRegistrySearch)
+    const handleMenuSearch = () => openRegistrySearch()
+    window.addEventListener('menu:search-registry', handleMenuSearch)
+    return () => {
+      hotkeyManager.unregisterHandler('searchRegistry')
+      window.removeEventListener('menu:search-registry', handleMenuSearch)
+    }
+  }, [openRegistrySearch])
+
   // Sidebar resize
   const beginResize = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -4032,7 +4176,6 @@ version: 1.0.0
         />
       )}
       <TitleBar theme={theme} />
-      <UpdateBanner />
       <EditorHeader
         theme={theme}
         onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -4069,7 +4212,11 @@ version: 1.0.0
           // Dispatch event for WorkflowCanvas to handle
           window.dispatchEvent(new CustomEvent('execute-workflow'))
           // GA4 analytics (anonymous)
-          ;(window as any).electronAPI?.analytics?.trackEvent('workflow_execute', { event_category: 'execution' })
+          const nodeCount = useWorkflowStore.getState().nodes?.length ?? 0
+          ;(window as any).electronAPI?.analytics?.trackEvent('workflow_execute', {
+            event_category: 'execution',
+            node_count: nodeCount,
+          })
         }}
         workspacePath={explorerDirPath}
         showPreview={getActiveTab()?.showPreview || false}
@@ -4271,14 +4418,17 @@ version: 1.0.0
           pointerEvents: activeSide === 'packages' ? 'auto' : 'none',
           overflow: 'hidden'
         }}>
-          <PackagePanel
+          <PackageExplorerPanel
             theme={theme}
-            onOpenInEditor={onOpenPackageFile}
-            onUseAsTemplate={onUsePackageAsTemplate}
-            initialSearchQuery={packageSearchQuery}
-            onCollapse={() => setShowSidebar(false)}
             workspacePath={explorerDirPath}
-            onShowNotification={aiShowNotification}
+            onCollapse={() => setShowSidebar(false)}
+            onOpenFile={onOpenFile}
+            onShowNotification={(msg, type) => {
+              addToast(msg, type || 'info')
+            }}
+            expandPackage={expandPackageInExplorer}
+            onExpandHandled={() => setExpandPackageInExplorer(null)}
+            visible={activeSide === 'packages' && showSidebar}
           />
         </div>
         <div style={{
@@ -4450,6 +4600,10 @@ version: 1.0.0
                           chatConfig: { mode: 'brainstorm', contextFile: tab.id, conversationId: tab.chatConfig?.conversationId }
                         })
                         chatMountedTabsRef.current.add(tab.id)
+                        ;(window as any).electronAPI?.analytics?.trackEvent('chat_mode_select', {
+                          event_category: 'feature',
+                          mode: 'brainstorm',
+                        })
                       }}
                       style={{
                         position: 'absolute',
@@ -4756,12 +4910,27 @@ version: 1.0.0
                         }
 
                         // Fallback: extract from package reference
+                        let execPackageId: string | undefined
                         if (!sourceFilePath && executionConfig.prompdSource.type === 'package' && executionConfig.prompdSource.packageRef) {
                           // Example: "@prompd/blog@1.0.0/prompts/writer.prmd" → "prompts/writer.prmd"
                           const match = executionConfig.prompdSource.packageRef.match(/\/([^@]+)$/)
                           if (match) {
                             sourceFilePath = match[1]
                             console.log('[App.tsx] Source file path from packageRef:', sourceFilePath)
+                          }
+                          // Extract packageId: "@prompd/blog@1.0.0/prompts/writer.prmd" → "@prompd/blog@1.0.0"
+                          const pkgMatch = executionConfig.prompdSource.packageRef.match(/^(@[^/]+\/[^@]+@[^/]+)/)
+                          if (pkgMatch) {
+                            execPackageId = pkgMatch[1]
+                          }
+                        }
+
+                        // Also check tab's packageSource directly
+                        if (!execPackageId && currentTab.packageSource?.packageId) {
+                          execPackageId = currentTab.packageSource.packageId
+                          if (!sourceFilePath && currentTab.packageSource.filePath) {
+                            sourceFilePath = currentTab.packageSource.filePath
+                            console.log('[App.tsx] Source file path from tab.packageSource:', sourceFilePath)
                           }
                         }
 
@@ -4776,7 +4945,8 @@ version: 1.0.0
                           {  // Env options for compile-time variable substitution
                             workspacePath: explorerDirPath,
                             selectedEnvFile
-                          }
+                          },
+                          execPackageId  // Pass package ID for resolving file references from package cache
                         )
 
                         console.log('[App.tsx] Execution result received:', {
@@ -5357,6 +5527,10 @@ version: 1.0.0
                                 chatConfig: { mode: 'brainstorm', contextFile: activeTabId, conversationId: activeTab?.chatConfig?.conversationId }
                               })
                               chatMountedTabsRef.current.add(activeTabId)
+                              ;(window as any).electronAPI?.analytics?.trackEvent('chat_mode_select', {
+                                event_category: 'feature',
+                                mode: 'brainstorm',
+                              })
                             }
                           }}
                           style={{
@@ -5639,6 +5813,7 @@ version: 1.0.0
 
               console.log('[App] Workspace state restored successfully')
             }}
+            onOpenPackageDetails={handleRegistryPackageSelect}
           />
         )}
       </div>
@@ -5994,6 +6169,18 @@ version: 1.0.0
         onShowNotification={aiShowNotification}
         initialQuery={commandPaletteInitialQuery}
       />
+
+      {/* Registry Search Overlay (Ctrl+Shift+D) */}
+      {showRegistrySearch && (
+        <RegistrySearchOverlay
+          theme={theme}
+          onSelectPackage={(pkg) => {
+            handleRegistryPackageSelect(pkg)
+            setShowRegistrySearch(false)
+          }}
+          onClose={() => setShowRegistrySearch(false)}
+        />
+      )}
     </div>
   )
 }

@@ -81,11 +81,10 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     id: 'install',
     name: 'install',
-    description: 'Install dependencies from prompd.json, or a specific package',
+    description: 'Install dependencies or a package. Use --global/-g for global install',
     icon: 'Package',
-    args: '[package@version]',
-    category: 'registry',
-    requiresWorkspace: true
+    args: '[package@version] [--global]',
+    category: 'registry'
   },
   // Workspace operations
   {

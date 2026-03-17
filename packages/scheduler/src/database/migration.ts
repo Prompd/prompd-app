@@ -342,11 +342,13 @@ export function migrateStatusTerminology(db: Database.Database): { success: bool
   console.log('[Migration] Updating status terminology...')
 
   try {
-    // Check if migration already applied (look for 'enabled' status)
-    const check = db.prepare(`SELECT COUNT(*) as count FROM deployments WHERE status = 'enabled'`).get() as { count: number }
+    // Check if old-style statuses exist — if none do, nothing to migrate
+    const oldStatusCheck = db.prepare(
+      `SELECT COUNT(*) as count FROM deployments WHERE status IN ('active', 'paused', 'undeployed')`
+    ).get() as { count: number }
 
-    if (check.count > 0) {
-      console.log('[Migration] Status terminology already migrated')
+    if (oldStatusCheck.count === 0) {
+      console.log('[Migration] Status terminology already migrated or no deployments to migrate')
       return { success: true, error: null }
     }
 
@@ -370,8 +372,16 @@ export function migrateStatusTerminology(db: Database.Database): { success: bool
         }
       }
 
-      // Copy undeployedAt to deletedAt
-      db.exec(`UPDATE deployments SET deletedAt = undeployedAt WHERE undeployedAt IS NOT NULL`)
+      // Copy undeployedAt to deletedAt if that column exists (older schema versions only)
+      try {
+        db.exec(`UPDATE deployments SET deletedAt = undeployedAt WHERE undeployedAt IS NOT NULL`)
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        if (!errorMessage.includes('no such column')) {
+          throw error
+        }
+        // Column doesn't exist in this schema version — nothing to copy
+      }
 
       db.exec('COMMIT')
 

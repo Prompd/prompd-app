@@ -60,6 +60,9 @@ const modelValidationDisposables = new Map<string, monacoEditor.IDisposable>()
 // Re-export env cache functions
 export { setEnvVarsCache, getEnvVarsCache, clearEnvVarsCache } from './envCache'
 
+// Re-export provider/model hints setter
+export { setProviderModelHints } from './completions'
+
 
 /**
  * Manually trigger validation for a specific model.

@@ -356,6 +356,27 @@ async function executeInstall(args: string, workspacePath?: string): Promise<Sla
     }
   }
 
+  // Parse --global / -g flag
+  const parts = packageRef.split(/\s+/)
+  const isGlobal = parts.includes('--global') || parts.includes('-g')
+  const ref = parts.filter(p => p !== '--global' && p !== '-g').join(' ')
+
+  if (!ref) {
+    return {
+      success: false,
+      output: '',
+      error: 'No package reference provided. Usage: `/install @scope/package` or `/install @scope/package --global`'
+    }
+  }
+
+  if (!isGlobal && !workspacePath) {
+    return {
+      success: false,
+      output: '',
+      error: 'No workspace open. Open a folder first or use `--global` to install globally.'
+    }
+  }
+
   // Single package install via IPC
   if (!window.electronAPI?.package?.install) {
     return {
@@ -366,12 +387,17 @@ async function executeInstall(args: string, workspacePath?: string): Promise<Sla
   }
 
   try {
-    const result = await window.electronAPI.package.install(packageRef, workspacePath!)
+    const result = await window.electronAPI.package.install(
+      ref,
+      isGlobal ? '' : workspacePath!,
+      { type: 'package', global: isGlobal }
+    )
     if (result.success) {
       window.dispatchEvent(new Event('prompd:resources-changed'))
+      const scope = isGlobal ? 'globally' : 'to workspace'
       return {
         success: true,
-        output: `Installed **${packageRef}** successfully.`,
+        output: `Installed **${ref}** ${scope}.`,
         data: result
       }
     }

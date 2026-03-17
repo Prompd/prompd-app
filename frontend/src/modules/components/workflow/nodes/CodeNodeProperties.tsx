@@ -200,6 +200,7 @@ return result;`
               scrollBeyondLastLine: false,
               automaticLayout: true,
               wordWrap: 'on',
+              fixedOverflowWidgets: true,
             }}
           />
         </div>

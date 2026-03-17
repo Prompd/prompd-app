@@ -130,6 +130,11 @@ class RegistryApiClient {
     }
   }
 
+  // Get the active registry URL (public — used by callers that need to pass it to IPC)
+  async getActiveRegistryUrl(): Promise<string> {
+    return this.ensureBaseUrl()
+  }
+
   // Ensure we have the latest base URL
   private async ensureBaseUrl(): Promise<string> {
     if (!this.baseUrlInitialized) {

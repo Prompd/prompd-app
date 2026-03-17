@@ -1,5 +1,6 @@
 // Namespaces API client for organization and namespace management
 import { prompdSettings } from './prompdSettings'
+import { electronFetch } from './electronFetch'
 
 export interface NamespaceInfo {
   id: string
@@ -83,7 +84,7 @@ class NamespacesApiClient {
     }
 
     const url = new URL(endpoint, this.baseUrl)
-    return fetch(url.toString(), {
+    return electronFetch(url.toString(), {
       ...options,
       headers
     })

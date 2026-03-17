@@ -284,6 +284,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu-command-palette', handler)
     return () => ipcRenderer.removeListener('menu-command-palette', handler)
   },
+  onMenuSearchRegistry: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu-search-registry', handler)
+    return () => ipcRenderer.removeListener('menu-search-registry', handler)
+  },
   // Clerk OAuth authentication
   auth: {
     startOAuth: () => ipcRenderer.invoke('auth:startOAuth'),
@@ -478,6 +483,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('resource:delete', resourcePath),
     getManifest: (resourcePath) =>
       ipcRenderer.invoke('resource:getManifest', resourcePath),
+  },
+
+  // Package cache - disk-based cache at ~/.prompd/cache/
+  cache: {
+    list: () =>
+      ipcRenderer.invoke('cache:list'),
+    readFile: (filePath) =>
+      ipcRenderer.invoke('cache:readFile', filePath),
+    download: (packageName, version, registryUrl) =>
+      ipcRenderer.invoke('cache:download', packageName, version, registryUrl),
+    delete: (cachePath) =>
+      ipcRenderer.invoke('cache:delete', cachePath),
+    getPath: () =>
+      ipcRenderer.invoke('cache:getPath'),
+    fileTree: (dirPath) =>
+      ipcRenderer.invoke('cache:fileTree', dirPath),
   },
 
   // Skill discovery - scan installed skills for workflow SkillNode usage

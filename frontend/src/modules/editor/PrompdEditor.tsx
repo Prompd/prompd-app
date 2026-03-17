@@ -1703,6 +1703,9 @@ export default function PrompdEditor({ value, onChange, jumpTo, theme, onCursorC
           glyphMargin: true,
           // Show lightbulb for code actions (on = show on all lines, onCode = only code lines)
           lightbulb: { enabled: 'on' as monacoEditor.editor.ShowLightbulbIconMode },
+          // Render hover/suggest/parameter-hint widgets to document.body so they
+          // escape any overflow:hidden ancestors and are never clipped
+          fixedOverflowWidgets: true,
           // EditorConfig overrides (tabSize, insertSpaces, wordWrap, etc.)
           ...editorConfigOptions,
         }}

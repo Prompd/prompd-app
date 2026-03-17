@@ -29,7 +29,9 @@ export {
   // Env vars cache for intellisense
   setEnvVarsCache,
   getEnvVarsCache,
-  clearEnvVarsCache
+  clearEnvVarsCache,
+  // Provider/model hints for frontmatter completions
+  setProviderModelHints
 } from './intellisense/index'
 
 // Re-export types

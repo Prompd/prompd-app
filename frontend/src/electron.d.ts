@@ -168,6 +168,7 @@ export interface ElectronAPI {
   onMenuToggleTheme: (callback: () => void) => () => void
   onMenuToggleProblemsPanel: (callback: () => void) => () => void
   onMenuCommandPalette: (callback: () => void) => () => void
+  onMenuSearchRegistry: (callback: () => void) => () => void
 
   // Clerk OAuth authentication
   auth: {
@@ -425,6 +426,67 @@ export interface ElectronAPI {
     getManifest: (resourcePath: string) => Promise<{
       success: boolean
       manifest?: Record<string, unknown>
+      error?: string
+    }>
+  }
+
+  // Package cache - disk-based cache at ~/.prompd/cache/
+  cache?: {
+    list: () => Promise<{
+      success: boolean
+      packages: Array<{
+        name: string
+        version: string
+        path: string
+        description?: string
+        files: Array<{
+          name: string
+          path: string
+          kind: 'file' | 'folder'
+          children?: Array<{
+            name: string
+            path: string
+            kind: 'file' | 'folder'
+            children?: unknown[]
+          }>
+        }>
+      }>
+      error?: string
+    }>
+    readFile: (filePath: string) => Promise<{
+      success: boolean
+      content?: string
+      error?: string
+    }>
+    download: (packageName: string, version?: string) => Promise<{
+      success: boolean
+      path?: string
+      version?: string
+      files?: Array<{
+        name: string
+        path: string
+        kind: 'file' | 'folder'
+        children?: unknown[]
+      }>
+      cached?: boolean
+      error?: string
+    }>
+    delete: (cachePath: string) => Promise<{
+      success: boolean
+      error?: string
+    }>
+    getPath: () => Promise<{
+      success: boolean
+      path: string
+    }>
+    fileTree: (dirPath: string) => Promise<{
+      success: boolean
+      files: Array<{
+        name: string
+        path: string
+        kind: 'file' | 'folder'
+        children?: unknown[]
+      }>
       error?: string
     }>
   }

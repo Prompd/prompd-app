@@ -13,6 +13,7 @@ import { PrompdContextArea } from '@prompd/react'
 import { registryApi, type RegistryPackage } from '../services/registryApi'
 import JSZip from 'jszip'
 import ContentSections from '../components/ContentSections'
+import { useUIStore } from '../../stores'
 
 // Type definitions for PrompdContextArea (from @prompd/react)
 interface PrompdFileSection {
@@ -160,6 +161,7 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
 
   // Confirm dialog hook for delete confirmations
   const { showConfirm, ConfirmDialogComponent } = useConfirmDialog(theme)
+  const providersWithPricing = useUIStore(state => state.llmProvider.providersWithPricing)
 
   // Parse the current .prmd content (memoized to prevent infinite loops)
   const parsed = useMemo(() => parsePrompd(value), [value])
@@ -209,8 +211,12 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
     name: parsed.frontmatter.name ?? 'My Prompt',
     version: parsed.frontmatter.version || '1.0.0',
     description: parsed.frontmatter.description ?? '',
-    tags: Array.isArray(parsed.frontmatter.tags) ? parsed.frontmatter.tags : []
-  }), [parsed.frontmatter.id, parsed.frontmatter.name, parsed.frontmatter.version, parsed.frontmatter.description, parsed.frontmatter.tags])
+    tags: Array.isArray(parsed.frontmatter.tags) ? parsed.frontmatter.tags : [],
+    provider: (parsed.frontmatter.provider as string | undefined) ?? '',
+    model: (parsed.frontmatter.model as string | undefined) ?? '',
+    temperature: parsed.frontmatter.temperature != null ? String(parsed.frontmatter.temperature) : '',
+    max_tokens: parsed.frontmatter.max_tokens != null ? String(parsed.frontmatter.max_tokens) : ''
+  }), [parsed.frontmatter.id, parsed.frontmatter.name, parsed.frontmatter.version, parsed.frontmatter.description, parsed.frontmatter.tags, parsed.frontmatter.provider, parsed.frontmatter.model, parsed.frontmatter.temperature, parsed.frontmatter.max_tokens])
 
   // Section overrides from the parsed content
   const [sectionOverrides, setSectionOverrides] = useState<Record<string, string | null>>({})
@@ -773,10 +779,13 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
       ? `tags: [${metadataToUse.tags.join(', ')}]\n`
       : ''
 
+    // Fields explicitly managed by generateFrontmatter — must not appear in specialtyYaml
+    const managedFields = new Set(['id', 'name', 'version', 'description', 'tags', 'provider', 'model', 'temperature', 'max_tokens', 'parameters', 'using', 'inherits', 'override'])
+
     // Preserve specialty sections from original frontmatter (system, user, context, etc.)
     const specialtySections = ['system', 'user', 'task', 'output', 'assistant', 'context', 'contexts', 'response']
     const specialtyYaml = specialtySections
-      .filter(key => parsed.frontmatter[key])
+      .filter(key => parsed.frontmatter[key] && !managedFields.has(key))
       .map(key => {
         const val = parsed.frontmatter[key]
         if (Array.isArray(val)) {
@@ -800,11 +809,16 @@ export default function DesignView({ value, onChange, wizardState, currentFilePa
       return val
     }
 
+    const providerYaml = metadataToUse.provider ? `provider: ${metadataToUse.provider}\n` : ''
+    const modelYaml = metadataToUse.model ? `model: ${metadataToUse.model}\n` : ''
+    const temperatureYaml = metadataToUse.temperature !== '' ? `temperature: ${metadataToUse.temperature}\n` : ''
+    const maxTokensYaml = metadataToUse.max_tokens !== '' ? `max_tokens: ${metadataToUse.max_tokens}\n` : ''
+
     const frontmatter = `---
 id: ${metadataToUse.id}
 name: ${quotedName}
 version: ${metadataToUse.version}
-${descriptionYaml}${tagsYaml}${parametersYaml}${parsed.frontmatter.using ? `using:\n${parsed.frontmatter.using.map((u: any) =>
+${descriptionYaml}${tagsYaml}${providerYaml}${modelYaml}${temperatureYaml}${maxTokensYaml}${parametersYaml}${parsed.frontmatter.using ? `using:\n${parsed.frontmatter.using.map((u: any) =>
   `  - name: "${u.name}"${u.prefix ? `\n    prefix: "${u.prefix}"` : ''}`
 ).join('\n')}\n` : ''}${inheritsValue ? `inherits: ${quoteIfNeeded(inheritsValue)}\n` : ''}${specialtyYaml}${Object.keys(sectionOverrides).length > 0
   ? `override:\n${Object.entries(sectionOverrides)
@@ -2659,6 +2673,139 @@ ${parsed.body.replace(/^\n+/, '')}`
                 disabled={readOnly}
                 theme={theme}
               />
+            </div>
+
+            {/* Execution Hints - provider, model, temperature, max_tokens */}
+            <div style={{ gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: '16px', marginTop: '4px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '8px', color: 'var(--text)' }}>
+                Execution Hints
+                <span style={{ fontSize: '11px', fontWeight: 400, color: 'var(--text-secondary)', marginLeft: '6px' }}>optional — overrides default provider settings at runtime</span>
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                {/* Provider */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Provider</label>
+                  <select
+                    value={metadata.provider}
+                    disabled={readOnly}
+                    onChange={(e) => {
+                      // Update provider and clear model in one regeneration pass to avoid state timing issues
+                      const updatedMetadata = { ...metadata, provider: e.target.value, model: '' }
+                      generateFrontmatter(updatedMetadata, parsed.frontmatter.inherits || '')
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '6px 10px',
+                      fontSize: '12px',
+                      border: '1px solid var(--input-border)',
+                      borderRadius: '6px',
+                      background: 'var(--input-bg)',
+                      color: metadata.provider ? 'var(--text)' : 'var(--text-secondary)',
+                      cursor: readOnly ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    <option value="">— not set —</option>
+                    {(providersWithPricing || []).filter(p => p.hasKey || p.isCustom).map(p => (
+                      <option key={p.providerId} value={p.providerId}>{p.displayName}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Model */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Model</label>
+                  {(() => {
+                    const providerEntry = (providersWithPricing || []).find(p => p.providerId === metadata.provider)
+                    const models = providerEntry?.models || []
+                    return models.length > 0 ? (
+                      <select
+                        value={metadata.model}
+                        disabled={readOnly || !metadata.provider}
+                        onChange={(e) => handleMetadataChange('model', e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '6px 10px',
+                          fontSize: '12px',
+                          border: '1px solid var(--input-border)',
+                          borderRadius: '6px',
+                          background: 'var(--input-bg)',
+                          color: metadata.model ? 'var(--text)' : 'var(--text-secondary)',
+                          cursor: readOnly || !metadata.provider ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        <option value="">— not set —</option>
+                        {models.map(m => (
+                          <option key={m.model} value={m.model}>{m.displayName || m.model}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={metadata.model}
+                        disabled={readOnly}
+                        onChange={(e) => handleMetadataChange('model', e.target.value)}
+                        placeholder="— not set —"
+                        style={{
+                          width: '100%',
+                          padding: '6px 10px',
+                          fontSize: '12px',
+                          border: '1px solid var(--input-border)',
+                          borderRadius: '6px',
+                          background: 'var(--input-bg)',
+                          color: 'var(--text)'
+                        }}
+                      />
+                    )
+                  })()}
+                </div>
+
+                {/* Temperature */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Temperature <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>(0–2)</span></label>
+                  <input
+                    type="number"
+                    value={metadata.temperature}
+                    disabled={readOnly}
+                    onChange={(e) => handleMetadataChange('temperature', e.target.value)}
+                    placeholder="— not set —"
+                    min={0}
+                    max={2}
+                    step={0.1}
+                    style={{
+                      width: '100%',
+                      padding: '6px 10px',
+                      fontSize: '12px',
+                      border: '1px solid var(--input-border)',
+                      borderRadius: '6px',
+                      background: 'var(--input-bg)',
+                      color: 'var(--text)'
+                    }}
+                  />
+                </div>
+
+                {/* Max tokens */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Max tokens</label>
+                  <input
+                    type="number"
+                    value={metadata.max_tokens}
+                    disabled={readOnly}
+                    onChange={(e) => handleMetadataChange('max_tokens', e.target.value)}
+                    placeholder="— not set —"
+                    min={1}
+                    step={256}
+                    style={{
+                      width: '100%',
+                      padding: '6px 10px',
+                      fontSize: '12px',
+                      border: '1px solid var(--input-border)',
+                      borderRadius: '6px',
+                      background: 'var(--input-bg)',
+                      color: 'var(--text)'
+                    }}
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Parameters Section - Inline in Metadata */}

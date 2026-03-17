@@ -1066,7 +1066,7 @@ export default function PrompdJsonDesignView({ value, onChange, theme = 'dark', 
                 width: '100%',
                 padding: '10px 36px 10px 12px',
                 background: colors.input,
-                border: `1px solid ${colors.border}`,
+                border: `1px solid ${config.main && !prmdFiles.includes(config.main) ? '#e05252' : colors.border}`,
                 borderRadius: '6px',
                 fontSize: '14px',
                 color: config.main ? colors.text : colors.textMuted,
@@ -1081,7 +1081,7 @@ export default function PrompdJsonDesignView({ value, onChange, theme = 'dark', 
                 <option key={file} value={file}>{file}</option>
               ))}
               {config.main && !prmdFiles.includes(config.main) && (
-                <option value={config.main}>{config.main} (custom)</option>
+                <option value={config.main}>{config.main} (not found)</option>
               )}
             </select>
             <ChevronDown
@@ -1096,7 +1096,13 @@ export default function PrompdJsonDesignView({ value, onChange, theme = 'dark', 
               }}
             />
           </div>
-          {prmdFiles.length === 0 && (
+          {config.main && !prmdFiles.includes(config.main) && (
+            <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: '#e05252', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <AlertCircle size={12} />
+              File not found in workspace: {config.main}
+            </p>
+          )}
+          {!config.main && prmdFiles.length === 0 && (
             <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: colors.textMuted }}>
               No .prmd files found in workspace
             </p>
