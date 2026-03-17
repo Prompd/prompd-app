@@ -43,7 +43,7 @@ jobs:
         run: |
           npm pkg set dependencies.@prompd/cli="^0.5.0-beta.7"
           rm -f package-lock.json
-          npm install
+          npm install --legacy-peer-deps
 
       - name: TypeScript check
         working-directory: frontend
