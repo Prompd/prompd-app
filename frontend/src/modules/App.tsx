@@ -4218,7 +4218,12 @@ version: 1.0.0
           const name = tab.name.toLowerCase()
           return name.endsWith('.prmd') || name.endsWith('.pdflow') || name === 'prompd.json' || name.endsWith('/prompd.json') || name.endsWith('\\prompd.json')
         })()}
-        onExecutePrompd={getActiveTab()?.type === 'brainstorm' ? undefined : handleExecutePrompd}
+        onExecutePrompd={(() => {
+          const tab = getActiveTab()
+          if (!tab || tab.type === 'brainstorm') return undefined
+          if (tab.name.toLowerCase().endsWith('.test.prmd')) return undefined
+          return handleExecutePrompd
+        })()}
         onExecuteWorkflow={() => {
           // Dispatch event for WorkflowCanvas to handle
           window.dispatchEvent(new CustomEvent('execute-workflow'))
