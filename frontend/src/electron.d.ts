@@ -510,6 +510,143 @@ export interface ElectronAPI {
     }>
   }
 
+  // Test runner - discover, run, and stream .test.prmd evaluation results
+  test?: {
+    discover: (directory: string) => Promise<{
+      success: boolean
+      suites: Array<{
+        name: string
+        description?: string
+        testFilePath: string
+        targetPath: string
+        testCount: number
+        testNames: string[]
+      }>
+      errors: Array<{ filePath: string; message: string }>
+    }>
+    run: (target: string, options?: {
+      evaluators?: Array<'nlp' | 'script' | 'prmd'>
+      noLlm?: boolean
+      reporter?: 'console' | 'json' | 'junit'
+      failFast?: boolean
+      runAll?: boolean
+      verbose?: boolean
+      workspaceRoot?: string
+      registryUrl?: string
+    }) => Promise<{
+      success: boolean
+      runId: string
+      result?: {
+        suites: Array<{
+          suite: string
+          testFilePath: string
+          results: Array<{
+            suite: string
+            testName: string
+            status: 'pass' | 'fail' | 'error' | 'skip'
+            duration: number
+            assertions: Array<{
+              evaluator: 'nlp' | 'script' | 'prmd'
+              check?: string
+              status: 'pass' | 'fail' | 'error' | 'skip'
+              reason?: string
+              duration: number
+            }>
+            output?: string
+            compiledInput?: string
+            error?: string
+          }>
+        }>
+        summary: {
+          total: number
+          passed: number
+          failed: number
+          errors: number
+          skipped: number
+          duration: number
+        }
+      }
+      error?: string
+    }>
+    runAll: (directory: string, options?: {
+      evaluators?: Array<'nlp' | 'script' | 'prmd'>
+      noLlm?: boolean
+      reporter?: 'console' | 'json' | 'junit'
+      failFast?: boolean
+      runAll?: boolean
+      verbose?: boolean
+      workspaceRoot?: string
+      registryUrl?: string
+    }) => Promise<{
+      success: boolean
+      runId: string
+      result?: {
+        suites: Array<{
+          suite: string
+          testFilePath: string
+          results: Array<{
+            suite: string
+            testName: string
+            status: 'pass' | 'fail' | 'error' | 'skip'
+            duration: number
+            assertions: Array<{
+              evaluator: 'nlp' | 'script' | 'prmd'
+              check?: string
+              status: 'pass' | 'fail' | 'error' | 'skip'
+              reason?: string
+              duration: number
+            }>
+            output?: string
+            compiledInput?: string
+            error?: string
+          }>
+        }>
+        summary: {
+          total: number
+          passed: number
+          failed: number
+          errors: number
+          skipped: number
+          duration: number
+        }
+      }
+      error?: string
+    }>
+    stop: (runId: string) => Promise<{ success: boolean; error?: string }>
+    onProgress: (callback: (data: {
+      runId: string
+      event: {
+        type: 'suite_start' | 'test_start' | 'test_complete' | 'suite_complete' | 'assertion_complete'
+        suite: string
+        testName?: string
+        testCount?: number
+        result?: {
+          suite: string
+          testName: string
+          status: 'pass' | 'fail' | 'error' | 'skip'
+          duration: number
+          assertions: Array<{
+            evaluator: 'nlp' | 'script' | 'prmd'
+            check?: string
+            status: 'pass' | 'fail' | 'error' | 'skip'
+            reason?: string
+            duration: number
+          }>
+          output?: string
+          error?: string
+        }
+        results?: Array<unknown>
+        assertion?: {
+          evaluator: 'nlp' | 'script' | 'prmd'
+          check?: string
+          status: 'pass' | 'fail' | 'error' | 'skip'
+          reason?: string
+          duration: number
+        }
+      }
+    }) => void) => () => void
+  }
+
   // Workflow trigger management (schedule, webhook, file-watch)
   trigger?: {
     register: (config: TriggerConfig) => Promise<{ success: boolean; error?: string }>

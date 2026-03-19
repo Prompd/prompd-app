@@ -31,6 +31,10 @@ const nunjucksHelp: Record<string, { description: string; example?: string; link
   'previous_step': { description: 'Alias for previous_output - output from the connected upstream node', example: '{{ previous_step }} or {{ previous_step.result }}' },
   'input': { description: 'Alias for previous_output - commonly used in code and transform nodes', example: '{{ input }} or {{ input.data }}' },
 
+  // Test evaluator variables (injected by @prompd/test when running .test.prmd evaluator prompts)
+  'prompt': { description: 'The compiled prompt that was sent to the LLM for evaluation', example: '{{ prompt }}' },
+  'response': { description: 'The LLM response being evaluated', example: '{{ response }}' },
+
   // Operators
   'in': { description: 'Test if item is in array/object', example: '{% if "admin" in user.roles %}' },
   'not': { description: 'Logical NOT - negates expression', example: '{% if not user %}No user{% endif %}' },
@@ -1050,6 +1054,36 @@ export function registerHoverProvider(
           contents.push({ value: '---' })
           contents.push({ value: `**Usage:** \`${bi.usage}\`` })
           contents.push({ value: `Use \`{{ ${paramName} | default("fallback") }}\` to handle standalone execution.` })
+          return { range, contents }
+        }
+
+        // Test evaluator built-in variables (injected by @prompd/test for .test.prmd evaluator prompts)
+        const testEvalBuiltins: Record<string, { title: string; desc: string; usage: string }> = {
+          'prompt': {
+            title: 'Compiled Prompt',
+            desc: 'The compiled prompt that was sent to the LLM. Contains the fully resolved .prmd output with all parameters substituted.',
+            usage: '{{ prompt }}'
+          },
+          'response': {
+            title: 'LLM Response',
+            desc: 'The response returned by the LLM being evaluated. This is the text your evaluator should assess.',
+            usage: '{{ response }}'
+          },
+          'params': {
+            title: 'Test Parameters',
+            desc: 'The parameters object from the test case. Access individual values with dot notation.',
+            usage: '{{ params }} or {{ params.name }}'
+          }
+        }
+
+        if (testEvalBuiltins[paramName]) {
+          const bi = testEvalBuiltins[paramName]
+          const contents: monacoEditor.IMarkdownString[] = []
+          contents.push({ value: `**Test Evaluator: \`${paramName}\`**` })
+          contents.push({ value: bi.desc })
+          contents.push({ value: '---' })
+          contents.push({ value: `**Usage:** \`${bi.usage}\`` })
+          contents.push({ value: 'Available in the content block of `.test.prmd` files when used as an evaluator prompt.' })
           return { range, contents }
         }
 

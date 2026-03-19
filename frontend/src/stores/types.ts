@@ -70,7 +70,7 @@ export interface FileSystemEntry {
 /**
  * UI State for sidebar
  */
-export type SidebarPanel = 'explorer' | 'packages' | 'ai' | 'git' | 'history' | 'resources' | 'library'
+export type SidebarPanel = 'explorer' | 'packages' | 'ai' | 'git' | 'history' | 'resources' | 'library' | 'tests'
 
 /**
  * Modal types

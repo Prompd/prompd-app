@@ -1,4 +1,4 @@
-import { Code2, Palette, Settings, Play, Square, LogOut, User, Moon, Sun, HelpCircle, KeyRound } from 'lucide-react'
+import { Code2, Palette, Settings, Play, Square, LogOut, User, Moon, Sun, HelpCircle, KeyRound, FlaskConical } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { PreviewToggle, ChatToggle } from './SplitViewToggles'
@@ -298,6 +298,7 @@ type Props = {
   onTogglePreview?: () => void  // Toggle split preview
   showChat?: boolean  // Whether chat pane is shown in split view
   onToggleChat?: () => void  // Toggle chat pane
+  onRunTests?: () => void  // Run tests for current .prmd file
 }
 
 export default function EditorHeader({
@@ -315,7 +316,8 @@ export default function EditorHeader({
   showPreview = false,
   onTogglePreview,
   showChat = false,
-  onToggleChat
+  onToggleChat,
+  onRunTests
 }: Props) {
   const { isAuthenticated, isLoaded, getToken, email } = useAuthenticatedUser()
   const headerRef = useRef<HTMLDivElement>(null)
@@ -557,6 +559,36 @@ export default function EditorHeader({
             title="Execute prompt (F5)"
           >
             <Play size={14} />
+          </button>
+        )}
+        {/* Run Tests button - show only for .test.prmd files */}
+        {isPrompdFile && onRunTests && (
+          <button
+            onClick={onRunTests}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: isVeryCompact ? '4px 8px' : '5px 10px',
+              border: '1px solid var(--muted)',
+              borderRadius: '6px',
+              background: 'transparent',
+              color: 'var(--muted)',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              flexShrink: 0
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.borderColor = '#8b5cf6'
+              e.currentTarget.style.color = '#8b5cf6'
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.borderColor = 'var(--muted)'
+              e.currentTarget.style.color = 'var(--muted)'
+            }}
+            title="Run Tests (Ctrl+Shift+T)"
+          >
+            <FlaskConical size={14} />
           </button>
         )}
         {/* Show for .pdflow workflow files — play/continue + stop */}

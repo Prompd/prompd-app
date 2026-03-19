@@ -23,7 +23,8 @@ import {
   Download,
   RefreshCw,
   Sparkles,
-  Lightbulb
+  Lightbulb,
+  FlaskConical
 } from 'lucide-react'
 import { SidebarPanelHeader } from '../components/SidebarPanelHeader'
 import { useConfirmDialog } from '../components/ConfirmDialog'
@@ -1399,6 +1400,118 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
                 </>
               )}
 
+              {/* Create Test File - only for .prmd files (not .test.prmd) */}
+              {contextMenu.entry.name.endsWith('.prmd') && !contextMenu.entry.name.endsWith('.test.prmd') && (
+                <>
+                  <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+                  <div className="fe-item" onClick={async () => {
+                    try {
+                      const entry = entries.find(e => e.path === contextMenu.entry.path)
+                      const electronPath = (dirHandle as FileSystemDirectoryHandle & { _electronPath?: string })?._electronPath
+                      if (!electronPath) {
+                        setContextMenu(null)
+                        return
+                      }
+
+                      const sourceName = contextMenu.entry.name
+                      const testName = sourceName.replace(/\.prmd$/, '.test.prmd')
+                      const sourceDir = contextMenu.entry.path.includes('/')
+                        ? contextMenu.entry.path.split('/').slice(0, -1).join('/')
+                        : ''
+                      const testPath = sourceDir
+                        ? `${electronPath}/${sourceDir}/${testName}`.replace(/\\/g, '/')
+                        : `${electronPath}/${testName}`.replace(/\\/g, '/')
+
+                      // Check if test file already exists
+                      if (window.electronAPI?.isElectron) {
+                        const existing = await window.electronAPI.readFile(testPath)
+                        if (existing?.success) {
+                          // Already exists — just open it
+                          openPath(sourceDir ? `${sourceDir}/${testName}` : testName)
+                          setContextMenu(null)
+                          return
+                        }
+                      }
+
+                      // Read the source .prmd to extract name and parameters
+                      let promptName = sourceName.replace(/\.prmd$/, '')
+                      let paramsBlock = ''
+                      const fullSourcePath = sourceDir
+                        ? `${electronPath}/${sourceDir}/${sourceName}`.replace(/\\/g, '/')
+                        : `${electronPath}/${sourceName}`.replace(/\\/g, '/')
+
+                      if (window.electronAPI?.isElectron) {
+                        const sourceResult = await window.electronAPI.readFile(fullSourcePath)
+                        if (sourceResult?.success && sourceResult.content) {
+                          const content = sourceResult.content.replace(/\r\n/g, '\n')
+                          const fmMatch = content.match(/^---\n([\s\S]*?)\n---/)
+                          if (fmMatch) {
+                            const nameMatch = fmMatch[1].match(/^name:\s*["']?(.+?)["']?\s*$/m)
+                            if (nameMatch) promptName = nameMatch[1]
+                            // Extract parameter names for scaffold
+                            const paramMatches = [...fmMatch[1].matchAll(/- name:\s*["']?(.+?)["']?\s*$/gm)]
+                            if (paramMatches.length > 0) {
+                              const paramLines = paramMatches.map(m => `      ${m[1]}: ""`)
+                              paramsBlock = `    params:\n${paramLines.join('\n')}`
+                            }
+                          }
+                        }
+                      }
+
+                      if (!paramsBlock) {
+                        paramsBlock = '    params: {}'
+                      }
+
+                      // Generate scaffold content
+                      const scaffold = [
+                        '---',
+                        `name: ${promptName}.test`,
+                        `description: "Tests for ${promptName}"`,
+                        `target: ./${sourceName}`,
+                        'tests:',
+                        '  - name: "basic output"',
+                        paramsBlock,
+                        '    assert:',
+                        '      - evaluator: nlp',
+                        '        check: min_tokens',
+                        '        value: 1',
+                        '',
+                        '  # - name: "expected error"',
+                        '  #   params: {}',
+                        '  #   expect_error: true',
+                        '---',
+                        '',
+                        '# Judge Prompt',
+                        '',
+                        '# Uncomment and customize for LLM-as-judge evaluation:',
+                        '# Given the input and output below, evaluate whether the response',
+                        '# meets the expected quality criteria.',
+                        '#',
+                        '# **Input:** {{input}}',
+                        '# **Output:** {{output}}',
+                        '#',
+                        '# Respond with PASS or FAIL followed by a one-sentence reason.',
+                        '',
+                      ].join('\n')
+
+                      if (window.electronAPI?.isElectron) {
+                        const result = await window.electronAPI.writeFile(testPath, scaffold)
+                        if (result?.success) {
+                          await refresh()
+                          openPath(sourceDir ? `${sourceDir}/${testName}` : testName)
+                        }
+                      }
+                    } catch (err) {
+                      console.error('Failed to create test file:', err)
+                    }
+                    setContextMenu(null)
+                  }}>
+                    <span className="icon"><FlaskConical size={14} /></span>
+                    <span className="name">Create Test File</span>
+                  </div>
+                </>
+              )}
+
               {/* Install Dependencies - only for prompd.json files */}
               {onInstallDependencies && contextMenu.entry.name === 'prompd.json' && (
                 <>
@@ -1820,6 +1933,20 @@ function iconFor(name: string, isIgnored = false) {
   const ignoredColor = '#6b7280' // Grey color for ignored files
 
   // Prompd-specific files with custom SVG icons
+  if (lower.endsWith('.test.prmd')) {
+    return (
+      <img
+        src="./icons/prmd-test.svg"
+        alt="test.prmd"
+        style={{
+          width: 20,
+          height: 20,
+          opacity: isIgnored ? 0.5 : 1,
+          filter: isIgnored ? 'grayscale(100%)' : 'none'
+        }}
+      />
+    )
+  }
   if (lower.endsWith('.prmd')) {
     return (
       <img

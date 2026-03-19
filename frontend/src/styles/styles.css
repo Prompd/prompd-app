@@ -2093,6 +2093,589 @@ select.input {
   overflow: auto;
 }
 
+.bottom-panel-tab-badge.success {
+  background: #10b981;
+}
+
+/* ============================================================
+   Test Explorer (Sidebar) + Test Results (Bottom Panel)
+   ============================================================ */
+
+/* --- Test Explorer Action Bar --- */
+
+.te-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.te-action-btn:hover {
+  background: var(--hover);
+  color: var(--foreground);
+  border-color: var(--accent);
+}
+
+.te-action-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.te-action-btn:disabled:hover {
+  background: transparent;
+  color: var(--muted);
+  border-color: var(--border);
+}
+
+.te-action-stop {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.te-action-stop:hover {
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+  border-color: #ef4444;
+}
+
+/* --- Test Explorer Directory Labels --- */
+
+.te-dir-label {
+  padding: 6px 12px 2px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0.2px;
+  user-select: none;
+}
+
+/* --- File-level tree items --- */
+
+.te-file-group {
+  margin-bottom: 1px;
+}
+
+.te-file-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  border-radius: 4px;
+  margin: 0 4px;
+  transition: background 0.12s;
+  user-select: none;
+  border: 1px solid transparent;
+}
+
+.te-file-item:hover {
+  background: var(--hover);
+  border-color: var(--accent);
+}
+
+.te-file-item:active {
+  transform: scale(0.99);
+}
+
+.te-chevron {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--muted);
+  width: 14px;
+}
+
+.te-file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--foreground);
+  font-weight: 450;
+}
+
+.te-file-count {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.te-file-count-pending {
+  opacity: 0.5;
+}
+
+.te-run-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: all 0.12s;
+}
+
+.te-file-item:hover .te-run-btn {
+  display: flex;
+}
+
+.te-run-btn:hover {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+/* --- Test case items (children) --- */
+
+.te-cases {
+  padding: 2px 0 4px;
+}
+
+.te-case-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  user-select: none;
+  border-radius: 3px;
+  margin: 0 4px;
+  transition: background 0.1s;
+}
+
+.te-case-item:hover {
+  background: var(--hover);
+}
+
+.te-case-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.te-case-duration {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.te-case-error {
+  flex-shrink: 1;
+  font-size: 10px;
+  color: #ef4444;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+  opacity: 0.8;
+}
+
+/* --- Provider/Model Selector (Test Explorer) --- */
+
+.pms-container {
+  font-size: 12px;
+}
+
+.pms-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.pms-clear {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.pms-clear:hover {
+  text-decoration: underline;
+}
+
+.pms-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pms-provider-group {
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.pms-provider-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.12s;
+  user-select: none;
+}
+
+.pms-provider-row:hover {
+  background: var(--hover);
+}
+
+.pms-check {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.pms-provider-name {
+  flex: 1;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.pms-provider-count {
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pms-chevron {
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.pms-models {
+  padding: 0 0 2px 20px;
+}
+
+.pms-model-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.1s;
+  user-select: none;
+}
+
+.pms-model-row:hover {
+  background: var(--hover);
+}
+
+.pms-model-selected {
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.pms-model-disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.pms-model-disabled:hover {
+  background: transparent;
+}
+
+.pms-model-name {
+  flex: 1;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pms-model-price {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Test Results Panel (Bottom Panel Tab) --- */
+
+.test-results-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-mono, 'SF Mono', 'Fira Code', monospace);
+  font-size: 12px;
+}
+
+.test-results-toolbar {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.test-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+
+.test-toolbar-btn:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+
+.test-results-log {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+}
+
+.test-results-empty {
+  padding: 16px;
+  color: var(--text-secondary);
+  text-align: center;
+  font-family: inherit;
+}
+
+/* --- Log Entries (standalone: headings, info) --- */
+
+.test-log-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 1px 12px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.test-log-message {
+  flex: 1;
+  min-width: 0;
+}
+
+.test-status-heading {
+  padding-top: 8px;
+  padding-bottom: 4px;
+}
+
+.test-status-heading .test-log-message {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.test-status-info .test-log-message {
+  color: var(--text-secondary);
+}
+
+/* --- Suite Groups (collapsible by file) --- */
+
+.test-suite {
+  margin: 2px 0;
+}
+
+.test-suite-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.test-suite-header:hover {
+  background: var(--panel-2);
+}
+
+.test-suite-chevron {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.test-suite-name {
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+}
+
+.test-suite-counts {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 400;
+  padding-left: 8px;
+}
+
+.test-count-pass { color: #10b981; }
+.test-count-fail { color: #ef4444; }
+.test-count-error { color: #f59e0b; }
+.test-count-skip { color: var(--text-secondary); }
+
+.test-suite-body {
+  padding-left: 8px;
+}
+
+/* --- Test Cards (expandable) --- */
+
+.test-card {
+  margin: 1px 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  border-left: 3px solid transparent;
+}
+
+.test-card-pass { border-left-color: #10b981; }
+.test-card-fail { border-left-color: #ef4444; }
+.test-card-error { border-left-color: #f59e0b; }
+.test-card-skip { border-left-color: var(--text-secondary); }
+
+.test-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  line-height: 20px;
+  user-select: none;
+}
+
+.test-card-header:hover {
+  background: var(--panel-2);
+}
+
+.test-card-chevron {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.test-card-chevron-spacer {
+  display: inline-block;
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.test-icon-pass { color: #10b981; flex-shrink: 0; }
+.test-icon-fail { color: #ef4444; flex-shrink: 0; }
+.test-icon-error { color: #f59e0b; flex-shrink: 0; }
+.test-icon-skip { color: var(--text-secondary); flex-shrink: 0; }
+
+.test-card-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.test-card-duration {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding-left: 8px;
+}
+
+.test-card-details {
+  padding: 2px 0 4px 0;
+  border-top: 1px solid var(--border);
+  background: var(--panel-1);
+}
+
+.test-card-detail-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 8px 2px 38px;
+  line-height: 18px;
+}
+
+.test-card-detail-message {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Running indicator animation */
+
+.test-log-running-indicator {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: testPulse 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+  margin-top: 7px;
+}
+
+@keyframes testPulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+/* --- Summary Line --- */
+
+.test-summary-line {
+  padding: 8px 12px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.test-summary-pass {
+  color: #10b981;
+}
+
+.test-summary-fail {
+  color: #ef4444;
+}
+
+/* --- Spinner for refresh --- */
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Help Chat Popover */
 .help-chat-backdrop {
   position: fixed;
