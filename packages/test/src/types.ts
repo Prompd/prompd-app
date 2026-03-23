@@ -12,13 +12,20 @@ export type NlpCheck =
   | 'matches'
   | 'max_tokens'
   | 'min_tokens'
+  | 'max_words'
+  | 'min_words'
   | 'starts_with'
   | 'ends_with';
 
 // --- Test definition types (parsed from .test.prmd frontmatter) ---
 
+/** What the evaluator checks: the compiled prompt, the LLM response, or both */
+export type EvaluateTarget = 'prompt' | 'response' | 'both';
+
 export interface AssertionDef {
   evaluator: EvaluatorType;
+  /** What to evaluate: 'prompt' (compiled input), 'response' (LLM output), or 'both'. Defaults to 'response'. */
+  evaluate?: EvaluateTarget;
   // NLP fields
   check?: NlpCheck;
   value?: string | string[] | number;

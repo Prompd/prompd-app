@@ -2,6 +2,19 @@ import dotenv from 'dotenv'
 // Load environment variables FIRST
 dotenv.config()
 
+// Node 24+ c-ares DNS resolver can't resolve SRV records through
+// ISP DNS-over-HTTPS proxies (e.g., Cox doh). Use public DNS as fallback.
+import dns from 'dns'
+try {
+  const resolver = new dns.Resolver()
+  resolver.setServers(['8.8.8.8', '1.1.1.1'])
+  resolver.resolveSrv('_mongodb._tcp.test.mongodb.net', () => {})
+  // If the default resolver fails SRV lookups, this ensures MongoDB SRV works
+  dns.setServers(['8.8.8.8', '1.1.1.1', ...dns.getServers()])
+} catch {
+  // Ignore — default DNS is fine
+}
+
 import express from 'express'
 import { createServer } from 'http'
 import { Server } from 'socket.io'

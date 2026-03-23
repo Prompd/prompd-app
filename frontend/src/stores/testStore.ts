@@ -93,6 +93,7 @@ interface TestStoreState {
   handleProgressEvent: (data: { runId: string; event: ProgressEventData }) => void
   toggleExpanded: (filePath: string) => void
   clearLog: () => void
+  clearDiscovered: () => void
 }
 
 interface ProgressEventData {
@@ -395,6 +396,13 @@ export const useTestStore = create<TestStoreState>()(
       set((s) => {
         s.log = []
         s.summary = null
+      })
+    },
+
+    clearDiscovered: () => {
+      set((s) => {
+        s.discoveredSuites = []
+        s.expandedFiles = []
       })
     },
   }))

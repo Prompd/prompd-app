@@ -51,6 +51,7 @@ export function TestExplorerPanel() {
   const isRunning = useTestStore(state => state.isRunning)
   const expandedFiles = useTestStore(state => state.expandedFiles)
   const discover = useTestStore(state => state.discover)
+  const clearDiscovered = useTestStore(state => state.clearDiscovered)
   const runTests = useTestStore(state => state.runTests)
   const runAll = useTestStore(state => state.runAll)
   const stopTests = useTestStore(state => state.stopTests)
@@ -58,12 +59,14 @@ export function TestExplorerPanel() {
 
   const workspacePath = useEditorStore(state => state.explorerDirPath)
 
-  // Auto-discover on mount and workspace change
+  // Auto-discover on mount and workspace change, clear on workspace close
   useEffect(() => {
     if (workspacePath) {
       discover(workspacePath)
+    } else {
+      clearDiscovered()
     }
-  }, [workspacePath, discover])
+  }, [workspacePath, discover, clearDiscovered])
 
   const groups = useMemo(
     () => groupByDirectory(discoveredSuites, workspacePath || ''),

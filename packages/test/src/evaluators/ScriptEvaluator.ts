@@ -11,7 +11,7 @@ import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import type { Evaluator, EvaluatorContext } from './types';
-import type { AssertionDef, AssertionResult } from '../types';
+import type { AssertionDef, AssertionResult, EvaluateTarget } from '../types';
 
 const SCRIPT_TIMEOUT_MS = 30_000;
 
@@ -60,7 +60,7 @@ export class ScriptEvaluator implements Evaluator {
     }
 
     try {
-      const result = await this.runScript(resolvedPath, context);
+      const result = await this.runScript(resolvedPath, context, assertion);
       return {
         evaluator: 'script',
         status: result.exitCode === 0 ? 'pass' : 'fail',
@@ -79,7 +79,8 @@ export class ScriptEvaluator implements Evaluator {
 
   private runScript(
     scriptPath: string,
-    context: EvaluatorContext
+    context: EvaluatorContext,
+    assertion: AssertionDef
   ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
       const { command, args } = this.getRunner(scriptPath);
@@ -113,8 +114,10 @@ export class ScriptEvaluator implements Evaluator {
         resolve({ exitCode: code, stdout, stderr });
       });
 
-      // Send context as JSON on stdin
+      // Send context as JSON on stdin, include target so script knows what to evaluate
+      const target: EvaluateTarget = assertion.evaluate || 'response';
       const payload = JSON.stringify({
+        target,
         prompt: context.prompt,
         response: context.response,
         params: context.params,

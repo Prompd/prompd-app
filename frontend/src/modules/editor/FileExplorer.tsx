@@ -1433,8 +1433,9 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
                         }
                       }
 
-                      // Read the source .prmd to extract name and parameters
+                      // Read the source .prmd to extract id, name, and parameters
                       let promptName = sourceName.replace(/\.prmd$/, '')
+                      let promptId = sourceName.replace(/\.prmd$/, '')
                       let paramsBlock = ''
                       const fullSourcePath = sourceDir
                         ? `${electronPath}/${sourceDir}/${sourceName}`.replace(/\\/g, '/')
@@ -1446,6 +1447,8 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
                           const content = sourceResult.content.replace(/\r\n/g, '\n')
                           const fmMatch = content.match(/^---\n([\s\S]*?)\n---/)
                           if (fmMatch) {
+                            const idMatch = fmMatch[1].match(/^id:\s*["']?(.+?)["']?\s*$/m)
+                            if (idMatch) promptId = idMatch[1]
                             const nameMatch = fmMatch[1].match(/^name:\s*["']?(.+?)["']?\s*$/m)
                             if (nameMatch) promptName = nameMatch[1]
                             // Extract parameter names for scaffold
@@ -1465,6 +1468,7 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
                       // Generate scaffold content
                       const scaffold = [
                         '---',
+                        `id: ${promptId}-test`,
                         `name: ${promptName}.test`,
                         `description: "Tests for ${promptName}"`,
                         `target: ./${sourceName}`,
@@ -1473,22 +1477,40 @@ export default function FileExplorer({ currentFileName, onOpenFile, onCreateNewP
                         paramsBlock,
                         '    assert:',
                         '      - evaluator: nlp',
+                        '        evaluate: response          # response | prompt | both - required for nlp',
                         '        check: min_tokens',
                         '        value: 1',
+                        '  #     - evaluator: nlp',
+                        '  #       evaluate: prompt',
+                        '  #       check: contains',
+                        '  #       value: "expected text"',
+                        '  #     - evaluator: script',
+                        '  #       script: "./test/eval-script.js"',
+                        '  #       evaluate: both            # defults for prmd',
+                        '  #     - evaluator: prmd',
+                        '  #       evaluate: both            # defults for prmd',
+                        '  #       prompt: "@prompd/eval-coherence@^1.0.0"',
                         '',
                         '  # - name: "expected error"',
                         '  #   params: {}',
                         '  #   expect_error: true',
                         '---',
                         '',
-                        '# Judge Prompt',
+                        '# Evaluator',
                         '',
-                        '# Uncomment and customize for LLM-as-judge evaluation:',
-                        '# Given the input and output below, evaluate whether the response',
+                        '# Uncomment and customize for LLM-based evaluation:',
+                        '# Given the prompt and response below, evaluate whether the output',
                         '# meets the expected quality criteria.',
                         '#',
-                        '# **Input:** {{input}}',
-                        '# **Output:** {{output}}',
+                        '# ## Prompt',
+                        '# ```prompt',
+                        '# {{ prompt }}',
+                        '# ```',
+                        '#',
+                        '# ## Response',
+                        '# ```response',
+                        '# {{ response }}',
+                        '# ```',
                         '#',
                         '# Respond with PASS or FAIL followed by a one-sentence reason.',
                         '',
