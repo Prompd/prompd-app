@@ -4216,6 +4216,7 @@ version: 1.0.0
           if (!tab) return true // No tab open, allow switching
           // .prmd, .pdflow, and prompd.json files support design/code view toggle
           const name = tab.name.toLowerCase()
+          if (name.endsWith('.test.prmd')) return false // Design view strips HTML comments in .test.prmd
           return name.endsWith('.prmd') || name.endsWith('.pdflow') || name === 'prompd.json' || name.endsWith('/prompd.json') || name.endsWith('\\prompd.json')
         })()}
         onExecutePrompd={(() => {
