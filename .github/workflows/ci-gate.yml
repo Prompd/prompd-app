@@ -1,0 +1,21 @@
+name: CI Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ci-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      
+      - name: Install dependencies
+        run: npm install @prompd/cli
+
+      - name: Run CI Gate
+        run: |
+          DIFF_CONTENT=$(git diff origin/main...HEAD)
+          npx prompd run @prompd/ci-gate --param diff="$DIFF_CONTENT" --param rules='["security","error-handling"]' --param severity_threshold="warning"
