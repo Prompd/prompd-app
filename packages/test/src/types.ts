@@ -126,6 +126,8 @@ export interface TestRunOptions {
   // Default provider/model for test execution (overridden by .prmd frontmatter)
   provider?: string;
   model?: string;
+  /** AbortSignal for cancelling a running test */
+  signal?: AbortSignal;
 }
 
 // --- Progress callback ---

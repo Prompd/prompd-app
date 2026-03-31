@@ -12,7 +12,8 @@ import type { TestSuite, TestCase, AssertionDef, EvaluatorType, NlpCheck } from 
 const VALID_EVALUATOR_TYPES: EvaluatorType[] = ['nlp', 'script', 'prmd'];
 const VALID_NLP_CHECKS: NlpCheck[] = [
   'contains', 'not_contains', 'matches',
-  'max_tokens', 'min_tokens', 'starts_with', 'ends_with'
+  'max_tokens', 'min_tokens', 'max_words', 'min_words',
+  'starts_with', 'ends_with'
 ];
 
 interface ParsedFrontmatter {
@@ -33,6 +34,7 @@ interface RawAssertionDef {
   evaluator?: string;
   check?: string;
   value?: unknown;
+  evaluate?: string;
   run?: string;
   prompt?: string;
   provider?: string;
@@ -186,6 +188,7 @@ export class TestParser {
       evaluator: 'nlp',
       check: raw.check as NlpCheck,
       value: raw.value as string | string[] | number,
+      evaluate: (raw.evaluate as AssertionDef['evaluate']) || undefined,
     };
   }
 
@@ -205,6 +208,7 @@ export class TestParser {
     return {
       evaluator: 'script',
       run: raw.run,
+      evaluate: (raw.evaluate as AssertionDef['evaluate']) || undefined,
     };
   }
 
@@ -220,6 +224,7 @@ export class TestParser {
       prompt: raw.prompt || undefined,
       provider: raw.provider || undefined,
       model: raw.model || undefined,
+      evaluate: (raw.evaluate as AssertionDef['evaluate']) || undefined,
     };
   }
 }

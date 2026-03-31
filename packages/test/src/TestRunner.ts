@@ -97,6 +97,8 @@ export class TestRunner implements TestHarness {
     const suiteResults: TestSuiteResult[] = [];
 
     for (const suite of suites) {
+      if (options.signal?.aborted) break;
+
       onProgress?.({ type: 'suite_start', suite: suite.name, testCount: suite.tests.length });
 
       const results = await this.runSuite(suite, options, onProgress);
@@ -139,6 +141,8 @@ export class TestRunner implements TestHarness {
     const allowedEvaluators = this.resolveAllowedEvaluators(options);
 
     for (const testCase of suite.tests) {
+      if (options.signal?.aborted) break;
+
       onProgress?.({ type: 'test_start', suite: suite.name, testName: testCase.name });
 
       const result = await this.runTestCase(suite, testCase, allowedEvaluators, options, onProgress);

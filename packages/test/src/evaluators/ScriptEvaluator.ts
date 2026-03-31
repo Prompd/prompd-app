@@ -61,10 +61,15 @@ export class ScriptEvaluator implements Evaluator {
 
     try {
       const result = await this.runScript(resolvedPath, context, assertion);
+      // Exit 0 = pass, exit 1 = assertion failure, anything else = execution error
+      const status = result.exitCode === 0 ? 'pass' : result.exitCode === 1 ? 'fail' : 'error';
+      const defaultReason = result.exitCode === 0 ? 'Script passed'
+        : result.exitCode === 1 ? 'Script failed'
+        : `Script exited with code ${result.exitCode}`;
       return {
         evaluator: 'script',
-        status: result.exitCode === 0 ? 'pass' : 'fail',
-        reason: result.stdout.trim() || (result.exitCode === 0 ? 'Script passed' : 'Script failed'),
+        status,
+        reason: result.stdout.trim() || result.stderr.trim() || defaultReason,
         duration: Date.now() - start,
       };
     } catch (err) {

@@ -142,7 +142,7 @@ class TestIpcRegistration extends BaseIpcRegistration {
         }
       }
 
-      const result = await runner.run(target, options, onProgress)
+      const result = await runner.run(target, { ...options, signal: abort.signal }, onProgress)
 
       this.activeRuns.delete(runId)
 
