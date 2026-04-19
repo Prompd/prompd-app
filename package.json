@@ -1,14 +1,15 @@
 {
   "name": "prompd-app",
-  "version": "0.5.0-beta.1",
+  "version": "0.5.0-beta.10",
   "private": true,
   "license": "Elastic-2.0",
   "scripts": {
     "dev": "cd frontend && npm run dev",
     "dev:backend": "cd backend && npm run dev",
-    "build": "cd packages/scheduler && npm run build && cd ../react && npm run build && cd ../../frontend && npm run build",
+    "build": "cd packages/scheduler && npm run build && cd ../react && npm run build && cd ../test && npm run build && cd ../../frontend && npm run build",
     "build:scheduler": "cd packages/scheduler && npm run build",
     "build:react": "cd packages/react && npm run build",
+    "build:test": "cd packages/test && npm run build",
     "electron:dev": "cd frontend && npm run electron:dev",
     "electron:build:win": "cd frontend && npm run electron:build:win"
   }

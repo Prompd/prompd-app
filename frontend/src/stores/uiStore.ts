@@ -160,7 +160,7 @@ interface UIState {
 
   // Bottom panel (unified tab interface)
   showBottomPanel: boolean
-  activeBottomTab: 'errors' | 'prompds' | 'workflows' | 'packages' | 'output'
+  activeBottomTab: 'errors' | 'prompds' | 'workflows' | 'packages' | 'output' | 'tests'
   bottomPanelHeight: number
   bottomPanelPinned: boolean
   bottomPanelMinimized: boolean
@@ -258,7 +258,7 @@ interface UIActions {
 
   // Bottom panel (unified)
   setShowBottomPanel: (show: boolean) => void
-  setActiveBottomTab: (tab: 'errors' | 'prompds' | 'workflows' | 'packages' | 'output') => void
+  setActiveBottomTab: (tab: 'errors' | 'prompds' | 'workflows' | 'packages' | 'output' | 'tests') => void
   setBottomPanelHeight: (height: number) => void
   setBottomPanelPinned: (pinned: boolean) => void
   setBottomPanelMinimized: (minimized: boolean) => void

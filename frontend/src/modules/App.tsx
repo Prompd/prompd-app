@@ -19,6 +19,8 @@ import { ExecutionHistoryPanel } from './components/ExecutionHistoryPanel'
 import { ResourcePanel } from './components/ResourcePanel'
 import InstalledResourcesPanel from './editor/InstalledResourcesPanel'
 import PackageExplorerPanel from './editor/PackageExplorerPanel'
+import { TestExplorerPanel } from './components/testing/TestExplorerPanel'
+import { useTestStore } from '../stores/testStore'
 import type { PackageManifest } from './services/packageService'
 import { LocalStorageModal } from './components/LocalStorageModal'
 import { PublishModal } from './components/PublishModal'
@@ -522,6 +524,15 @@ export default function App() {
       cleanupRegistrySync()
       console.log('Registry sync cleaned up')
     }
+  }, [])
+
+  // Listen for test progress events from IPC
+  useEffect(() => {
+    if (!window.electronAPI?.test?.onProgress) return
+    const cleanup = window.electronAPI.test.onProgress((data) => {
+      useTestStore.getState().handleProgressEvent(data)
+    })
+    return cleanup
   }, [])
 
   // Analytics opt-in sync moved to uiStore onRehydrateStorage (runs after localStorage hydration)
@@ -4205,9 +4216,15 @@ version: 1.0.0
           if (!tab) return true // No tab open, allow switching
           // .prmd, .pdflow, and prompd.json files support design/code view toggle
           const name = tab.name.toLowerCase()
+          if (name.endsWith('.test.prmd')) return false // Design view strips HTML comments in .test.prmd
           return name.endsWith('.prmd') || name.endsWith('.pdflow') || name === 'prompd.json' || name.endsWith('/prompd.json') || name.endsWith('\\prompd.json')
         })()}
-        onExecutePrompd={getActiveTab()?.type === 'brainstorm' ? undefined : handleExecutePrompd}
+        onExecutePrompd={(() => {
+          const tab = getActiveTab()
+          if (!tab || tab.type === 'brainstorm') return undefined
+          if (tab.name.toLowerCase().endsWith('.test.prmd')) return undefined
+          return handleExecutePrompd
+        })()}
         onExecuteWorkflow={() => {
           // Dispatch event for WorkflowCanvas to handle
           window.dispatchEvent(new CustomEvent('execute-workflow'))
@@ -4241,6 +4258,16 @@ version: 1.0.0
             }
           }
         }}
+        onRunTests={(() => {
+          const tab = getActiveTab()
+          if (!tab) return undefined
+          const name = tab.name.toLowerCase()
+          if (!name.endsWith('.test.prmd')) return undefined
+          return () => {
+            const filePath = tab.filePath || tab.name
+            useTestStore.getState().runTests(filePath)
+          }
+        })()}
       />
 
       <ActivityBar
@@ -4550,6 +4577,18 @@ version: 1.0.0
               openModal('publish-resource')
             }}
           />
+        </div>
+        <div style={{
+          visibility: activeSide === 'tests' ? 'visible' : 'hidden',
+          position: activeSide === 'tests' ? 'relative' : 'absolute',
+          height: '100%',
+          width: '100%',
+          top: 0,
+          left: 0,
+          pointerEvents: activeSide === 'tests' ? 'auto' : 'none',
+          overflow: 'hidden'
+        }}>
+          <TestExplorerPanel />
         </div>
         <div className="sidebar-resizer" onMouseDown={beginResize} />
       </div>

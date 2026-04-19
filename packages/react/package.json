@@ -1,6 +1,6 @@
 {
   "name": "@prompd/react",
-  "version": "0.5.0-beta.1",
+  "version": "0.5.0-beta.10",
   "description": "React component library for building Prompd-powered AI interfaces with intelligent intent classification",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

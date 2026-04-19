@@ -31,6 +31,7 @@ const { TemplateIpcRegistration } = require('./ipc/TemplateIpcRegistration')
 const { ResourceIpcRegistration } = require('./ipc/ResourceIpcRegistration')
 const { SkillIpcRegistration } = require('./ipc/SkillIpcRegistration')
 const { CacheIpcRegistration } = require('./ipc/CacheIpcRegistration')
+const { TestIpcRegistration } = require('./ipc/TestIpcRegistration')
 const mcpService = require('./services/mcpService')
 const { mcpServerService } = require('./services/mcpServerService')
 const ipcModules = [
@@ -40,6 +41,7 @@ const ipcModules = [
   new ResourceIpcRegistration(),
   new SkillIpcRegistration(),
   new CacheIpcRegistration(),
+  new TestIpcRegistration(),
 ]
 
 // Tray and trigger services for background workflow execution

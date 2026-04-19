@@ -1,5 +1,7 @@
-import { AlertCircle, CheckCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle, FlaskConical } from 'lucide-react'
 import { APP_VERSION } from '../../constants/app'
+import { useTestStore } from '../../stores/testStore'
+import { useUIStore } from '../../stores/uiStore'
 
 type Props = {
   fileName?: string
@@ -13,6 +15,10 @@ type Props = {
 }
 
 export default function StatusBar({ fileName, dirty, line, column, issuesCount, language, onIssuesClick }: Props) {
+  const testSummary = useTestStore(state => state.summary)
+  const isTestRunning = useTestStore(state => state.isRunning)
+  const setActiveBottomTab = useUIStore(state => state.setActiveBottomTab)
+  const setShowBottomPanel = useUIStore(state => state.setShowBottomPanel)
   const handleIssuesClick = () => {
     if (issuesCount > 0 && onIssuesClick) {
       onIssuesClick()
@@ -52,6 +58,38 @@ export default function StatusBar({ fileName, dirty, line, column, issuesCount, 
           </>
         )}
       </button>
+      {(testSummary || isTestRunning) && (
+        <button
+          className="item"
+          onClick={() => {
+            setShowBottomPanel(true)
+            setActiveBottomTab('tests')
+          }}
+          title="Click to view test results"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            color: isTestRunning
+              ? 'var(--muted)'
+              : testSummary && testSummary.failed === 0 && testSummary.errors === 0
+                ? '#10b981'
+                : '#ef4444',
+            cursor: 'pointer',
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            font: 'inherit'
+          }}
+        >
+          <FlaskConical size={12} />
+          {isTestRunning
+            ? 'Running...'
+            : testSummary
+              ? `${testSummary.passed}/${testSummary.total} passed`
+              : ''}
+        </button>
+      )}
       {language && <div className="item">{language.charAt(0).toUpperCase() + language.slice(1)}</div>}
       <div style={{ flex: 1 }} />
       <div

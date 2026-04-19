@@ -507,6 +507,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('skill:list', workspacePath),
   },
 
+  // Test runner - discover, run, and stream .test.prmd evaluation results
+  test: {
+    discover: (directory) =>
+      ipcRenderer.invoke('test:discover', { directory }),
+    run: (target, options) =>
+      ipcRenderer.invoke('test:run', { target, options }),
+    runAll: (directory, options) =>
+      ipcRenderer.invoke('test:runAll', { directory, options }),
+    stop: (runId) =>
+      ipcRenderer.invoke('test:stop', { runId }),
+    onProgress: (callback) => {
+      const handler = (_, data) => callback(data)
+      ipcRenderer.on('test:progress', handler)
+      return () => ipcRenderer.removeListener('test:progress', handler)
+    },
+  },
+
   // Trigger service - background workflow execution management
   // Handles scheduled (cron), webhook, and file-watch triggers
   trigger: {

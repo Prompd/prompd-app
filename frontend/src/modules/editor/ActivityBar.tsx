@@ -1,7 +1,7 @@
-import { Files, Package, GitBranch, History, FolderOpen, CircleHelp, Library } from 'lucide-react'
+import { Files, Package, GitBranch, History, FolderOpen, CircleHelp, Library, FlaskConical } from 'lucide-react'
 import { PrompdIcon } from '../components/PrompdIcon'
 
-type SideKey = 'explorer' | 'packages' | 'ai' | 'git' | 'history' | 'resources' | 'library'
+type SideKey = 'explorer' | 'packages' | 'ai' | 'git' | 'history' | 'resources' | 'library' | 'tests'
 
 type Props = {
   showSidebar: boolean
@@ -104,6 +104,16 @@ export default function ActivityBar({ showSidebar, active, onSelect, onToggleSid
           <Library
             size={iconSize}
             color={active === 'library' && showSidebar ? iconColor : inactiveIconColor}
+          />
+        </button>
+        <button
+          className={`ab-item ${active === 'tests' && showSidebar ? 'active' : ''}`}
+          title="Test Explorer"
+          onClick={() => handleClick('tests')}
+        >
+          <FlaskConical
+            size={iconSize}
+            color={active === 'tests' && showSidebar ? iconColor : inactiveIconColor}
           />
         </button>
 

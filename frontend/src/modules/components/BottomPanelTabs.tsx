@@ -5,12 +5,14 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { X, AlertCircle, FileText, Zap, Package, Pin, PinOff, ChevronUp, ChevronDown } from 'lucide-react'
+import { X, AlertCircle, FileText, Zap, Package, Pin, PinOff, ChevronUp, ChevronDown, FlaskConical } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
+import { useTestStore } from '../../stores/testStore'
 import BuildOutputPanel from './BuildOutputPanel'
 import { PackageBuildHistory } from './PackageBuildHistory'
 import { WorkflowExecutionPanel } from './workflow/WorkflowExecutionPanel'
 import { PrompdSessionHistory, type PrompdExecutionRecord } from './PrompdSessionHistory'
+import { TestResultsPanel } from './testing/TestResultsPanel'
 import type { WorkflowResult } from '@prompd/cli'
 import type { CheckpointEvent, ExecutionTrace } from '@prompd/cli'
 
@@ -214,6 +216,14 @@ export function BottomPanelTabs({
             <Package size={14} />
             <span>Packages</span>
           </button>
+
+          <TestsTabButton
+            active={activeBottomTab === 'tests'}
+            onClick={() => {
+              setActiveBottomTab('tests')
+              if (bottomPanelMinimized) setBottomPanelMinimized(false)
+            }}
+          />
         </div>
 
         <div className="bottom-panel-actions">
@@ -277,9 +287,42 @@ export function BottomPanelTabs({
                 <PackageBuildHistory />
               </div>
             )}
+
+            {activeBottomTab === 'tests' && (
+              <div className="bottom-panel-tab-content">
+                <TestResultsPanel />
+              </div>
+            )}
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Tests tab button with pass/fail badge from testStore
+ */
+function TestsTabButton({ active, onClick }: { active: boolean; onClick: () => void }) {
+  const summary = useTestStore(state => state.summary)
+  const isRunning = useTestStore(state => state.isRunning)
+
+  return (
+    <button
+      className={`bottom-panel-tab ${active ? 'active' : ''}`}
+      onClick={onClick}
+    >
+      <FlaskConical size={14} />
+      <span>Tests</span>
+      {isRunning && (
+        <span className="bottom-panel-tab-indicator" />
+      )}
+      {!isRunning && summary && summary.failed > 0 && (
+        <span className="bottom-panel-tab-badge">{summary.failed}</span>
+      )}
+      {!isRunning && summary && summary.failed === 0 && summary.passed > 0 && (
+        <span className="bottom-panel-tab-badge success">{summary.passed}</span>
+      )}
+    </button>
   )
 }
 

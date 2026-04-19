@@ -55,7 +55,10 @@ export function setModelFilePath(modelUri: string, filePath: string | null) {
  * Falls back to the singleton currentFilePath if no mapping exists.
  */
 export function getModelFilePath(modelUri: string): string | null {
-  return modelFilePathMap.get(modelUri) ?? currentFilePath
+  // Use per-model mapping only — do NOT fall back to currentFilePath
+  // Falling back causes cross-tab contamination where validation for one model
+  // uses the file path of the last-activated tab (off-by-one / stale state)
+  return modelFilePathMap.get(modelUri) ?? null
 }
 
 /**
@@ -1405,12 +1408,17 @@ export async function validateModel(
         }
 
         // Check if id matches the filename (without extension)
-        // Derive filename from model-specific file path map, falling back to singleton
+        // Skip for .test.prmd files — they use a different frontmatter schema
         const modelFilePath = getModelFilePath(model.uri.toString())
         if (modelFilePath) {
           const fileName = modelFilePath.replace(/\\/g, '/').split('/').pop() || ''
+          if (fileName.endsWith('.test.prmd')) {
+            // .test.prmd files are test definitions, not prompts — skip id validation
+          } else {
           const fileBaseName = fileName.replace(/\.prmd$/i, '')
-          if (fileBaseName && id !== fileBaseName) {
+          // Normalize dots and hyphens for comparison (hello-world == hello.world)
+          const normalizeId = (s: string) => s.toLowerCase().replace(/[.\-]/g, '')
+          if (fileBaseName && normalizeId(id) !== normalizeId(fileBaseName)) {
             markers.push({
               severity: monaco.MarkerSeverity.Warning,
               startLineNumber: lineNumber,
@@ -1420,6 +1428,7 @@ export async function validateModel(
               message: `ID '${id}' does not match filename '${fileBaseName}'.`,
               code: 'id-filename-mismatch'
             })
+          }
           }
         }
       }
@@ -1611,6 +1620,17 @@ export async function validateModel(
       definedParams.add('previous_step')    // Alias for previous_output
       definedParams.add('input')            // Alias for previous_output in code/transform nodes
 
+      // Test evaluator variables (injected by @prompd/test when running .test.prmd evaluator prompts)
+      // Check both the model file path mapping AND the model URI (which contains the filename)
+      const testFilePath = getModelFilePath(model.uri.toString())
+      const modelUriStr = model.uri.toString()
+      const isTestFile = testFilePath?.endsWith('.test.prmd') || modelUriStr.endsWith('.test.prmd')
+      if (isTestFile) {
+        definedParams.add('prompt')           // The compiled prompt that was sent to the LLM
+        definedParams.add('response')         // The LLM's response
+        definedParams.add('params')           // Test case parameters ({{ params.key }})
+      }
+
       // Add inherited parameters so they're recognized as defined
       for (const inheritedParam of resolvedInheritedParams) {
         definedParams.add(inheritedParam.name)
@@ -1745,8 +1765,11 @@ export async function validateModel(
   }
 
   // Cross-reference analysis for parameter usage (unused/undefined parameters)
-  // Reuses the inherited parameters already resolved above for the single-brace validator
-  if (isPrompdFile) {
+  // Skip for .test.prmd files — they use a different frontmatter schema (tests: not params in body)
+  const uriString = model.uri.toString()
+  const skipCrossRef = uriString.endsWith('.test.prmd') || getModelFilePath(uriString)?.endsWith('.test.prmd') || content.includes('\ntests:') || content.includes('\ntarget:')
+  if (skipCrossRef) console.log('[intellisense] Skipping cross-ref and compiler diagnostics for .test.prmd')
+  if (isPrompdFile && !skipCrossRef) {
     try {
       // Reuse inherited params resolved earlier in the single-brace validation block
       const inheritedDefs = resolvedInheritedParams.length > 0 ? resolvedInheritedParams : undefined
@@ -1758,7 +1781,8 @@ export async function validateModel(
   }
 
   // Fetch compiler diagnostics (inheritance errors, dependency resolution, etc.)
-  if (isPrompdFile) {
+  // Skip for .test.prmd files — they have a different schema, the CLI compiler doesn't understand them
+  if (isPrompdFile && !skipCrossRef) {
     try {
       const compilerDiagnostics = await fetchCompilerDiagnostics(content)
 
