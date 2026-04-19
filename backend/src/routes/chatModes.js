@@ -95,9 +95,14 @@ router.get('/chat-modes', async (req, res) => {
  * GET /api/chat-modes/:modeId
  * Returns a specific chat mode configuration
  */
+const VALID_MODE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/
+
 router.get('/chat-modes/:modeId', async (req, res) => {
   try {
     const { modeId } = req.params
+    if (!VALID_MODE_ID.test(modeId)) {
+      return res.status(400).json({ error: 'Invalid mode id' })
+    }
     const filePath = path.join(PROMPTS_DIR, `${modeId}.json`)
 
     const mode = await loadModeConfig(filePath)
