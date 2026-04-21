@@ -47,6 +47,9 @@
     "nodemon": "^3.0.2",
     "supertest": "^6.3.3"
   },
+  "overrides": {
+    "convict": "^6.2.5"
+  },
   "engines": {
     "node": ">=18.0.0"
   }

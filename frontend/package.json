@@ -233,5 +233,8 @@
     "vite": "^5.0.0",
     "vitest": "^3.0.0",
     "wait-on": "^9.0.1"
+  },
+  "overrides": {
+    "@clerk/shared": "^3.47.4"
   }
 }
