@@ -17,7 +17,7 @@
     "@prompd/cli": "0.5.0-beta.10",
     "adm-zip": "^0.5.10",
     "archiver": "^6.0.1",
-    "axios": "^1.6.2",
+    "axios": "1.15.1",
     "bcryptjs": "^2.4.3",
     "cheerio": "^1.0.0-rc.12",
     "cohere-ai": "^7.20.0",
@@ -48,7 +48,26 @@
     "supertest": "^6.3.3"
   },
   "overrides": {
-    "convict": "^6.2.5"
+    "convict": "^6.2.5",
+    "yaml": "^2.8.3",
+    "lodash": "^4.18.1",
+    "picomatch": "^2.3.2",
+    "brace-expansion": "^2.0.3",
+    "follow-redirects": "^1.16.0",
+    "hono": "^4.12.14",
+    "@hono/node-server": "^1.19.13",
+    "@xmldom/xmldom": "^0.8.12",
+    "minimatch": "^9.0.7",
+    "tar": "^7.5.13",
+    "undici": "^7.24.0",
+    "socket.io-parser": "^4.2.6",
+    "fast-xml-parser": "^5.7.1",
+    "express": {
+      "path-to-regexp": "^0.1.13"
+    },
+    "router": {
+      "path-to-regexp": "^8.4.0"
+    }
   },
   "engines": {
     "node": ">=18.0.0"
