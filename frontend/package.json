@@ -194,7 +194,7 @@
     "immer": "^10.2.0",
     "ioredis": "^5.9.3",
     "jszip": "^3.10.1",
-    "lodash-es": "^4.17.21",
+    "lodash-es": "^4.18.1",
     "lowlight": "^3.3.0",
     "lucide-react": "^0.543.0",
     "monaco-editor": "^0.55.1",
@@ -211,7 +211,7 @@
     "remark-gfm": "^4.0.1",
     "socket.io-client": "^4.8.1",
     "tiptap-markdown": "^0.8.10",
-    "yaml": "^2.5.0",
+    "yaml": "^2.8.3",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
@@ -235,6 +235,25 @@
     "wait-on": "^9.0.1"
   },
   "overrides": {
-    "@clerk/shared": "^3.47.4"
+    "@clerk/shared": "^3.47.4",
+    "yaml": "^2.8.3",
+    "lodash": "^4.18.1",
+    "lodash-es": "^4.18.1",
+    "picomatch": "^2.3.2",
+    "brace-expansion": "^2.0.3",
+    "follow-redirects": "^1.16.0",
+    "hono": "^4.12.14",
+    "@hono/node-server": "^1.19.13",
+    "@xmldom/xmldom": "^0.8.12",
+    "minimatch": "^9.0.7",
+    "axios": "1.15.1",
+    "socket.io-parser": "^4.2.6",
+    "dompurify": "^3.4.1",
+    "express": {
+      "path-to-regexp": "^0.1.13"
+    },
+    "router": {
+      "path-to-regexp": "^8.4.0"
+    }
   }
 }
