@@ -130,6 +130,7 @@ router.get('/available', clerkAuth, async (req, res) => {
             contextWindow: p.capabilities?.contextWindow,
             supportsVision: p.capabilities?.supportsVision,
             supportsTools: p.capabilities?.supportsTools,
+            supportsReasoning: p.capabilities?.supportsReasoning || false,
             supportsImageGeneration: p.capabilities?.supportsImageGeneration || false
           }))
         }

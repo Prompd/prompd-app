@@ -49,9 +49,13 @@ export class CompilationService {
         '/main.prmd': content
       })
 
-      // Compile using @prompd/cli library
-      // Pass registryUrl for package resolution
-      const result = await this.compiler.compile('/main.prmd', {
+      // Compile using @prompd/cli library.
+      // NOTE: compiler.compile() returns only the compiled string and throws on
+      // any error, so it cannot surface output and structured validation together
+      // (that left preview-public always returning no output and isValid:true).
+      // compileWithContext() returns the full CompilationContext - the pipeline
+      // accumulates errors per-stage instead of throwing - which we normalize below.
+      const context = await this.compiler.compileWithContext('/main.prmd', {
         outputFormat: this.mapFormatToCompiler(format),
         parameters: parameters,
         fileSystem: memFS,
@@ -59,6 +63,7 @@ export class CompilationService {
       })
 
       const compilationTime = Date.now() - startTime
+      const result = this.normalizeContext(context)
 
       // Cache the successful result
       if (result.success) {
@@ -96,6 +101,52 @@ export class CompilationService {
           warnings: []
         }
       }
+    }
+  }
+
+  /**
+   * Normalize a @prompd/cli CompilationContext into the structured result shape
+   * expected by callers and the cache ({ success, output, stages, dependencies,
+   * validation }). compileWithContext() does not throw on compilation errors, so
+   * compiled output and diagnostics are returned together.
+   */
+  normalizeContext(context) {
+    const compiledResult = context.compiledResult
+    const output = typeof compiledResult === 'string'
+      ? compiledResult
+      : (compiledResult ? compiledResult.toString('utf-8') : '')
+
+    const toDiagnostic = (d, severity) => ({
+      type: 'compilation',
+      message: typeof d === 'string' ? d : d.message,
+      severity,
+      ...(d && typeof d === 'object' && d.line != null ? { line: d.line, column: d.column } : {})
+    })
+
+    const errors = (typeof context.getErrors === 'function'
+      ? context.getErrors()
+      : (context.errors || [])
+    ).map(d => toDiagnostic(d, 'error'))
+
+    const warnings = (typeof context.getWarnings === 'function'
+      ? context.getWarnings()
+      : (context.warnings || [])
+    ).map(d => toDiagnostic(d, 'warning'))
+
+    const isValid = typeof context.hasErrors === 'function'
+      ? !context.hasErrors()
+      : errors.length === 0
+
+    const dependencies = context.dependencies
+      ? (Array.isArray(context.dependencies) ? context.dependencies : Object.keys(context.dependencies))
+      : []
+
+    return {
+      success: isValid,
+      output,
+      stages: context.stages || [],
+      dependencies,
+      validation: { isValid, errors, warnings }
     }
   }
 
@@ -359,7 +410,7 @@ export class CompilationService {
   /**
    * Execute compiled prompt with stored provider API keys
    */
-  async execute(prompt, providerName = 'openai', model = 'gpt-4o-mini', parameters = {}, userId = null, projectId = null, user = null, packageRef = null, files = null, sourceFilePath = null) {
+  async execute(prompt, providerName = 'openai', model = 'gpt-4o-mini', parameters = {}, userId = null, projectId = null, user = null, packageRef = null, files = null, sourceFilePath = null, skipCompile = false) {
     const startTime = Date.now()
 
     try {
@@ -602,6 +653,12 @@ export class CompilationService {
 
       // First, compile to markdown to get the compiled prompt
       let compiledPrompt = ''
+      if (skipCompile) {
+        // Pass-through: the caller already rendered the prompt (e.g. via
+        // /preview-public). Run it as-is — no re-compile, no inherits resolution.
+        compiledPrompt = prompt
+        console.log('[CompilationService] skipCompile — running the provided rendered prompt as-is')
+      } else {
       try {
         console.log('[CompilationService] Attempting compilation with @prompd/cli')
         console.log('[CompilationService] Input prompt length:', prompt.length)
@@ -691,6 +748,7 @@ export class CompilationService {
         console.error('[CompilationService] Compilation to markdown failed:', compileError.message, compileError.stack)
         // Don't silently fall back - propagate the error so users know their .prmd has issues
         throw new Error(`Compilation failed: ${compileError.message}`)
+      }
       }
 
       // Now execute against the LLM provider using appropriate SDK

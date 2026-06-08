@@ -2,6 +2,7 @@
  * Base class for provider-specific pricing fetchers
  * Each provider implements their own fetcher extending this class
  */
+import { modelsDevSource } from './ModelsDevSource.js'
 
 export class BasePricingFetcher {
   constructor(provider) {
@@ -91,32 +92,36 @@ export class BasePricingFetcher {
   }
 
   /**
-   * Get pricing - tries API first, falls back to defaults.
-   * Enriches all models with pattern-based capability inference.
+   * Get pricing - tries API first, falls back to defaults. Enriches all models
+   * with pattern-based capability inference, then overlays live pricing +
+   * capabilities from models.dev (seeds remain the fallback per model).
    */
   async getPricing() {
+    let data = null
+    let source = 'seed'
+
     if (this.supportsPricingApi()) {
       try {
         const apiPricing = await this.fetchPricing()
         this.validatePricingData(apiPricing)
-        this.enrichCapabilities(apiPricing)
+        data = apiPricing
+        source = 'api'
         console.log(`[${this.provider}] Fetched ${apiPricing.length} models from API`)
-        return {
-          source: 'api',
-          data: apiPricing
-        }
       } catch (error) {
         console.warn(`[${this.provider}] API fetch failed: ${error.message}. Using defaults.`)
       }
     }
 
-    const defaults = this.getDefaultPricing()
-    this.validatePricingData(defaults)
-    this.enrichCapabilities(defaults)
-    console.log(`[${this.provider}] Using ${defaults.length} models from defaults`)
-    return {
-      source: 'seed',
-      data: defaults
+    if (!data) {
+      data = this.getDefaultPricing()
+      this.validatePricingData(data)
+      console.log(`[${this.provider}] Using ${data.length} models from defaults`)
     }
+
+    this.enrichCapabilities(data)
+    // Overlay live values from models.dev (never throws; no-op if unavailable).
+    await modelsDevSource.overlay(this.provider, data)
+
+    return { source, data }
   }
 }

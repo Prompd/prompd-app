@@ -492,4 +492,23 @@ router.post('/execute', compilationRateLimit, validate(executeSchema), async (re
   }
 })
 
+/**
+ * POST /api/compilation/execute-prompt
+ * Pass-through single execution: runs an ALREADY-RENDERED prompt against the
+ * provider WITHOUT compiling it (no frontmatter/inherits resolution). The client
+ * compiles first (e.g. via /preview-public); this endpoint just calls the model.
+ */
+router.post('/execute-prompt', compilationRateLimit, validate(executeSchema), async (req, res, next) => {
+  try {
+    const { prompt, provider, model, parameters } = req.body
+    const result = await compilationService.execute(
+      prompt, provider, model, parameters || {},
+      req.user._id, null, req.user, null, null, null, true // skipCompile — pass-through
+    )
+    res.json({ success: true, data: result })
+  } catch (error) {
+    next(error)
+  }
+})
+
 export default router
