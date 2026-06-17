@@ -110,6 +110,11 @@ router.get('/available', clerkAuth, async (req, res) => {
       .sort({ sortOrder: 1, displayName: 1 })
       .lean()
 
+    // The user's own configured keys — so the client can show a provider's FULL
+    // catalog when the user brought their own key (the gateway forwards any model
+    // for an own-key user), vs the limited free server-key set otherwise.
+    const userProviders = req.user?.aiFeatures?.llmProviders
+
     // Get pricing for each provider
     const providersWithPricing = await Promise.all(
       providerConfigs.map(async (config) => {
@@ -119,6 +124,7 @@ router.get('/available', clerkAuth, async (req, res) => {
         return {
           providerId: providerId,
           displayName: config.displayName,
+          hasKey: getUserProviderConfig(userProviders, providerId)?.hasKey || false,
           keyPrefix: config.metadata?.keyPrefix,
           consoleUrl: config.metadata?.consoleUrl,
           isLocal: config.metadata?.isLocal || false,

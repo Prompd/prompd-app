@@ -25,8 +25,10 @@ const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
 const MAX_MESSAGES = 200
 const MAX_BODY_BYTES = 1 * 1024 * 1024 // 1MB request cap
 const MAX_OUTPUT_TOKENS = 8192
-// Models this gateway will forward. Server key + cost are ours, so cap to the
-// cheap small models for now. (BYO-key users still go through here too.)
+// Models the FREE server key is allowed to run — the server-side ENFORCEMENT of the
+// cost tier. Own-key users are UNRESTRICTED (their key, any model). The client picker
+// allowlist (prompd-web src/lib/models.ts ALLOWED_GATEWAY_MODELS) is only UX; this is
+// the real gate. Widen both together.
 const ALLOWED_MODELS = new Set(['gpt-4.1-mini', 'gpt-4o-mini'])
 
 /** Read a provider config from the user's aiFeatures.llmProviders (Map or object). */
@@ -66,15 +68,10 @@ function getOpenAIKey(user) {
 router.post('/', clerkAuth, async (req, res) => {
   const body = req.body || {}
 
-  // Light guards — it's the user's own key/quota, but stop runaway loops.
-  if (!ALLOWED_MODELS.has(body.model)) {
-    return res.status(400).json({
-      error: {
-        message: `model '${body.model}' is not available. Allowed: ${[...ALLOWED_MODELS].join(', ')}.`,
-        type: 'invalid_request_error',
-        code: 'model_not_allowed',
-      },
-    })
+  // Light guards — it's the user's own key/quota, but stop runaway loops. The model
+  // ALLOWLIST is enforced below for the server-key path only (own-key = any model).
+  if (typeof body.model !== 'string' || !body.model) {
+    return res.status(400).json({ error: { message: 'model is required', type: 'invalid_request_error' } })
   }
   if (!Array.isArray(body.messages) || body.messages.length === 0) {
     return res.status(400).json({ error: { message: 'messages[] is required', type: 'invalid_request_error' } })
@@ -105,6 +102,18 @@ router.post('/', clerkAuth, async (req, res) => {
     if (!serverKey) {
       return res.status(402).json({
         error: { message: 'No OpenAI API key configured for your account. Add one in provider settings.', type: 'no_api_key' },
+      })
+    }
+    // Free server-key path: only the allowlisted cheap models may run on OUR key.
+    if (!ALLOWED_MODELS.has(body.model)) {
+      return res.status(403).json({
+        error: {
+          message: `Model "${body.model}" isn't available on the free tier. Add your own OpenAI key in provider settings for full access, or choose one of: ${[...ALLOWED_MODELS].join(', ')}.`,
+          type: 'model_not_allowed',
+          code: 'MODEL_NOT_ALLOWED',
+          allowed_models: [...ALLOWED_MODELS],
+          can_add_api_key: true,
+        },
       })
     }
     const quota = await validateAiQuota(req.user, 'execute')
