@@ -17,6 +17,7 @@ import express from 'express'
 import crypto from 'node:crypto'
 import { Readable } from 'node:stream'
 import { clerkAuth } from '../middleware/clerkAuth.js'
+import { validateAiQuota, incrementAiUsage } from '../middleware/aiQuota.js'
 
 const router = express.Router()
 
@@ -24,6 +25,9 @@ const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
 const MAX_MESSAGES = 200
 const MAX_BODY_BYTES = 1 * 1024 * 1024 // 1MB request cap
 const MAX_OUTPUT_TOKENS = 8192
+// Models this gateway will forward. Server key + cost are ours, so cap to the
+// cheap small models for now. (BYO-key users still go through here too.)
+const ALLOWED_MODELS = new Set(['gpt-4.1-mini', 'gpt-4o-mini'])
 
 /** Read a provider config from the user's aiFeatures.llmProviders (Map or object). */
 function getUserProviderConfig(providers, providerId) {
@@ -63,6 +67,15 @@ router.post('/', clerkAuth, async (req, res) => {
   const body = req.body || {}
 
   // Light guards — it's the user's own key/quota, but stop runaway loops.
+  if (!ALLOWED_MODELS.has(body.model)) {
+    return res.status(400).json({
+      error: {
+        message: `model '${body.model}' is not available. Allowed: ${[...ALLOWED_MODELS].join(', ')}.`,
+        type: 'invalid_request_error',
+        code: 'model_not_allowed',
+      },
+    })
+  }
   if (!Array.isArray(body.messages) || body.messages.length === 0) {
     return res.status(400).json({ error: { message: 'messages[] is required', type: 'invalid_request_error' } })
   }
@@ -76,11 +89,46 @@ router.post('/', clerkAuth, async (req, res) => {
     body.max_tokens = Math.min(body.max_tokens, MAX_OUTPUT_TOKENS)
   }
 
-  const apiKey = getOpenAIKey(req.user)
+  // Key + quota resolution (the server-side guard).
+  //  - Bring-your-own key  -> UNLIMITED (the user pays OpenAI directly, nothing of
+  //    ours to meter), and quota is never touched.
+  //  - No own key          -> fall back to the SERVER key, but gated by the account's
+  //    execution quota (free tier) so server-key usage can't be run unbounded. This
+  //    is the real enforcement point: the browser guard is only a CTA, this 402 is
+  //    the boundary that actually blocks (validateAiQuota also frees enterprise/admin
+  //    and any own-key user). NOTE: one POST = one agent turn, so a multi-turn agent
+  //    run consumes several executions against the lifetime quota.
+  let apiKey = getOpenAIKey(req.user)
+  let meterQuota = false
   if (!apiKey) {
-    return res.status(402).json({
-      error: { message: 'No OpenAI API key configured for your account. Add one in provider settings.', type: 'no_api_key' },
-    })
+    const serverKey = process.env.OPENAI_API_KEY
+    if (!serverKey) {
+      return res.status(402).json({
+        error: { message: 'No OpenAI API key configured for your account. Add one in provider settings.', type: 'no_api_key' },
+      })
+    }
+    const quota = await validateAiQuota(req.user, 'execute')
+    if (!quota.allowed) {
+      return res.status(402).json({
+        error: {
+          message: `Free execution limit reached (${quota.reason}). Add your own OpenAI key in provider settings for unlimited use${quota.upgradeRequired ? `, or upgrade to ${quota.upgradeRequired}` : ''}.`,
+          type: 'quota_exceeded',
+          code: 'QUOTA_EXCEEDED',
+          upgrade_required: quota.upgradeRequired || null,
+          can_add_api_key: quota.canAddApiKey ?? true,
+        },
+      })
+    }
+    apiKey = serverKey
+    meterQuota = true
+  }
+
+  // Count one execution against quota only when the SERVER key was used and OpenAI
+  // accepted the request. Best-effort: a save failure must not break the response.
+  const meter = async () => {
+    if (!meterQuota) return
+    try { await incrementAiUsage(req.user, 'execute') }
+    catch (e) { console.error('[chatCompletions] usage increment failed:', e.message) }
   }
 
   const wantStream = body.stream === true
@@ -99,6 +147,7 @@ router.post('/', clerkAuth, async (req, res) => {
   // Non-streaming: forward status + JSON as-is.
   if (!wantStream) {
     const text = await upstream.text()
+    if (upstream.ok) await meter()
     res.status(upstream.status)
     res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
     return res.send(text)
@@ -111,6 +160,8 @@ router.post('/', clerkAuth, async (req, res) => {
     res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
     return res.send(text)
   }
+  // upstream accepted the request and is streaming — count one execution.
+  await meter()
   res.status(200)
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
   res.setHeader('Cache-Control', 'no-cache, no-transform')
