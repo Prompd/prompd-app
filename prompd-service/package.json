@@ -26,7 +26,13 @@
     "express-rate-limit": "^7.1.5",
     "pino": "^8.17.2",
     "pino-pretty": "^10.3.1",
-    "yaml": "^2.3.4"
+    "yaml": "^2.8.3"
+  },
+  "overrides": {
+    "qs": "^6.14.2",
+    "express": {
+      "path-to-regexp": "^0.1.13"
+    }
   },
   "engines": {
     "node": ">=18.0.0"

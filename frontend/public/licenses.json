@@ -13,22 +13,6 @@
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@clerk\\shared",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@clerk\\shared\\LICENSE"
   },
-  "@fast-csv/format@4.3.5": {
-    "licenses": "MIT",
-    "repository": "https://github.com/C2FO/fast-csv",
-    "publisher": "doug-martin",
-    "email": "doug@dougamartin.com",
-    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\@fast-csv\\format",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\@fast-csv\\format\\LICENSE"
-  },
-  "@fast-csv/parse@4.3.6": {
-    "licenses": "MIT",
-    "repository": "https://github.com/C2FO/fast-csv",
-    "publisher": "doug-martin",
-    "email": "doug@dougamartin.com",
-    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\@fast-csv\\parse",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\@fast-csv\\parse\\LICENSE"
-  },
   "@floating-ui/core@1.7.5": {
     "licenses": "MIT",
     "repository": "https://github.com/floating-ui/floating-ui",
@@ -58,15 +42,6 @@
     "url": "https://github.com/yusukebe",
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@hono\\node-server",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@hono\\node-server\\LICENSE"
-  },
-  "@hono/node-server@1.19.14": {
-    "licenses": "MIT",
-    "repository": "https://github.com/honojs/node-server",
-    "publisher": "Yusuke Wada",
-    "email": "yusuke@kamawada.com",
-    "url": "https://github.com/yusukebe",
-    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\@hono\\node-server",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\@hono\\node-server\\LICENSE"
   },
   "@img/colour@1.0.0": {
     "licenses": "MIT",
@@ -103,6 +78,14 @@
     "email": "admin@simonboudrias.com",
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\@inquirer\\figures",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\@inquirer\\figures\\LICENSE"
+  },
+  "@inquirer/figures@1.0.15": {
+    "licenses": "MIT",
+    "repository": "https://github.com/SBoudrias/Inquirer.js",
+    "publisher": "Simon Boudrias",
+    "email": "admin@simonboudrias.com",
+    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\@inquirer\\figures",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\@inquirer\\figures\\LICENSE"
   },
   "@ioredis/commands@1.5.1": {
     "licenses": "MIT",
@@ -977,14 +960,6 @@
     "email": "joshuathomaswise@gmail.com",
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\better-sqlite3",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\better-sqlite3\\LICENSE"
-  },
-  "big-integer@1.6.52": {
-    "licenses": "Unlicense",
-    "repository": "https://github.com/peterolson/BigInteger.js",
-    "publisher": "Peter Olson",
-    "email": "peter.e.c.olson+npm@gmail.com",
-    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\big-integer",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\big-integer\\LICENSE"
   },
   "binary-extensions@2.3.0": {
     "licenses": "MIT",
@@ -2463,16 +2438,7 @@
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\highlight.js",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\highlight.js\\LICENSE"
   },
-  "hono@4.12.14": {
-    "licenses": "MIT",
-    "repository": "https://github.com/honojs/hono",
-    "publisher": "Yusuke Wada",
-    "email": "yusuke@kamawada.com",
-    "url": "https://github.com/yusukebe",
-    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\hono",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\hono\\LICENSE"
-  },
-  "hono@4.12.7": {
+  "hono@4.12.6": {
     "licenses": "MIT",
     "repository": "https://github.com/honojs/hono",
     "publisher": "Yusuke Wada",
@@ -2480,6 +2446,15 @@
     "url": "https://github.com/yusukebe",
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\hono",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\hono\\LICENSE"
+  },
+  "hono@4.12.8": {
+    "licenses": "MIT",
+    "repository": "https://github.com/honojs/hono",
+    "publisher": "Yusuke Wada",
+    "email": "yusuke@kamawada.com",
+    "url": "https://github.com/yusukebe",
+    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\hono",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\hono\\LICENSE"
   },
   "hono@4.12.8": {
     "licenses": "MIT",
@@ -2780,14 +2755,6 @@
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\jose",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\jose\\LICENSE.md"
   },
-  "jose@6.2.2": {
-    "licenses": "MIT",
-    "repository": "https://github.com/panva/jose",
-    "publisher": "Filip Skokan",
-    "email": "panva.ip@gmail.com",
-    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\jose",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\jose\\LICENSE.md"
-  },
   "js-cookie@3.0.5": {
     "licenses": "MIT",
     "repository": "https://github.com/js-cookie/js-cookie",
@@ -2898,14 +2865,6 @@
     "url": "https://nfrasser.com",
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\linkifyjs",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\linkifyjs\\LICENSE"
-  },
-  "listenercount@1.0.1": {
-    "licenses": "ISC",
-    "repository": "https://github.com/jden/node-listenercount",
-    "publisher": "jden",
-    "email": "jason@denizac.org",
-    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\listenercount",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\listenercount\\LICENSE.md"
   },
   "lodash-es@4.17.23": {
     "licenses": "MIT",
@@ -4403,8 +4362,8 @@
   "qs@6.14.2": {
     "licenses": "BSD-3-Clause",
     "repository": "https://github.com/ljharb/qs",
-    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\qs",
-    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\qs\\LICENSE.md"
+    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\qs",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\qs\\LICENSE.md"
   },
   "qs@6.15.0": {
     "licenses": "BSD-3-Clause",
@@ -4702,6 +4661,21 @@
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\semver",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\semver\\LICENSE"
   },
+  "semver@7.7.4": {
+    "licenses": "ISC",
+    "repository": "https://github.com/npm/node-semver",
+    "publisher": "GitHub Inc.",
+    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\semver",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\scheduler\\node_modules\\semver\\LICENSE"
+  },
+  "send@0.19.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/pillarjs/send",
+    "publisher": "TJ Holowaychuk",
+    "email": "tj@vision-media.ca",
+    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\send",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\send\\LICENSE"
+  },
   "send@0.19.2": {
     "licenses": "MIT",
     "repository": "https://github.com/pillarjs/send",
@@ -4717,6 +4691,14 @@
     "email": "tj@vision-media.ca",
     "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\send",
     "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\send\\LICENSE"
+  },
+  "serve-static@1.16.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/expressjs/serve-static",
+    "publisher": "Douglas Christopher Wilson",
+    "email": "doug@somethingdoug.com",
+    "path": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\serve-static",
+    "licenseFile": "C:\\git\\github\\Prompd\\prompd-app\\frontend\\node_modules\\@prompd\\cli\\node_modules\\serve-static\\LICENSE"
   },
   "serve-static@1.16.3": {
     "licenses": "MIT",
