@@ -31,6 +31,7 @@ import fileRoutes from './routes/files.js'
 import registryRoutes from './routes/registry.js'
 import providerRoutes from './routes/providers.js'
 import llmProvidersRoutes from './routes/llmProviders.js'
+import chatCompletionsRoutes from './routes/chatCompletions.js'
 import aiRoutes from './routes/ai.js'
 import conversationalAiRoutes from './routes/conversational-ai.js'
 import chatRoutes from './routes/chat.js'
@@ -42,6 +43,8 @@ import startupRoutes from './routes/startup.js'
 import errorReportRoutes from './routes/errors.js'
 import webhookRoutes from './routes/webhooks.js'
 import webhookProxyRoutes from './routes/webhookProxy.js'
+import toolRoutes from './routes/tools.js'
+import mcpRoutes from './routes/mcp.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import { pricingService } from './services/PricingService.js'
 import { requestLogger } from './middleware/logger.js'
@@ -95,7 +98,17 @@ app.use(cors({
   ],
   credentials: true
 }))
-app.use(compression())
+app.use(compression({
+  // Never compress Server-Sent Event streams: the compressor buffers the body and
+  // would hold token-by-token deltas instead of flushing each one, which hangs the
+  // chat-completions gateway (/api/v1/chat/completions) and SSE compile route. The
+  // route sets Content-Type before the first write, so it's known when this runs.
+  filter: (req, res) => {
+    const type = String(res.getHeader('Content-Type') || '')
+    if (type.includes('text/event-stream')) return false
+    return compression.filter(req, res)
+  }
+}))
 app.use(limiter)
 app.use(express.json({ limit: '50mb' }))
 app.use(express.urlencoded({ extended: true, limit: '50mb' }))
@@ -108,6 +121,7 @@ app.use('/api/compilation', compilationRoutes)
 app.use('/api/files', fileRoutes)
 app.use('/api/registry', registryRoutes)
 app.use('/api/v1/providers', providerRoutes)
+app.use('/api/v1/chat/completions', chatCompletionsRoutes)
 app.use('/api/llm-providers', llmProvidersRoutes)
 app.use('/api/ai', aiRoutes)
 app.use('/api/conversational-ai', conversationalAiRoutes)
@@ -120,6 +134,8 @@ app.use('/api/startup', startupRoutes)
 app.use('/api/errors', errorReportRoutes)
 app.use('/api/webhooks', webhookRoutes)
 app.use('/api/webhook-proxy', webhookProxyRoutes)
+app.use('/api/tools', toolRoutes)
+app.use('/api/mcp', mcpRoutes)
 
 // Health check
 app.get('/health', (req, res) => {

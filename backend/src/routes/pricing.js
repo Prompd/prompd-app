@@ -4,6 +4,15 @@ import { requireAuth } from '../middleware/auth.js'
 
 const router = express.Router()
 
+// reseed-all hits every provider's API, so it's expensive and abusable from a
+// user-facing "refresh models" button. Throttle it process-wide: one run at a
+// time, and at most once per window (the result is cached and returned to callers
+// that arrive inside the window).
+const RESEED_MIN_INTERVAL_MS = 60_000
+let reseedInProgress = false
+let lastReseedAt = 0
+let lastReseedResult = null
+
 /**
  * GET /api/pricing
  * Get all current pricing for all providers
@@ -335,6 +344,14 @@ router.post('/reseed/:provider', requireAuth, async (req, res) => {
  * Requires authentication
  */
 router.post('/reseed-all', requireAuth, async (req, res) => {
+  // Throttle: return the recent result instead of re-hitting every provider API.
+  if (reseedInProgress) {
+    return res.status(202).json({ success: true, throttled: true, data: lastReseedResult, message: 'A refresh is already in progress.' })
+  }
+  if (Date.now() - lastReseedAt < RESEED_MIN_INTERVAL_MS && lastReseedResult) {
+    return res.json({ success: true, throttled: true, data: lastReseedResult, message: 'Models were refreshed recently; serving the latest result.' })
+  }
+  reseedInProgress = true
   try {
     // Import dependencies
     const { ModelPricing } = await import('../models/ModelPricing.js')
@@ -418,19 +435,20 @@ router.post('/reseed-all', requireAuth, async (req, res) => {
     // Invalidate all cache
     pricingCacheService.invalidateAll()
 
-    res.json({
-      success: true,
-      data: {
-        ...results,
-        message: `All providers: ${results.totalExpired} deprecated, ${results.totalAdded} added, ${results.totalStillValid} unchanged`
-      }
-    })
+    lastReseedResult = {
+      ...results,
+      message: `All providers: ${results.totalExpired} deprecated, ${results.totalAdded} added, ${results.totalStillValid} unchanged`
+    }
+    lastReseedAt = Date.now()
+    res.json({ success: true, data: lastReseedResult })
   } catch (error) {
     console.error('Error reseeding all pricing:', error)
     res.status(500).json({
       success: false,
       error: 'Failed to reseed pricing'
     })
+  } finally {
+    reseedInProgress = false
   }
 })
 

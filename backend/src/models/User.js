@@ -369,6 +369,31 @@ const UserSchema = new mongoose.Schema({
       }, { _id: false }),
       default: () => new Map()
     },
+    // External tool API keys (e.g. Tavily web search). User's own key, else a
+    // Prompd-paid env key is used at call time. Same encrypted shape as llmProviders.
+    externalTools: {
+      type: Map,
+      of: new mongoose.Schema({
+        hasKey: { type: Boolean, default: false },
+        encryptedKey: String, // AES-256-GCM
+        iv: String,
+        addedAt: { type: Date, default: Date.now }
+      }, { _id: false }),
+      default: () => new Map()
+    },
+    // Remote MCP servers the agent can call (proxied through the backend). Keyed
+    // by a stable id; encryptedKey is an optional bearer token for the server.
+    mcpServers: {
+      type: Map,
+      of: new mongoose.Schema({
+        label: String,
+        url: String, // remote HTTP MCP endpoint
+        encryptedKey: String,
+        iv: String,
+        addedAt: { type: Date, default: Date.now }
+      }, { _id: false }),
+      default: () => new Map()
+    },
     // Default provider preference
     defaultProvider: {
       type: String,
@@ -465,6 +490,13 @@ UserSchema.virtual('activeSessions').get(function() {
 UserSchema.virtual('canCreateProjects').get(function() {
   // This would need to be calculated by counting actual projects
   return true // Simplified for now
+})
+
+// The authenticated user's id, sourced from the Clerk token (decoded.sub is
+// stored as clerkUserId). Many routes/middleware read req.user.userId; the User
+// document has no such path, so without this they all silently get undefined.
+UserSchema.virtual('userId').get(function() {
+  return this.clerkUserId
 })
 
 // Instance methods
@@ -617,6 +649,58 @@ UserSchema.methods.getProviderKeyData = function(providerId) {
   const providers = this.aiFeatures?.llmProviders
   if (!providers) return null
   return providers.get(providerId) || null
+}
+
+/* ---- external tool keys (e.g. Tavily) ---- */
+UserSchema.methods.setToolKey = function(tool, encryptedKey, iv) {
+  if (!this.aiFeatures) this.aiFeatures = {}
+  if (!this.aiFeatures.externalTools) this.aiFeatures.externalTools = new Map()
+  const data = { hasKey: true, encryptedKey, iv, addedAt: new Date() }
+  this.aiFeatures.externalTools.set(tool, data)
+  this.markModified('aiFeatures.externalTools')
+  return data
+}
+UserSchema.methods.getToolKeyData = function(tool) {
+  const tools = this.aiFeatures?.externalTools
+  if (!tools) return null
+  return (typeof tools.get === 'function' ? tools.get(tool) : tools[tool]) || null
+}
+UserSchema.methods.removeToolKey = function(tool) {
+  const tools = this.aiFeatures?.externalTools
+  if (tools?.has?.(tool)) {
+    tools.delete(tool)
+    this.markModified('aiFeatures.externalTools')
+    return true
+  }
+  return false
+}
+
+/* ---- remote MCP servers ---- */
+UserSchema.methods.setMcpServer = function(id, server) {
+  if (!this.aiFeatures) this.aiFeatures = {}
+  if (!this.aiFeatures.mcpServers) this.aiFeatures.mcpServers = new Map()
+  this.aiFeatures.mcpServers.set(id, { ...server, addedAt: new Date() })
+  this.markModified('aiFeatures.mcpServers')
+}
+UserSchema.methods.getMcpServer = function(id) {
+  const m = this.aiFeatures?.mcpServers
+  if (!m) return null
+  return (typeof m.get === 'function' ? m.get(id) : m[id]) || null
+}
+UserSchema.methods.listMcpServers = function() {
+  const m = this.aiFeatures?.mcpServers
+  if (!m) return []
+  const entries = typeof m.entries === 'function' ? [...m.entries()] : Object.entries(m)
+  return entries.map(([id, s]) => ({ id, ...(typeof s.toObject === 'function' ? s.toObject() : s) }))
+}
+UserSchema.methods.removeMcpServer = function(id) {
+  const m = this.aiFeatures?.mcpServers
+  if (m?.has?.(id)) {
+    m.delete(id)
+    this.markModified('aiFeatures.mcpServers')
+    return true
+  }
+  return false
 }
 
 UserSchema.methods.canPerformAction = async function(action, resourceType = null) {
