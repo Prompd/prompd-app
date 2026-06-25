@@ -119,9 +119,32 @@ export class BasePricingFetcher {
     }
 
     this.enrichCapabilities(data)
-    // Overlay live values from models.dev (never throws; no-op if unavailable).
+    // Overlay live values from models.dev onto the seed/API models (never throws).
     await modelsDevSource.overlay(this.provider, data)
 
+    // Then make models.dev the dynamic SOURCE of new models: union in any it lists
+    // that the seed/API didn't, priced from models.dev. New releases (gpt-5, future
+    // models) appear automatically. isModelAvailable() lets a provider gate these
+    // against its own active list (e.g. OpenAI's /v1/models) so deprecated entries
+    // don't leak; the default accepts all.
+    const known = new Set(data.map((m) => m.model))
+    const extra = (await modelsDevSource.listForProvider(this.provider))
+      .filter((m) => !known.has(m.model) && this.isModelAvailable(m.model))
+    if (extra.length > 0) {
+      this.enrichCapabilities(extra)
+      data.push(...extra)
+      console.log(`[${this.provider}] +${extra.length} models from models.dev: ${extra.map((m) => m.model).join(', ')}`)
+    }
+
     return { source, data }
+  }
+
+  /**
+   * Whether a model id sourced from models.dev should be admitted to the catalog.
+   * Default accepts all; providers with an authoritative active list override this
+   * to drop models that exist in models.dev but aren't currently served.
+   */
+  isModelAvailable(_modelId) {
+    return true
   }
 }

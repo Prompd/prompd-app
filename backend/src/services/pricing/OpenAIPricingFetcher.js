@@ -12,11 +12,21 @@ export class OpenAIPricingFetcher extends BasePricingFetcher {
   constructor() {
     super('openai')
     this.modelsEndpoint = 'https://api.openai.com/v1/models'
+    // Active chat-model ids from the last /v1/models fetch, used to gate the
+    // models.dev additions (see isModelAvailable). null = no live list yet, in
+    // which case we don't filter (can't verify, so trust models.dev).
+    this._activeChatModels = null
   }
 
   supportsPricingApi() {
     // We can fetch models dynamically if API key is available
     return !!process.env.OPENAI_API_KEY
+  }
+
+  /** Admit a models.dev model only if OpenAI's API currently serves it. When we
+   * have no live list (no key / API down) we can't verify, so accept it. */
+  isModelAvailable(modelId) {
+    return !this._activeChatModels || this._activeChatModels.has(modelId)
   }
 
   /**
@@ -50,9 +60,12 @@ export class OpenAIPricingFetcher extends BasePricingFetcher {
       // Filter to only chat/completion models (exclude embeddings, whisper, dall-e, etc.)
       const chatModels = activeModels.filter(m =>
         m.startsWith('gpt-') || m.startsWith('o1') || m.startsWith('o3') ||
-        m.startsWith('o4') || m.startsWith('chatgpt-')
+        m.startsWith('o4') || m.startsWith('o5') || m.startsWith('chatgpt-')
       )
       console.log(`[OpenAIPricingFetcher] Filtered to ${chatModels.length} chat models`)
+      // Remember the active set so getPricing() can gate the models.dev additions
+      // (e.g. gpt-5) to models OpenAI actually serves right now.
+      this._activeChatModels = new Set(chatModels)
 
       // Filter our default pricing to only include active models
       const defaultPricing = this.getDefaultPricing()

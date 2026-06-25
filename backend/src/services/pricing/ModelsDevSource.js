@@ -109,6 +109,41 @@ class ModelsDevSource {
       return models
     }
   }
+
+  /**
+   * The full model list models.dev publishes for a provider, mapped to our
+   * fetcher shape. Filtered to billable text/chat models (has input pricing and
+   * accepts text input) so embeddings / image- or audio-only models don't leak
+   * in. Returns [] when models.dev is unavailable or lists nothing for the
+   * provider — callers union this onto their seed/API list as the dynamic source
+   * of new models (gpt-5, future releases) without re-seeding.
+   */
+  async listForProvider(provider) {
+    try {
+      const catalog = await this.load()
+      if (!catalog) return []
+      const key = PROVIDER_ALIAS[provider] || provider
+      const prov = catalog[key]
+      if (!prov || !prov.models) return []
+      const out = []
+      for (const [id, entry] of Object.entries(prov.models)) {
+        if (num(entry?.cost?.input) === undefined) continue // not a billable text model
+        const inputs = entry?.modalities?.input
+        if (Array.isArray(inputs) && !inputs.includes('text')) continue // image/audio-only
+        const mapped = mapEntry(entry)
+        out.push({
+          model: id,
+          displayName: mapped.displayName || id,
+          pricing: mapped.pricing,
+          capabilities: mapped.capabilities,
+        })
+      }
+      return out
+    } catch (error) {
+      console.warn(`[models.dev] listForProvider error for ${provider}: ${error.message}`)
+      return []
+    }
+  }
 }
 
 export const modelsDevSource = new ModelsDevSource()
