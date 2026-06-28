@@ -14,10 +14,10 @@
  * behind this same endpoint later without the harness changing.
  */
 import express from 'express'
-import crypto from 'node:crypto'
 import { Readable } from 'node:stream'
 import { clerkAuth } from '../middleware/clerkAuth.js'
 import { validateAiQuota, incrementAiUsage } from '../middleware/aiQuota.js'
+import { getOpenAIKey } from '../services/userOpenAiKey.js'
 
 const router = express.Router()
 
@@ -30,40 +30,6 @@ const MAX_OUTPUT_TOKENS = 8192
 // allowlist (prompd-web src/lib/models.ts ALLOWED_GATEWAY_MODELS) is only UX; this is
 // the real gate. Widen both together.
 const ALLOWED_MODELS = new Set(['gpt-4.1-mini', 'gpt-4o-mini'])
-
-/** Read a provider config from the user's aiFeatures.llmProviders (Map or object). */
-function getUserProviderConfig(providers, providerId) {
-  if (!providers) return null
-  if (typeof providers.get === 'function') return providers.get(providerId)
-  return providers[providerId]
-}
-
-/** Decrypt an AES-256-GCM key the same way EncryptionService stores it. */
-function decryptApiKey(encryptedKeyHex, ivHex) {
-  if (!encryptedKeyHex || !ivHex) return null
-  try {
-    const secret = process.env.ENCRYPTION_SECRET || process.env.JWT_SECRET
-    if (!secret) return null
-    const KEY = crypto.scryptSync(secret, 'prompd-salt', 32)
-    const ivBuffer = Buffer.from(ivHex, 'hex')
-    const encryptedText = encryptedKeyHex.slice(0, -32)
-    const authTag = Buffer.from(encryptedKeyHex.slice(-32), 'hex')
-    const decipher = crypto.createDecipheriv('aes-256-gcm', KEY, ivBuffer)
-    decipher.setAuthTag(authTag)
-    let decrypted = decipher.update(encryptedText, 'hex', 'utf8')
-    decrypted += decipher.final('utf8')
-    return decrypted
-  } catch (error) {
-    console.error('[chatCompletions] Failed to decrypt user OpenAI key:', error.message)
-    return null
-  }
-}
-
-function getOpenAIKey(user) {
-  const cfg = getUserProviderConfig(user?.aiFeatures?.llmProviders, 'openai')
-  if (!cfg?.hasKey) return null
-  return decryptApiKey(cfg.encryptedKey, cfg.iv)
-}
 
 router.post('/', clerkAuth, async (req, res) => {
   const body = req.body || {}

@@ -32,6 +32,7 @@ import registryRoutes from './routes/registry.js'
 import providerRoutes from './routes/providers.js'
 import llmProvidersRoutes from './routes/llmProviders.js'
 import chatCompletionsRoutes from './routes/chatCompletions.js'
+import imagesRoutes from './routes/images.js'
 import entitlementsRoutes from './routes/entitlements.js'
 import aiRoutes from './routes/ai.js'
 import conversationalAiRoutes from './routes/conversational-ai.js'
@@ -123,6 +124,7 @@ app.use('/api/files', fileRoutes)
 app.use('/api/registry', registryRoutes)
 app.use('/api/v1/providers', providerRoutes)
 app.use('/api/v1/chat/completions', chatCompletionsRoutes)
+app.use('/api/v1/images/generations', imagesRoutes)
 app.use('/api/v1/entitlements', entitlementsRoutes)
 app.use('/api/llm-providers', llmProvidersRoutes)
 app.use('/api/ai', aiRoutes)
