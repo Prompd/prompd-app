@@ -43,15 +43,27 @@ const getUserProviderConfig = (providers, providerId) => {
  * Validate if user can perform an AI operation
  * @param {object} user - User document from database
  * @param {string} operation - Operation type ('generate' or 'execute')
+ * @param {object} [opts]
+ * @param {string} [opts.serverProvider] - When the operation runs on OUR server key
+ *   for a SPECIFIC provider (e.g. the chat gateway uses the server OpenAI key),
+ *   only that provider's OWN key grants unlimited — a key for a different provider
+ *   does NOT, since it wouldn't pay for this request. Omit for provider-agnostic
+ *   paths (any own key = unlimited), preserving the original behavior.
  * @returns {Promise<object>} Validation result
  */
-export async function validateAiQuota(user, operation) {
+export async function validateAiQuota(user, operation, opts = {}) {
   const field = operation === 'generate' ? 'generations' : 'executions'
+  const { serverProvider } = opts
 
-  // If user has own API key, unlimited
-  const anthropicConfig = getUserProviderConfig(user.aiFeatures?.llmProviders, 'anthropic')
-  const openaiConfig = getUserProviderConfig(user.aiFeatures?.llmProviders, 'openai')
-  const hasOwnKey = anthropicConfig?.hasKey || openaiConfig?.hasKey
+  // If user has own API key, unlimited (they pay the provider directly). When the
+  // request would run on OUR server key for a specific provider, the own key must
+  // be for THAT provider — otherwise an Anthropic-only user would ride the server
+  // OpenAI key unmetered forever.
+  const providers = user.aiFeatures?.llmProviders
+  const hasKeyFor = (id) => !!getUserProviderConfig(providers, id)?.hasKey
+  const hasOwnKey = serverProvider
+    ? hasKeyFor(serverProvider)
+    : (hasKeyFor('anthropic') || hasKeyFor('openai'))
 
   if (hasOwnKey) {
     return { allowed: true, unlimited: true }

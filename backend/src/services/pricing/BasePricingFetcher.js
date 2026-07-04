@@ -130,13 +130,20 @@ export class BasePricingFetcher {
     const known = new Set(data.map((m) => m.model))
     const extra = (await modelsDevSource.listForProvider(this.provider))
       .filter((m) => !known.has(m.model) && this.isModelAvailable(m.model))
+      // Defense in depth: only union models with COMPLETE pricing. ModelPricing
+      // requires both inputTokens and outputTokens, and one invalid entry would
+      // throw inside the seed loop and abort the rest of the provider's models.
+      .filter((m) => typeof m.pricing?.inputTokens === 'number' && typeof m.pricing?.outputTokens === 'number')
     if (extra.length > 0) {
       this.enrichCapabilities(extra)
       data.push(...extra)
       console.log(`[${this.provider}] +${extra.length} models from models.dev: ${extra.map((m) => m.model).join(', ')}`)
     }
 
-    return { source, data }
+    // dynamicSourceOk: whether models.dev was reachable this run. The reseed
+    // expiry pass uses it to avoid deprecating models.dev-sourced models when the
+    // source was merely down (their absence isn't a real deprecation signal).
+    return { source, data, dynamicSourceOk: modelsDevSource.wasReachable() }
   }
 
   /**

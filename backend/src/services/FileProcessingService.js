@@ -3,6 +3,7 @@ import path from 'path'
 import crypto from 'crypto'
 import mammoth from 'mammoth'
 import XLSX from 'xlsx'
+import { ownsFile } from './fileOwnership.js'
 
 // PDF parsing and image processing temporarily disabled due to dependency issues
 let pdfParse = null
@@ -110,7 +111,7 @@ export class FileProcessingService {
 
       // Get file metadata
       const metadata = await this.getFileMetadata(fileId)
-      if (!metadata || metadata.userId !== userId) {
+      if (!ownsFile(metadata, userId)) {
         throw new Error('File not found or access denied')
       }
 
@@ -411,7 +412,7 @@ export class FileProcessingService {
   async getFile(fileId, userId) {
     try {
       const metadata = await this.getFileMetadata(fileId)
-      if (!metadata || metadata.userId !== userId) {
+      if (!ownsFile(metadata, userId)) {
         return null
       }
 
@@ -428,7 +429,7 @@ export class FileProcessingService {
   async getFileStream(fileId, userId) {
     try {
       const metadata = await this.getFileMetadata(fileId)
-      if (!metadata || metadata.userId !== userId) {
+      if (!ownsFile(metadata, userId)) {
         throw new Error('File not found or access denied')
       }
 
@@ -446,7 +447,7 @@ export class FileProcessingService {
   async deleteFile(fileId, userId) {
     try {
       const metadata = await this.getFileMetadata(fileId)
-      if (!metadata || metadata.userId !== userId) {
+      if (!ownsFile(metadata, userId)) {
         throw new Error('File not found or access denied')
       }
 
@@ -611,7 +612,7 @@ export class FileProcessingService {
   async convertFile(fileId, userId, targetFormat, options = {}) {
     try {
       const metadata = await this.getFileMetadata(fileId)
-      if (!metadata || metadata.userId !== userId) {
+      if (!ownsFile(metadata, userId)) {
         throw new Error('File not found or access denied')
       }
 

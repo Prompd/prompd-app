@@ -2,13 +2,27 @@ import crypto from 'crypto'
 
 const ALGORITHM = 'aes-256-gcm'
 
-// Derive encryption key from environment secret
+// scrypt is deliberately expensive (~tens of ms, event-loop-blocking). The secret
+// is constant for the process lifetime, so derive the key ONCE and memoize it —
+// re-running scrypt on every encrypt/decrypt serialized every gateway/MCP/tools
+// request that touches a user key. Keyed by the secret so a change re-derives.
+let cachedSecret = null
+let cachedKey = null
 function getEncryptionKey() {
   const secret = process.env.ENCRYPTION_SECRET || process.env.JWT_SECRET
   if (!secret) {
     throw new Error('ENCRYPTION_SECRET or JWT_SECRET must be set in environment variables')
   }
-  return crypto.scryptSync(secret, 'prompd-salt', 32)
+  if (secret !== cachedSecret) {
+    cachedKey = crypto.scryptSync(secret, 'prompd-salt', 32)
+    cachedSecret = secret
+  }
+  return cachedKey
+}
+
+/** Test-only accessor for the memoized key (asserts single derivation). */
+export function __getEncryptionKeyForTest() {
+  return getEncryptionKey()
 }
 
 /**
