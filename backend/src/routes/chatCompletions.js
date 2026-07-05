@@ -24,7 +24,7 @@ const router = express.Router()
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
 const MAX_MESSAGES = 200
-const MAX_BODY_BYTES = 1 * 1024 * 1024 // 1MB request cap
+const MAX_BODY_BYTES = 8 * 1024 * 1024 // 8MB request cap (headroom for long context + base64 vision images; well under the 50mb app parser)
 export const MAX_OUTPUT_TOKENS = 8192
 
 /** Clamp the output-token ceiling for the FREE server-key path. Covers BOTH the
