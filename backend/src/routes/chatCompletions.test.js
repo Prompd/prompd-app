@@ -1,5 +1,24 @@
 import { describe, it, expect } from '@jest/globals'
-import { clampServerOutputTokens, MAX_OUTPUT_TOKENS } from './chatCompletions.js'
+import { clampServerOutputTokens, MAX_OUTPUT_TOKENS, isReasoningEffortToolsError } from './chatCompletions.js'
+
+describe('isReasoningEffortToolsError — reasoning-model tool-call retry signal', () => {
+  it('matches OpenAI\'s reasoning_effort + function tools rejection', () => {
+    const text = JSON.stringify({
+      error: {
+        message: "Function tools with reasoning_effort are not supported for gpt-5.6-luna in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.",
+        type: 'invalid_request_error',
+      },
+    })
+    expect(isReasoningEffortToolsError(text)).toBe(true)
+  })
+
+  it('does not match unrelated upstream errors or empty input', () => {
+    expect(isReasoningEffortToolsError(JSON.stringify({ error: { message: 'Rate limit reached', type: 'rate_limit_error' } }))).toBe(false)
+    expect(isReasoningEffortToolsError(JSON.stringify({ error: { message: 'Unsupported tool type' } }))).toBe(false)
+    expect(isReasoningEffortToolsError('')).toBe(false)
+    expect(isReasoningEffortToolsError(null)).toBe(false)
+  })
+})
 
 describe('clampServerOutputTokens — free server-key output ceiling', () => {
   it('clamps max_tokens above the ceiling', () => {

@@ -42,6 +42,18 @@ export function clampServerOutputTokens(body) {
   // Neither present -> impose a default ceiling so output can't run unbounded.
   if (!hasLegacy && !hasCurrent) body.max_completion_tokens = MAX_OUTPUT_TOKENS
 }
+/** Detect OpenAI's "Function tools with reasoning_effort are not supported ... use
+ * /v1/responses or set reasoning_effort to 'none'" rejection. Reasoning models
+ * (e.g. gpt-5.6-luna) apply a non-'none' reasoning_effort by DEFAULT — neither the
+ * browser nor this gateway sets it — which OpenAI rejects on /v1/chat/completions
+ * when the request also carries function tools. This is the signal to retry the
+ * forward with reasoning_effort:'none' (keeping tool-calling, the harness's core,
+ * at the cost of reasoning on this hop). Matches on the message text so it never
+ * fires for a model that already works. */
+export function isReasoningEffortToolsError(text) {
+  return typeof text === 'string' && /reasoning_effort/i.test(text) && /tool/i.test(text)
+}
+
 // Free server-key model allowlist lives in one place (config/freeTier.js), shared
 // with the compilation/execute seam so both gateways enforce the SAME list.
 const ALLOWED_MODELS = ALLOWED_GATEWAY_MODELS
@@ -129,21 +141,42 @@ router.post('/', clerkAuth, async (req, res) => {
 
   const wantStream = body.stream === true
 
+  const forwardOnce = () => fetch(OPENAI_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(body),
+  })
+
   let upstream
   try {
-    upstream = await fetch(OPENAI_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(body),
-    })
+    upstream = await forwardOnce()
   } catch (error) {
     await refund() // never reached OpenAI — don't charge
     return res.status(502).json({ error: { message: `Upstream request failed: ${error.message}`, type: 'upstream_error' } })
   }
 
+  // Reasoning-model + tools retry: on the rejection ABOVE (pre-stream, so nothing is
+  // sent to the client yet), disable reasoning_effort and forward once more. Only
+  // fires on the real error, so a working model is never altered. `errorPreread`
+  // carries the consumed error body so a non-retryable failure still returns it.
+  let errorPreread = null
+  if (!upstream.ok) {
+    errorPreread = await upstream.text().catch(() => '')
+    if (isReasoningEffortToolsError(errorPreread) && body.reasoning_effort !== 'none') {
+      body.reasoning_effort = 'none'
+      try {
+        upstream = await forwardOnce()
+        errorPreread = upstream.ok ? null : await upstream.text().catch(() => '')
+      } catch (error) {
+        await refund()
+        return res.status(502).json({ error: { message: `Upstream request failed: ${error.message}`, type: 'upstream_error' } })
+      }
+    }
+  }
+
   // Non-streaming: forward status + JSON as-is. Refund on a non-2xx (no usable output).
   if (!wantStream) {
-    const text = await upstream.text()
+    const text = upstream.ok ? await upstream.text() : (errorPreread ?? '')
     if (!upstream.ok) await refund()
     res.status(upstream.status)
     res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
@@ -153,7 +186,7 @@ router.post('/', clerkAuth, async (req, res) => {
   // Streaming: pipe OpenAI's SSE response straight through.
   if (!upstream.ok || !upstream.body) {
     await refund() // upstream rejected before streaming — no output
-    const text = await upstream.text().catch(() => '')
+    const text = errorPreread ?? (await upstream.text().catch(() => ''))
     res.status(upstream.status)
     res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
     return res.send(text)
