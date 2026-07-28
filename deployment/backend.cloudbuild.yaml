@@ -33,7 +33,7 @@ steps:
       '--max-instances', '1',
       '--concurrency', '80',
       '--port', '3010',
-      '--timeout', '60',
+      '--timeout', '300',
       '--cpu-throttling',
       '--set-env-vars', 'NODE_ENV=production,FRONTEND_URL=https://prompd.app,CLERK_FRONTEND_API=clerk.prompdhub.ai',
       '--set-secrets', 'MONGODB_URI=prompd-editor-mongodb-uri:latest,JWT_SECRET=prompd-editor-jwt-secret:latest,ENCRYPTION_SECRET=prompd-editor-encryption-secret:latest,CLERK_SECRET_KEY=prompd-editor-clerk-secret:latest,OPENAI_API_KEY=prompd-editor-openai-key:latest,ANTHROPIC_API_KEY=prompd-editor-anthropic-key:latest'
