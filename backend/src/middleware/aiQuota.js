@@ -2,30 +2,47 @@
  * AI Quota Management Middleware
  * Handles quota validation and tracking for AI generation and execution features
  */
+import { PLANS, normalizePlan } from '../config/plans.js'
 
 /**
- * Get AI quota configuration for a subscription plan
- * @param {string} plan - Subscription plan (free, pro, enterprise)
+ * Get AI quota configuration for a subscription plan.
+ * @param {string} plan - a CANONICAL plan name (see config/plans.js). Raw registry
+ *   ids (`team_plan`) must be passed through normalizePlan first.
  * @returns {object} Quota configuration
  */
 export function getAiQuotaForPlan(plan) {
-  const quotas = {
-    free: {
-      generations: { limit: 5, resetType: 'lifetime' },
-      executions: { limit: 10, resetType: 'lifetime' }
-    },
-    pro: {
-      // Same as free - unlimited only with own key
-      generations: { limit: 5, resetType: 'lifetime' },
-      executions: { limit: 10, resetType: 'lifetime' }
-    },
-    enterprise: {
-      // Unlimited regardless of key
-      generations: { limit: -1, resetType: 'unlimited' },
-      executions: { limit: -1, resetType: 'unlimited' }
-    }
+  // Metered allowance on OUR server key. Own-key users are unlimited on every plan
+  // (see validateAiQuota), so these ceilings only bind users spending our tokens.
+  const metered = {
+    generations: { limit: 5, resetType: 'lifetime' },
+    executions: { limit: 10, resetType: 'lifetime' }
   }
-  return quotas[plan] || quotas.free
+  const unlimited = {
+    generations: { limit: -1, resetType: 'unlimited' },
+    executions: { limit: -1, resetType: 'unlimited' }
+  }
+
+  // Every canonical plan appears here. A plan missing from this table is exactly how
+  // a paying Team subscriber silently received the free tier.
+  const quotas = {
+    [PLANS.FREE]: metered,
+    [PLANS.PRO]: metered, // same as free - unlimited only with own key
+    [PLANS.TEAM]: metered,
+    [PLANS.ENTERPRISE]: unlimited,
+    [PLANS.ADMIN]: unlimited
+  }
+
+  const quota = quotas[plan]
+  if (quota) return quota
+
+  // Reaching here means a value bypassed normalizePlan (e.g. a raw registry id) or
+  // the registry shipped a plan this table does not know. Both silently downgrade a
+  // paying user, so neither may be quiet.
+  console.warn(
+    `[plans] no AI quota for plan "${plan}" - serving the metered tier. ` +
+    `Normalize with normalizePlan() and add new plans to getAiQuotaForPlan.`
+  )
+  return metered
 }
 
 /**
@@ -69,8 +86,11 @@ export async function validateAiQuota(user, operation, opts = {}) {
     return { allowed: true, unlimited: true }
   }
 
-  // Enterprise and admin plans get unlimited with server key
-  if (user.subscription?.plan === 'enterprise' || user.subscription?.plan === 'admin') {
+  // Enterprise and admin plans get unlimited with server key. Normalize at READ:
+  // boundary normalization only runs when a record is created, so documents written
+  // earlier still hold raw registry ids (enterprise_plan) and would be mis-tiered.
+  const plan = normalizePlan(user.subscription?.plan)
+  if (plan === PLANS.ENTERPRISE || plan === PLANS.ADMIN) {
     return { allowed: true, unlimited: true }
   }
 
@@ -82,7 +102,7 @@ export async function validateAiQuota(user, operation, opts = {}) {
     return {
       allowed: false,
       reason: `${operation} quota exceeded (${used}/${limit})`,
-      upgradeRequired: user.subscription?.plan === 'free' ? 'pro' : null,
+      upgradeRequired: plan === PLANS.FREE ? PLANS.PRO : null,
       canAddApiKey: true
     }
   }

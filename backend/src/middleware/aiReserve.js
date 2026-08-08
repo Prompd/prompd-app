@@ -8,6 +8,7 @@
  * nothing. On upstream failure the caller refunds with refundAiExecution(). */
 import { User as DefaultUser } from '../models/User.js'
 import { isUnmeteredPlan } from '../config/freeTier.js'
+import { PLANS, normalizePlan } from '../config/plans.js'
 
 const providerConfig = (providers, id) => {
   if (!providers) return null
@@ -55,7 +56,7 @@ export async function reserveAiExecution(user, opts = {}) {
     metered: false,
     status: 402,
     reason: `${operation} quota exceeded (${limit}/${limit})`,
-    upgradeRequired: user.subscription?.plan === 'free' ? 'pro' : null,
+    upgradeRequired: normalizePlan(user.subscription?.plan) === PLANS.FREE ? PLANS.PRO : null,
   }
 }
 

@@ -4,6 +4,7 @@ import { generatePrompd } from '../services/AiGenerationService.js'
 import { ExecutionHistory } from '../models/ExecutionHistory.js'
 import { clerkAuth } from '../middleware/clerkAuth.js'
 import { conversationalAiService } from '../services/ConversationalAiService.js'
+import { PLANS, normalizePlan } from '../config/plans.js'
 
 const router = express.Router()
 
@@ -44,7 +45,7 @@ router.post('/generate', clerkAuth, async (req, res) => {
     const providers = req.user.aiFeatures?.llmProviders
     const anthropicCfg = providers && typeof providers.get === 'function' ? providers.get('anthropic') : providers?.anthropic
     const hasOwnKey = anthropicCfg?.hasKey || false
-    const isEnterprise = req.user.subscription?.plan === 'enterprise'
+    const isEnterprise = normalizePlan(req.user.subscription?.plan) === PLANS.ENTERPRISE
 
     if (!hasOwnKey && !isEnterprise) {
       await incrementAiUsage(req.user, 'generate')
@@ -93,10 +94,10 @@ router.get('/quota', clerkAuth, async (req, res) => {
     const openaiConfig = getUserProviderConfig(req.user.aiFeatures?.llmProviders, 'openai')
     const hasAnthropicKey = anthropicConfig?.hasKey || false
     const hasOpenaiKey = openaiConfig?.hasKey || false
-    const isEnterprise = req.user.subscription?.plan === 'enterprise'
+    const isEnterprise = normalizePlan(req.user.subscription?.plan) === PLANS.ENTERPRISE
 
     res.json({
-      plan: req.user.subscription?.plan || 'free',
+      plan: normalizePlan(req.user.subscription?.plan),
       generations: {
         used: req.user.aiFeatures?.generations?.used || 0,
         limit: req.user.aiFeatures?.generations?.limit || 5,

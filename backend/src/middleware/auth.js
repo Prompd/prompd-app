@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken'
 import jwksClient from 'jwks-rsa'
 import { User } from '../models/User.js'
+import { PLANS, normalizePlan } from '../config/plans.js'
 
 const REGISTRY_URL = process.env.PROMPD_REGISTRY_URL || 'https://registry.prompdhub.ai'
 
@@ -104,7 +105,9 @@ export const auth = async (req, res, next) => {
           })
           if (planResponse.ok) {
             const planData = await planResponse.json()
-            registryPlan = planData.currentPlan?.name || 'free'
+            // The registry returns a plan ID (free_plan / team_plan / ...); normalize
+            // it at this boundary so no raw id ever reaches the quota layer.
+            registryPlan = normalizePlan(planData.currentPlan?.name)
           }
         } catch (error) {
           console.warn('Failed to fetch user from registry:', error.message)
@@ -265,8 +268,9 @@ export const requireAdmin = async (req, res, next) => {
     }
 
     // Check if user is admin
-    const isAdmin = req.user?.subscription?.plan === 'admin' ||
-                    req.user?.subscription?.plan === 'enterprise' ||
+    const adminPlan = normalizePlan(req.user?.subscription?.plan)
+    const isAdmin = adminPlan === PLANS.ADMIN ||
+                    adminPlan === PLANS.ENTERPRISE ||
                     req.user?.email?.includes('@prompd.io') ||
                     req.user?.email?.includes('@logikbug.com')
 

@@ -7,6 +7,8 @@
  * (prompd-web src/lib/models.ts ALLOWED_GATEWAY_MODELS) — that copy is only a
  * hint; THIS is the enforced gate. Widen both together. */
 
+import { PLANS, normalizePlan } from './plans.js'
+
 /** Models the free server key is allowed to run. Own-key users are unrestricted. */
 export const ALLOWED_GATEWAY_MODELS = new Set(['gpt-4.1-mini', 'gpt-4o-mini'])
 
@@ -16,6 +18,8 @@ export function isFreeAllowedModel(model) {
 
 /** True for plans that get the server key unmetered regardless of own-key status. */
 export function isUnmeteredPlan(user) {
-  const plan = user?.subscription?.plan
-  return plan === 'enterprise' || plan === 'admin'
+  // Normalized at read: records created before boundary normalization still hold raw
+  // registry ids (enterprise_plan), which would otherwise read as metered.
+  const plan = normalizePlan(user?.subscription?.plan)
+  return plan === PLANS.ENTERPRISE || plan === PLANS.ADMIN
 }
