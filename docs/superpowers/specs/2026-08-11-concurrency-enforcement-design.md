@@ -18,10 +18,51 @@ storage, and what a customer actually buys is the ability to have more work in f
 once. That is also the category's own maturity yardstick (operator leverage: concurrent
 agent tasks per human), so pricing and positioning end up speaking one language.
 
-The consequence that shapes this design: enforcement must sit **outside** the own-key
-short-circuit in `validateAiQuota` / `reserveAiExecution`. Those return `unlimited: true`
-the moment a user has their own key, which is correct for tokens and exactly wrong here.
-BYOK users are the ones this axis charges.
+## Two separate gates
+
+This is the single most important thing to get right, and the easiest to get wrong by
+putting new code in the obvious-looking place.
+
+`reserveAiExecution` and `validateAiQuota` both begin with an early return:
+
+```js
+if (hasOwnKey || isUnmeteredPlan(user)) return { allowed: true, metered: false }
+// nothing below this line runs for own-key users
+```
+
+That is correct **for tokens**. A user who brought their own OpenAI key pays OpenAI
+directly, so counting their executions against our quota would be nonsense.
+
+But it returns from the whole function. Put the concurrency check anywhere below that
+line and every own-key user skips it too — and own-key is effectively every serious
+user. The limit would then bind only free users on our server key, who are already
+capped at 10 lifetime executions, and would never touch the people it is meant to
+charge. Pro would stay unbuyable for exactly the reason the pricing doc identifies: a
+BYOK user currently pays nothing, forever.
+
+So concurrency is its **own gate**, evaluated independently and before the token gate:
+
+```js
+// concurrency: applies to everyone, own key or not
+const slot = await reserveRunSlot(user, { runId, kind, label })
+if (!slot.allowed) return refuse429(slot)
+
+// tokens: unchanged, still skipped for own-key users
+const resv = await reserveAiExecution(req.user, { serverProvider: 'openai' })
+```
+
+The two gates answer different questions:
+
+| Gate | Question | Own key exempt? |
+| --- | --- | --- |
+| `reserveAiExecution` | are you spending OUR tokens, and how many? | yes |
+| `reserveRunSlot` | how many things do you have running at once? | **no** |
+
+Only the plan's `-1` (enterprise, admin) exempts a user from the concurrency gate.
+Having an API key never does.
+
+Ordering matters too: reserve the slot first. A request refused for concurrency must not
+consume a token reservation it will then have to refund.
 
 ## The unit: one logical run
 
