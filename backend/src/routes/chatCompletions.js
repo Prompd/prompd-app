@@ -14,56 +14,49 @@
  * behind this same endpoint later without the harness changing.
  */
 import express from 'express'
-import crypto from 'node:crypto'
 import { Readable } from 'node:stream'
 import { clerkAuth } from '../middleware/clerkAuth.js'
-import { validateAiQuota, incrementAiUsage } from '../middleware/aiQuota.js'
+import { reserveAiExecution, refundAiExecution } from '../middleware/aiReserve.js'
+import { getOpenAIKey } from '../services/userOpenAiKey.js'
+import { ALLOWED_GATEWAY_MODELS } from '../config/freeTier.js'
 
 const router = express.Router()
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
 const MAX_MESSAGES = 200
-const MAX_BODY_BYTES = 1 * 1024 * 1024 // 1MB request cap
-const MAX_OUTPUT_TOKENS = 8192
-// Models the FREE server key is allowed to run — the server-side ENFORCEMENT of the
-// cost tier. Own-key users are UNRESTRICTED (their key, any model). The client picker
-// allowlist (prompd-web src/lib/models.ts ALLOWED_GATEWAY_MODELS) is only UX; this is
-// the real gate. Widen both together.
-const ALLOWED_MODELS = new Set(['gpt-4.1-mini', 'gpt-4o-mini'])
+const MAX_BODY_BYTES = 8 * 1024 * 1024 // 8MB request cap (headroom for long context + base64 vision images; well under the 50mb app parser)
+export const MAX_OUTPUT_TOKENS = 8192
 
-/** Read a provider config from the user's aiFeatures.llmProviders (Map or object). */
-function getUserProviderConfig(providers, providerId) {
-  if (!providers) return null
-  if (typeof providers.get === 'function') return providers.get(providerId)
-  return providers[providerId]
+/** Clamp the output-token ceiling for the FREE server-key path. Covers BOTH the
+ * legacy `max_tokens` and the current `max_completion_tokens` (the only field
+ * o-series / newer models honor), and applies the ceiling as a DEFAULT when the
+ * caller omits both — otherwise an omitted field means uncapped output on our key.
+ * Mutates `body` in place. Own-key users pay OpenAI directly, so this is only
+ * applied on the server-key branch, never to their requests. */
+export function clampServerOutputTokens(body) {
+  const clamp = (v) => Math.min(typeof v === 'number' ? v : MAX_OUTPUT_TOKENS, MAX_OUTPUT_TOKENS)
+  const hasLegacy = typeof body.max_tokens === 'number'
+  const hasCurrent = typeof body.max_completion_tokens === 'number'
+  if (hasLegacy) body.max_tokens = clamp(body.max_tokens)
+  if (hasCurrent) body.max_completion_tokens = clamp(body.max_completion_tokens)
+  // Neither present -> impose a default ceiling so output can't run unbounded.
+  if (!hasLegacy && !hasCurrent) body.max_completion_tokens = MAX_OUTPUT_TOKENS
+}
+/** Detect OpenAI's "Function tools with reasoning_effort are not supported ... use
+ * /v1/responses or set reasoning_effort to 'none'" rejection. Reasoning models
+ * (e.g. gpt-5.6-luna) apply a non-'none' reasoning_effort by DEFAULT — neither the
+ * browser nor this gateway sets it — which OpenAI rejects on /v1/chat/completions
+ * when the request also carries function tools. This is the signal to retry the
+ * forward with reasoning_effort:'none' (keeping tool-calling, the harness's core,
+ * at the cost of reasoning on this hop). Matches on the message text so it never
+ * fires for a model that already works. */
+export function isReasoningEffortToolsError(text) {
+  return typeof text === 'string' && /reasoning_effort/i.test(text) && /tool/i.test(text)
 }
 
-/** Decrypt an AES-256-GCM key the same way EncryptionService stores it. */
-function decryptApiKey(encryptedKeyHex, ivHex) {
-  if (!encryptedKeyHex || !ivHex) return null
-  try {
-    const secret = process.env.ENCRYPTION_SECRET || process.env.JWT_SECRET
-    if (!secret) return null
-    const KEY = crypto.scryptSync(secret, 'prompd-salt', 32)
-    const ivBuffer = Buffer.from(ivHex, 'hex')
-    const encryptedText = encryptedKeyHex.slice(0, -32)
-    const authTag = Buffer.from(encryptedKeyHex.slice(-32), 'hex')
-    const decipher = crypto.createDecipheriv('aes-256-gcm', KEY, ivBuffer)
-    decipher.setAuthTag(authTag)
-    let decrypted = decipher.update(encryptedText, 'hex', 'utf8')
-    decrypted += decipher.final('utf8')
-    return decrypted
-  } catch (error) {
-    console.error('[chatCompletions] Failed to decrypt user OpenAI key:', error.message)
-    return null
-  }
-}
-
-function getOpenAIKey(user) {
-  const cfg = getUserProviderConfig(user?.aiFeatures?.llmProviders, 'openai')
-  if (!cfg?.hasKey) return null
-  return decryptApiKey(cfg.encryptedKey, cfg.iv)
-}
+// Free server-key model allowlist lives in one place (config/freeTier.js), shared
+// with the compilation/execute seam so both gateways enforce the SAME list.
+const ALLOWED_MODELS = ALLOWED_GATEWAY_MODELS
 
 router.post('/', clerkAuth, async (req, res) => {
   const body = req.body || {}
@@ -81,9 +74,6 @@ router.post('/', clerkAuth, async (req, res) => {
   }
   if (Buffer.byteLength(JSON.stringify(body), 'utf8') > MAX_BODY_BYTES) {
     return res.status(413).json({ error: { message: 'request too large', type: 'invalid_request_error' } })
-  }
-  if (typeof body.max_tokens === 'number') {
-    body.max_tokens = Math.min(body.max_tokens, MAX_OUTPUT_TOKENS)
   }
 
   // Key + quota resolution (the server-side guard).
@@ -116,47 +106,78 @@ router.post('/', clerkAuth, async (req, res) => {
         },
       })
     }
-    const quota = await validateAiQuota(req.user, 'execute')
-    if (!quota.allowed) {
-      return res.status(402).json({
+    // ATOMICALLY reserve one execution up front (serverProvider:'openai' scopes the
+    // own-key exemption to OpenAI, so an Anthropic-only key doesn't ride free). The
+    // guarded $inc closes the check-then-increment race that let concurrent requests
+    // blow past the free cap. Refunded below if the call fails / yields no output.
+    const resv = await reserveAiExecution(req.user, { serverProvider: 'openai' })
+    if (!resv.allowed) {
+      return res.status(resv.status || 402).json({
         error: {
-          message: `Free execution limit reached (${quota.reason}). Add your own OpenAI key in provider settings for unlimited use${quota.upgradeRequired ? `, or upgrade to ${quota.upgradeRequired}` : ''}.`,
+          message: `Free execution limit reached (${resv.reason}). Add your own OpenAI key in provider settings for unlimited use${resv.upgradeRequired ? `, or upgrade to ${resv.upgradeRequired}` : ''}.`,
           type: 'quota_exceeded',
           code: 'QUOTA_EXCEEDED',
-          upgrade_required: quota.upgradeRequired || null,
-          can_add_api_key: quota.canAddApiKey ?? true,
+          upgrade_required: resv.upgradeRequired || null,
+          can_add_api_key: true,
         },
       })
     }
     apiKey = serverKey
-    meterQuota = true
+    meterQuota = resv.metered // true only when a unit was actually reserved
+    // Free server-key path only: cap output tokens (both max_tokens and
+    // max_completion_tokens, plus a default when omitted) so a single call can't
+    // run unbounded output on our key. Own-key users are never clamped.
+    clampServerOutputTokens(body)
   }
 
-  // Count one execution against quota only when the SERVER key was used and OpenAI
-  // accepted the request. Best-effort: a save failure must not break the response.
-  const meter = async () => {
-    if (!meterQuota) return
-    try { await incrementAiUsage(req.user, 'execute') }
-    catch (e) { console.error('[chatCompletions] usage increment failed:', e.message) }
+  // Give back the reserved unit when the run fails or yields no usable output —
+  // so a failed request isn't charged. Idempotent (refunds at most once).
+  let reserved = meterQuota
+  const refund = async () => {
+    if (!reserved) return
+    reserved = false
+    await refundAiExecution(req.user, {})
   }
 
   const wantStream = body.stream === true
 
+  const forwardOnce = () => fetch(OPENAI_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(body),
+  })
+
   let upstream
   try {
-    upstream = await fetch(OPENAI_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(body),
-    })
+    upstream = await forwardOnce()
   } catch (error) {
+    await refund() // never reached OpenAI — don't charge
     return res.status(502).json({ error: { message: `Upstream request failed: ${error.message}`, type: 'upstream_error' } })
   }
 
-  // Non-streaming: forward status + JSON as-is.
+  // Reasoning-model + tools retry: on the rejection ABOVE (pre-stream, so nothing is
+  // sent to the client yet), disable reasoning_effort and forward once more. Only
+  // fires on the real error, so a working model is never altered. `errorPreread`
+  // carries the consumed error body so a non-retryable failure still returns it.
+  let errorPreread = null
+  if (!upstream.ok) {
+    errorPreread = await upstream.text().catch(() => '')
+    if (isReasoningEffortToolsError(errorPreread) && body.reasoning_effort !== 'none') {
+      body.reasoning_effort = 'none'
+      try {
+        upstream = await forwardOnce()
+        errorPreread = upstream.ok ? null : await upstream.text().catch(() => '')
+      } catch (error) {
+        await refund()
+        return res.status(502).json({ error: { message: `Upstream request failed: ${error.message}`, type: 'upstream_error' } })
+      }
+    }
+  }
+
+  // Non-streaming: forward status + JSON as-is. Refund on a non-2xx (no usable output).
   if (!wantStream) {
-    const text = await upstream.text()
-    if (upstream.ok) await meter()
+    const text = upstream.ok ? await upstream.text() : (errorPreread ?? '')
+    if (!upstream.ok) await refund()
     res.status(upstream.status)
     res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
     return res.send(text)
@@ -164,26 +185,31 @@ router.post('/', clerkAuth, async (req, res) => {
 
   // Streaming: pipe OpenAI's SSE response straight through.
   if (!upstream.ok || !upstream.body) {
-    const text = await upstream.text().catch(() => '')
+    await refund() // upstream rejected before streaming — no output
+    const text = errorPreread ?? (await upstream.text().catch(() => ''))
     res.status(upstream.status)
     res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
     return res.send(text)
   }
-  // upstream accepted the request and is streaming — count one execution.
-  await meter()
+  // The unit is already reserved; refund it if the stream produces NO output (a
+  // 200 that immediately errors). Any real output keeps the charge.
   res.status(200)
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
   res.setHeader('Cache-Control', 'no-cache, no-transform')
   res.setHeader('Connection', 'keep-alive')
   res.flushHeaders?.()
+  let gotData = false
   try {
     await new Promise((resolve, reject) => {
       const nodeStream = Readable.fromWeb(upstream.body)
+      nodeStream.once('data', () => { gotData = true }) // proof of real output
       nodeStream.on('error', reject)
       res.on('close', () => nodeStream.destroy())
       nodeStream.pipe(res).on('finish', resolve).on('error', reject)
     })
+    if (!gotData) await refund() // 200 but produced nothing
   } catch (error) {
+    if (!gotData) await refund() // errored before ANY usable output — don't charge
     if (!res.writableEnded) res.end()
     console.error('[chatCompletions] stream pipe error:', error.message)
   }

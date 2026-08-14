@@ -346,7 +346,10 @@ router.post('/reseed/:provider', requireAuth, async (req, res) => {
 router.post('/reseed-all', requireAuth, async (req, res) => {
   // Throttle: return the recent result instead of re-hitting every provider API.
   if (reseedInProgress) {
-    return res.status(202).json({ success: true, throttled: true, data: lastReseedResult, message: 'A refresh is already in progress.' })
+    // data is null until the first run in this process completes — return an empty
+    // summary shape so clients can read data.* without a null guard.
+    const data = lastReseedResult || { totalAdded: 0, totalExpired: 0, totalUpdated: 0, providers: {}, message: 'A refresh is already in progress; no prior result yet.' }
+    return res.status(202).json({ success: true, throttled: true, data, message: 'A refresh is already in progress.' })
   }
   if (Date.now() - lastReseedAt < RESEED_MIN_INTERVAL_MS && lastReseedResult) {
     return res.json({ success: true, throttled: true, data: lastReseedResult, message: 'Models were refreshed recently; serving the latest result.' })

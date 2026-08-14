@@ -119,7 +119,7 @@ class PricingService {
     for (const [provider, fetcher] of fetchers) {
       try {
         // Fetch valid models from provider API
-        const { data: validModels, source } = await fetcher.getPricing()
+        const { data: validModels, source, dynamicSourceOk } = await fetcher.getPricing()
         const validModelIds = new Set(validModels.map(p => p.model))
         const validModelsMap = new Map(validModels.map(p => [p.model, p]))
 
@@ -135,18 +135,27 @@ class PricingService {
         let updated = 0
         let unchanged = 0
 
-        // 1. Expire any DB model that is NOT in the valid models list
-        for (const dbModel of activeDbModels) {
-          if (!validModelIds.has(dbModel.model)) {
-            try {
-              await dbModel.expire()
-              expired++
-              console.log(`[Pricing Reseed] Deprecated: ${provider}/${dbModel.model}`)
-            } catch (expireError) {
-              console.error(`[Pricing Reseed] Failed to expire ${provider}/${dbModel.model}:`, expireError.message)
+        // 1. Expire any DB model that is NOT in the valid models list — but ONLY
+        // when the dynamic source (models.dev) was reachable this run. If it was
+        // down (cold cache), the union is missing its models.dev-sourced entries,
+        // and expiring them would flap the catalog off/on across reseeds. Skip the
+        // whole expiry pass in that case; a later successful reseed reconciles.
+        if (dynamicSourceOk === false) {
+          console.warn(`[Pricing Reseed] ${provider}: models.dev unreachable — skipping deprecation pass to avoid flapping the catalog`)
+          unchanged += activeDbModels.length
+        } else {
+          for (const dbModel of activeDbModels) {
+            if (!validModelIds.has(dbModel.model)) {
+              try {
+                await dbModel.expire()
+                expired++
+                console.log(`[Pricing Reseed] Deprecated: ${provider}/${dbModel.model}`)
+              } catch (expireError) {
+                console.error(`[Pricing Reseed] Failed to expire ${provider}/${dbModel.model}:`, expireError.message)
+              }
+            } else {
+              unchanged++
             }
-          } else {
-            unchanged++
           }
         }
 

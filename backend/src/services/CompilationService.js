@@ -6,6 +6,8 @@ import { CompilationCache } from '../models/CompilationCache.js'
 import { ProjectService } from './ProjectService.js'
 import Provider from '../models/Provider.js'
 import { pricingService } from './PricingService.js'
+import { resolveServerKeyAccess } from './serverKeyAccess.js'
+import { incrementAiUsage } from '../middleware/aiQuota.js'
 
 export class CompilationService {
   constructor() {
@@ -421,6 +423,9 @@ export class CompilationService {
       console.log('[CompilationService] Files received:', files ? Object.keys(files) : 'none')
       // Get user's provider configuration (if userId provided)
       let providerConfig = null
+      // Set when execution falls back to OUR server env key AND the user is on a
+      // metered plan — we must count the execution against quota after success.
+      let meterServerKey = false
 
       // First check if user has API key in aiFeatures.llmProviders (Map-based system)
       // Use Map.get() for Mongoose Map types, fallback to bracket notation for plain objects
@@ -500,7 +505,11 @@ export class CompilationService {
         }
       }
 
-      // Fall back to environment variables if no provider config found
+      // Fall back to environment variables if no provider config found. This is
+      // OUR server key — gate it exactly like the chat gateway: free-tier model
+      // allowlist + execution quota (own-key users never reach here; they matched
+      // above). Without this, /execute and /execute-prompt were an unmetered,
+      // unrestricted bypass of the gateway's 402/403 boundary.
       if (!providerConfig) {
         console.log(`Using environment variable for provider '${providerName}'`)
         const envKey = `${providerName.toUpperCase()}_API_KEY`
@@ -508,6 +517,17 @@ export class CompilationService {
 
         if (!apiKey) {
           throw new Error(`No API key found for provider '${providerName}'. Please configure ${envKey} in environment or add provider in settings.`)
+        }
+
+        if (user) {
+          const gate = await resolveServerKeyAccess({ user, provider: providerName, model })
+          if (!gate.allowed) {
+            const err = new Error(gate.message)
+            err.statusCode = gate.status // errorHandler maps statusCode -> HTTP status
+            err.code = gate.code
+            throw err
+          }
+          meterServerKey = gate.meter
         }
 
         // Create a mock provider config from environment
@@ -971,6 +991,13 @@ export class CompilationService {
         }
       }
 
+      // Count one execution against quota only when OUR server key ran and the
+      // call succeeded. Best-effort: a save failure must not break the response.
+      if (meterServerKey && parsed.success) {
+        try { await incrementAiUsage(user, 'execute') }
+        catch (e) { console.error('[CompilationService] usage increment failed:', e.message) }
+      }
+
       return {
         success: parsed.success,
         response: parsed.response || parsed.output,
@@ -1008,6 +1035,9 @@ export class CompilationService {
     } catch (error) {
       console.error('Execution error:', error)
       console.error('Error stack:', error.stack)
+      // Intentional HTTP errors (the free-tier gate's 402/403) must propagate so the
+      // route surfaces the real status + code, not a 200 { success:false } envelope.
+      if (error.statusCode) throw error
       return {
         success: false,
         error: error.message,

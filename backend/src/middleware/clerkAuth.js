@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken'
 import jwksClient from 'jwks-rsa'
 import { User } from '../models/User.js'
+import { normalizePlan, PLANS } from '../config/plans.js'
 
 const REGISTRY_URL = process.env.PROMPD_REGISTRY_URL || 'https://registry.prompdhub.ai'
 
@@ -138,7 +139,9 @@ export const clerkAuth = async (req, res, next) => {
         })
         if (planResponse.ok) {
           const planData = await planResponse.json()
-          registryPlan = planData.currentPlan?.name || 'free'
+          // The registry returns a plan ID (free_plan / team_plan / ...); normalize
+          // it at this boundary so no raw id ever reaches the quota layer.
+          registryPlan = normalizePlan(planData.currentPlan?.name)
         }
       } catch (error) {
         console.warn('Failed to fetch user from registry:', error.message)
@@ -150,16 +153,15 @@ export const clerkAuth = async (req, res, next) => {
       const email = registryUser?.email || decoded.email || decoded.primary_email_address || decoded.email_addresses?.[0] || `${clerkUserId}@clerk.user`
       const plan = registryPlan
 
-      // Set features based on plan
+      // Set features based on plan. Keyed by CANONICAL name only -- `plan` came
+      // through normalizePlan above, so the old duplicate `*_plan` keys (which
+      // existed to paper over the registry-id mismatch) are no longer needed.
       const features = {
-        free: { maxProjects: 10, maxCollaborators: 0, privatePackages: false, prioritySupport: false },
-        free_plan: { maxProjects: 10, maxCollaborators: 0, privatePackages: false, prioritySupport: false },
-        pro: { maxProjects: 100, maxCollaborators: 5, privatePackages: true, prioritySupport: false },
-        pro_plan: { maxProjects: 100, maxCollaborators: 5, privatePackages: true, prioritySupport: false },
-        team: { maxProjects: 500, maxCollaborators: 20, privatePackages: true, prioritySupport: true },
-        team_plan: { maxProjects: 500, maxCollaborators: 20, privatePackages: true, prioritySupport: true },
-        enterprise: { maxProjects: 999999, maxCollaborators: 999999, privatePackages: true, prioritySupport: true },
-        admin: { maxProjects: 999999, maxCollaborators: 999999, privatePackages: true, prioritySupport: true }
+        [PLANS.FREE]: { maxProjects: 10, maxCollaborators: 0, privatePackages: false, prioritySupport: false },
+        [PLANS.PRO]: { maxProjects: 100, maxCollaborators: 5, privatePackages: true, prioritySupport: false },
+        [PLANS.TEAM]: { maxProjects: 500, maxCollaborators: 20, privatePackages: true, prioritySupport: true },
+        [PLANS.ENTERPRISE]: { maxProjects: 999999, maxCollaborators: 999999, privatePackages: true, prioritySupport: true },
+        [PLANS.ADMIN]: { maxProjects: 999999, maxCollaborators: 999999, privatePackages: true, prioritySupport: true }
       }
 
       // Use findOneAndUpdate with upsert to atomically create user (prevents race condition)

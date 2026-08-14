@@ -8,6 +8,7 @@ import { validate } from '../middleware/validation.js'
 import { rateLimit } from '../middleware/rateLimit.js'
 import { encryptApiKey } from '../services/EncryptionService.js'
 import * as mcp from '../services/McpProxyService.js'
+import { assertPublicHttpUrl } from '../utils/ssrfGuard.js'
 
 const router = express.Router()
 const mcpRateLimit = rateLimit({ windowMs: 60 * 1000, max: 120, message: 'Too many MCP requests, slow down.' })
@@ -22,7 +23,12 @@ const invalidateTools = (req) => toolsCache.delete(cacheKey(req))
 
 const addSchema = Joi.object({
   label: Joi.string().min(1).max(80).required(),
-  url: Joi.string().uri({ scheme: ['http', 'https'] }).required(),
+  // SSRF guard: the backend fetches this URL server-side, so reject loopback,
+  // private, link-local (cloud metadata), and internal-hostname targets. Joi's
+  // scheme check alone would admit http://169.254.169.254 / http://localhost.
+  url: Joi.string().uri({ scheme: ['http', 'https'] }).required().custom((value, helpers) => {
+    try { return assertPublicHttpUrl(value) } catch (e) { return helpers.message(e.message) }
+  }),
   apiKey: Joi.string().max(400).allow('').optional(),
 })
 const callSchema = Joi.object({
@@ -70,22 +76,28 @@ router.delete('/servers/:id', clerkAuth, async (req, res, next) => {
 /** GET /api/mcp/tools — aggregate tools/list across the user's servers. Per-server
  * failures are reported inline (as {error}) so one bad server can't break the set. */
 router.get('/tools', mcpRateLimit, clerkAuth, async (req, res) => {
+  const key = cacheKey(req)
   const fresh = req.query.fresh === '1' || req.query.fresh === 'true'
-  const cached = toolsCache.get(cacheKey(req))
+  const cached = toolsCache.get(key)
   if (!fresh && cached && Date.now() - cached.ts < TOOLS_TTL_MS) {
     return res.json({ success: true, tools: cached.tools, cached: true })
   }
+  if (cached) toolsCache.delete(key) // evict the expired entry rather than let it linger
   const servers = req.user.listMcpServers()
-  const tools = []
-  for (const s of servers) {
+  // Aggregate servers concurrently — total latency is max(server), not sum, and
+  // one slow/unreachable server (each fetch is timeout-bounded) can't serialize
+  // the rest. Per-server failures are reported inline so one bad server can't
+  // break the whole set.
+  const results = await Promise.all(servers.map(async (s) => {
     try {
       const list = await mcp.listTools(s)
-      for (const t of list) tools.push({ serverId: s.id, serverLabel: s.label, ...t })
+      return list.map((t) => ({ serverId: s.id, serverLabel: s.label, ...t }))
     } catch (error) {
-      tools.push({ serverId: s.id, serverLabel: s.label, error: String(error?.message || error) })
+      return [{ serverId: s.id, serverLabel: s.label, error: String(error?.message || error) }]
     }
-  }
-  toolsCache.set(cacheKey(req), { ts: Date.now(), tools })
+  }))
+  const tools = results.flat()
+  toolsCache.set(key, { ts: Date.now(), tools })
   res.json({ success: true, tools })
 })
 
