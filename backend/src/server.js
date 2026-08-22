@@ -29,7 +29,6 @@ import packageRoutes from './routes/packages.js'
 import compilationRoutes from './routes/compilation.js'
 import fileRoutes from './routes/files.js'
 import registryRoutes from './routes/registry.js'
-import providerRoutes from './routes/providers.js'
 import llmProvidersRoutes from './routes/llmProviders.js'
 import chatCompletionsRoutes from './routes/chatCompletions.js'
 import imagesRoutes from './routes/images.js'
@@ -122,7 +121,17 @@ app.use('/api/packages', packageRoutes)
 app.use('/api/compilation', compilationRoutes)
 app.use('/api/files', fileRoutes)
 app.use('/api/registry', registryRoutes)
-app.use('/api/v1/providers', providerRoutes)
+/* /api/v1/providers is GONE. It was a second, authenticated way to store the
+ * same thing /api/llm-providers holds — a user's own model credentials — and no
+ * client ever called it. Worse, its model encrypted with `createCipher`, which
+ * ignores the IV it was given (so every record shared one AES-GCM nonce) under a
+ * key that fell back to `crypto.randomBytes(32)` per process, because
+ * PROVIDER_ENCRYPTION_KEY is set in no deployment config. Anything written
+ * through it became unreadable at the next restart.
+ *
+ * The Provider MODEL stays: CompilationService still reads that collection as an
+ * "old system" fallback. Removing the route closes the write path without
+ * touching that read. */
 app.use('/api/v1/chat/completions', chatCompletionsRoutes)
 app.use('/api/v1/images/generations', imagesRoutes)
 app.use('/api/v1/entitlements', entitlementsRoutes)
