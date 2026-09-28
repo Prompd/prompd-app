@@ -399,31 +399,29 @@ export class NotFoundError extends Error {
 }
 
 /**
- * Handle unhandled promise rejections
+ * Handle unhandled promise rejections: log and keep serving.
+ *
+ * This used to process.exit(1). The service runs as a single Cloud Run
+ * instance, so one request that left a rejection unhandled took the API down
+ * for everyone until the restart. A rejected promise does not corrupt process
+ * state the way a synchronous throw can, so it is logged (redacted) and the
+ * process continues.
  */
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason)
-  
-  // Log the error
-  logError(new Error(`Unhandled Rejection: ${reason}`), {
-    method: 'SYSTEM',
-    url: 'N/A',
-    get: () => null,
-    ip: 'system',
-    body: {},
-    query: {},
-    params: {}
-  })
-  
-  // Exit gracefully
-  process.exit(1)
-})
+export function onUnhandledRejection(reason) {
+  const text = reason instanceof Error ? (reason.stack || reason.message) : String(reason)
+  console.error('Unhandled Rejection (continuing):', redactSecrets(text))
+}
+
+if (!process.listeners('unhandledRejection').includes(onUnhandledRejection)) {
+  process.on('unhandledRejection', onUnhandledRejection)
+}
 
 /**
- * Handle uncaught exceptions
+ * Handle uncaught exceptions. These still exit: after a synchronous throw
+ * escapes to the top, process state is undefined, and Cloud Run restarts us.
  */
 process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err)
+  console.error('Uncaught Exception:', redactSecrets(String(err?.stack || err)))
   
   // Log the error
   logError(err, {
