@@ -6,8 +6,12 @@
  */
 
 import { Router } from 'express'
+import { auth } from '../middleware/auth.js'
 
 const router = Router()
+
+/** The client batches 50 at a time; refuse anything far beyond that. */
+const MAX_SYNC_RECORDS = 100
 
 /**
  * POST /api/usage/sync
@@ -16,14 +20,20 @@ const router = Router()
  * Body: { executions: ExecutionRecord[] }
  * Response: { success: boolean, synced: number, errors?: string[] }
  */
-router.post('/sync', async (req, res) => {
+router.post('/sync', auth, async (req, res) => {
   try {
-    const { executions = [] } = req.body
+    const { executions = [] } = req.body || {}
 
     if (!Array.isArray(executions)) {
       return res.status(400).json({
         success: false,
         error: 'executions must be an array'
+      })
+    }
+    if (executions.length > MAX_SYNC_RECORDS) {
+      return res.status(413).json({
+        success: false,
+        error: `too many records (max ${MAX_SYNC_RECORDS} per sync)`
       })
     }
 
@@ -85,7 +95,7 @@ router.post('/sync', async (req, res) => {
  * Query: startDate, endDate (optional, ISO strings)
  * Response: UsageSummary
  */
-router.get('/summary', async (req, res) => {
+router.get('/summary', auth, async (req, res) => {
   try {
     // TODO: Implement when we have authentication and Usage model
     // For now, return empty summary
@@ -116,7 +126,7 @@ router.get('/summary', async (req, res) => {
  * GET /api/usage/stats
  * Get quick stats (for dashboard)
  */
-router.get('/stats', async (req, res) => {
+router.get('/stats', auth, async (req, res) => {
   try {
     // TODO: Implement when we have Usage model
 

@@ -19,6 +19,7 @@ import { clerkAuth } from '../middleware/clerkAuth.js'
 import { reserveAiExecution, refundAiExecution } from '../middleware/aiReserve.js'
 import { getOpenAIKey } from '../services/userOpenAiKey.js'
 import { ALLOWED_GATEWAY_MODELS } from '../config/freeTier.js'
+import { redactSecrets } from '../utils/redactSecrets.js'
 
 const router = express.Router()
 
@@ -152,7 +153,7 @@ router.post('/', clerkAuth, async (req, res) => {
     upstream = await forwardOnce()
   } catch (error) {
     await refund() // never reached OpenAI — don't charge
-    return res.status(502).json({ error: { message: `Upstream request failed: ${error.message}`, type: 'upstream_error' } })
+    return res.status(502).json({ error: { message: `Upstream request failed: ${redactSecrets(error.message)}`, type: 'upstream_error' } })
   }
 
   // Reasoning-model + tools retry: on the rejection ABOVE (pre-stream, so nothing is
@@ -169,14 +170,16 @@ router.post('/', clerkAuth, async (req, res) => {
         errorPreread = upstream.ok ? null : await upstream.text().catch(() => '')
       } catch (error) {
         await refund()
-        return res.status(502).json({ error: { message: `Upstream request failed: ${error.message}`, type: 'upstream_error' } })
+        return res.status(502).json({ error: { message: `Upstream request failed: ${redactSecrets(error.message)}`, type: 'upstream_error' } })
       }
     }
   }
 
   // Non-streaming: forward status + JSON as-is. Refund on a non-2xx (no usable output).
   if (!wantStream) {
-    const text = upstream.ok ? await upstream.text() : (errorPreread ?? '')
+    // A relayed ERROR body can quote the key back (see utils/redactSecrets).
+    // Success bodies (model output) are relayed untouched.
+    const text = upstream.ok ? await upstream.text() : redactSecrets(errorPreread ?? '')
     if (!upstream.ok) await refund()
     res.status(upstream.status)
     res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
@@ -186,7 +189,7 @@ router.post('/', clerkAuth, async (req, res) => {
   // Streaming: pipe OpenAI's SSE response straight through.
   if (!upstream.ok || !upstream.body) {
     await refund() // upstream rejected before streaming — no output
-    const text = errorPreread ?? (await upstream.text().catch(() => ''))
+    const text = redactSecrets(errorPreread ?? (await upstream.text().catch(() => '')))
     res.status(upstream.status)
     res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
     return res.send(text)

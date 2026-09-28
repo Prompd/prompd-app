@@ -3,7 +3,7 @@
  * bearer key. Stateless: each call does the initialize handshake, which is fine
  * for a proxy. Handles both JSON and SSE (event:/data:) responses. */
 import { decryptApiKey } from './EncryptionService.js'
-import { assertPublicHttpUrl } from '../utils/ssrfGuard.js'
+import { safeFetch } from '../utils/ssrfGuard.js'
 
 // Per-request upstream timeout — a user's MCP server is untrusted and may hang;
 // without this one slow/unreachable server holds the aggregation open until the
@@ -32,10 +32,10 @@ function parseBody(text) {
 }
 
 async function rpc(url, body, headers) {
-  // Re-validate at fetch time (defense in depth): the route guards on
-  // registration, but servers persisted before the guard existed reach here too.
-  assertPublicHttpUrl(url)
-  const res = await fetch(url, {
+  // Re-validate at fetch time (defense in depth): the route guards the URL's
+  // shape on registration; safeFetch resolves the host, refuses private
+  // addresses, and re-checks every redirect hop.
+  const res = await safeFetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...headers },
     body: JSON.stringify(body),
@@ -61,8 +61,7 @@ async function handshake(server) {
   if (init.sessionId) headers['Mcp-Session-Id'] = init.sessionId
   // Best-effort initialized notification (some servers require it before tools/*).
   try {
-    assertPublicHttpUrl(server.url)
-    await fetch(server.url, {
+    await safeFetch(server.url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...headers },
       body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),

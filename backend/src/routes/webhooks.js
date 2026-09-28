@@ -5,12 +5,16 @@
  * Security is enforced via HMAC signature validation using workflow-specific secrets.
  *
  * Endpoints:
- *   POST /api/webhooks/:workflowId - Trigger workflow execution
+ *   POST /api/webhooks/:workflowId - Trigger workflow execution (HMAC-signed, no user auth)
+ *
+ * Every other route needs a verified user, and a webhook config belongs to the
+ * user who created it: another user gets 404 (not 403, so ids do not leak).
  *   GET  /api/webhooks/:workflowId/status - Check webhook configuration status
  */
 
 import express from 'express'
 import crypto from 'crypto'
+import { auth } from '../middleware/auth.js'
 
 const router = express.Router()
 
@@ -52,6 +56,13 @@ function verifySignature(payload, signature, secret) {
   }
 
   return crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
+}
+
+/** The config for workflowId when it belongs to this user, else null. */
+function ownedConfig(workflowId, userId) {
+  const config = webhookConfigs.get(workflowId)
+  if (!config || !userId || config.ownerId !== userId) return null
+  return config
 }
 
 /**
@@ -163,11 +174,11 @@ router.post('/:workflowId', express.raw({ type: 'application/json' }), async (re
  *   200: { enabled, hasSecret, webhookUrl }
  *   404: Workflow not found
  */
-router.get('/:workflowId/status', async (req, res) => {
+router.get('/:workflowId/status', auth, async (req, res) => {
   const { workflowId } = req.params
 
   try {
-    const config = webhookConfigs.get(workflowId)
+    const config = ownedConfig(workflowId, req.auth?.userId)
 
     if (!config) {
       return res.status(404).json({
@@ -205,17 +216,27 @@ router.get('/:workflowId/status', async (req, res) => {
  * Response:
  *   200: { workflowId, enabled, secret (only on create/regenerate), webhookUrl }
  */
-router.put('/:workflowId', async (req, res) => {
+router.put('/:workflowId', auth, async (req, res) => {
   const { workflowId } = req.params
-  const { enabled = true, regenerateSecret = false } = req.body
+  const { enabled = true, regenerateSecret = false } = req.body || {}
+  const userId = req.auth?.userId
 
   try {
     let config = webhookConfigs.get(workflowId)
+    // A config someone else owns is invisible: never overwrite it or hand out
+    // (or regenerate) its secret.
+    if (config && config.ownerId !== userId) {
+      return res.status(404).json({
+        error: 'Not found',
+        message: `No webhook configuration found for workflow '${workflowId}'`
+      })
+    }
     const isNew = !config
 
     if (isNew) {
       config = {
         workflowId,
+        ownerId: userId,
         enabled,
         secret: generateWebhookSecret(),
         createdAt: new Date().toISOString()
@@ -264,11 +285,11 @@ router.put('/:workflowId', async (req, res) => {
  *   200: { message }
  *   404: Webhook not found
  */
-router.delete('/:workflowId', async (req, res) => {
+router.delete('/:workflowId', auth, async (req, res) => {
   const { workflowId } = req.params
 
   try {
-    if (!webhookConfigs.has(workflowId)) {
+    if (!ownedConfig(workflowId, req.auth?.userId)) {
       return res.status(404).json({
         error: 'Not found',
         message: `No webhook configuration found for workflow '${workflowId}'`
@@ -298,13 +319,13 @@ router.delete('/:workflowId', async (req, res) => {
  *   200: { executionId, status, result?, error? }
  *   404: Execution not found
  */
-router.get('/:workflowId/executions/:executionId', async (req, res) => {
+router.get('/:workflowId/executions/:executionId', auth, async (req, res) => {
   const { workflowId, executionId } = req.params
 
   try {
     const execution = executionResults.get(executionId)
 
-    if (!execution || execution.workflowId !== workflowId) {
+    if (!execution || execution.workflowId !== workflowId || !ownedConfig(workflowId, req.auth?.userId)) {
       return res.status(404).json({
         error: 'Not found',
         message: `Execution '${executionId}' not found for workflow '${workflowId}'`

@@ -1,4 +1,6 @@
 import path from 'path'
+import { assertPublicHttpUrlResolved, safeFetch } from '../utils/ssrfGuard.js'
+import { redactSecrets } from '../utils/redactSecrets.js'
 import fs from 'fs/promises'
 import crypto from 'crypto'
 import { PrompdCompiler, MemoryFileSystem } from '@prompd/cli'
@@ -418,7 +420,6 @@ export class CompilationService {
     try {
       console.log('[CompilationService] === Execute called ===')
       console.log('[CompilationService] Prompt length:', prompt?.length)
-      console.log('[CompilationService] Prompt preview (first 500 chars):', prompt?.substring(0, 500))
       console.log('[CompilationService] Source file path:', sourceFilePath)
       console.log('[CompilationService] Files received:', files ? Object.keys(files) : 'none')
       // Get user's provider configuration (if userId provided)
@@ -551,7 +552,6 @@ export class CompilationService {
       const inheritsFileMatch = prompt.match(/^---\n[\s\S]*?inherits:\s*["']?(\.\/[\w\/.-]+\.prmd)["']?[\s\S]*?\n---/m)
 
       console.log('[CompilationService] Checking for inherits field...')
-      console.log('[CompilationService] Prompt first 600 chars:', prompt.substring(0, 600))
       console.log('[CompilationService] Inherits package match:', inheritsPackageMatch ? inheritsPackageMatch[1] : 'not found')
       console.log('[CompilationService] Inherits file match:', inheritsFileMatch ? inheritsFileMatch[1] : 'not found')
       console.log('[CompilationService] packageRef parameter:', packageRef)
@@ -683,7 +683,6 @@ export class CompilationService {
         console.log('[CompilationService] Attempting compilation with @prompd/cli')
         console.log('[CompilationService] Input prompt length:', prompt.length)
         console.log('[CompilationService] mainFilePath:', mainFilePath)
-        console.log('[CompilationService] Input prompt preview:', prompt.substring(0, 400))
         console.log('[CompilationService] MemoryFS files:', Array.from(memFS.getAllFiles().keys()))
 
         // Log file contents for debugging
@@ -692,7 +691,6 @@ export class CompilationService {
         console.log('[CompilationService] Total files in MemoryFS:', allFiles.length)
         for (const [path, content] of allFiles) {
           console.log(`[CompilationService]   ${path}: ${content.length} bytes`)
-          console.log(`[CompilationService]     Preview: ${content.substring(0, 150).replace(/\n/g, '\\n')}`)
         }
         console.log('[CompilationService] Compiling file:', mainFilePath)
 
@@ -741,9 +739,7 @@ export class CompilationService {
           // Compiler returned raw string (markdown output)
           compiledPrompt = compileResult
           console.log(`[CompilationService] ✓ Compiler returned string output (${compiledPrompt.length} chars)`)
-          if (compiledPrompt.length > 0) {
-            console.log('[CompilationService] Compiled prompt preview:', compiledPrompt.substring(0, 300))
-          } else {
+          if (compiledPrompt.length === 0) {
             console.warn('[CompilationService] ⚠ Warning: Compilation returned empty string')
             console.warn('[CompilationService] This usually means the .prmd file has no body content or inline sections')
           }
@@ -751,7 +747,6 @@ export class CompilationService {
           // Compiler returned object with success and output
           compiledPrompt = compileResult.output
           console.log(`[CompilationService] ✓ Compiler returned object with output (${compiledPrompt.length} chars)`)
-          console.log('[CompilationService] Compiled prompt preview:', compiledPrompt.substring(0, 300))
         } else if (compileResult && typeof compileResult === 'object') {
           // Compiler returned object but without output - check for errors
           console.error('[CompilationService] ✗ Compiler returned object without output')
@@ -862,11 +857,9 @@ export class CompilationService {
             responseText = generatedResponse.candidates[0].content.parts[0].text
           } else {
             console.log('[CompilationService] WARNING: Could not extract text!')
-            console.log('[CompilationService] candidates:', JSON.stringify(generatedResponse?.candidates, null, 2))
           }
 
           console.log('[CompilationService] Google responseText length:', responseText?.length)
-          console.log('[CompilationService] Google responseText (first 500 chars):', responseText?.substring(0, 500))
 
           const usageMetadata = generatedResponse?.usageMetadata || {}
           console.log('[CompilationService] Google usageMetadata:', JSON.stringify(usageMetadata))
@@ -936,7 +929,15 @@ export class CompilationService {
           // Ollama API (OpenAI-compatible, local)
           console.log('[CompilationService] >>> OLLAMA BLOCK ENTERED <<<')
           const OpenAI = (await import('openai')).default
-          const ollama = new OpenAI({ apiKey: 'ollama', baseURL: providerConfig.baseUrl || 'http://localhost:11434/v1' })
+          // The base URL is user-supplied and fetched from OUR network: it must
+          // resolve to a public address, and every redirect hop is re-checked
+          // (safeFetch). There is no localhost default -- on the server that
+          // would be this container, not the user's machine.
+          if (!providerConfig.baseUrl) {
+            throw new Error('Ollama requires a public base URL in provider settings (a local Ollama cannot be reached from the server)')
+          }
+          await assertPublicHttpUrlResolved(providerConfig.baseUrl)
+          const ollama = new OpenAI({ apiKey: 'ollama', baseURL: providerConfig.baseUrl, fetch: (url, init) => safeFetch(url, init) })
           const response = await ollama.chat.completions.create({ model, messages: [{ role: 'user', content: compiledPrompt || prompt }] })
           result = { exitCode: 0, stdout: JSON.stringify({ success: true, response: response.choices[0].message.content, usage: { promptTokens: response.usage?.prompt_tokens || 0, completionTokens: response.usage?.completion_tokens || 0, totalTokens: response.usage?.total_tokens || 0 } }) }
           console.log('[CompilationService] >>> OLLAMA BLOCK COMPLETE <<<')
@@ -944,11 +945,12 @@ export class CompilationService {
           throw new Error(`Unsupported provider: ${providerName}. Supported providers: 'openai', 'anthropic', 'google', 'groq', 'mistral', 'cohere', 'together', 'perplexity', 'deepseek', 'ollama'.`)
         }
       } catch (providerError) {
-        console.error('[CompilationService] Provider API error:', providerError.message)
+        console.error('[CompilationService] Provider API error:', redactSecrets(String(providerError?.message ?? '')))
         console.error('[CompilationService] Provider error details:', providerError.errorDetails || 'none')
 
         // Build a more descriptive error message for rate limits
-        let errorMessage = providerError.message
+        // Provider SDK errors carry the upstream body, which can quote the key.
+        let errorMessage = redactSecrets(String(providerError?.message ?? 'Provider error'))
         if (providerError.status === 429) {
           const retryInfo = providerError.errorDetails?.find(d => d['@type']?.includes('RetryInfo'))
           const retryDelay = retryInfo?.retryDelay || '30s'
@@ -1040,7 +1042,7 @@ export class CompilationService {
       if (error.statusCode) throw error
       return {
         success: false,
-        error: error.message,
+        error: redactSecrets(String(error?.message ?? 'Execution failed')),
         response: null,
         compiledPrompt: null,  // Include compiledPrompt in error response for consistency
         usage: {

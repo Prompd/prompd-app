@@ -1,7 +1,8 @@
 import { describe, it, expect, jest, afterEach } from '@jest/globals'
 import { listTools, callTool } from './McpProxyService.js'
+import { setLookupForTests } from '../utils/ssrfGuard.js'
 
-afterEach(() => { jest.restoreAllMocks() })
+afterEach(() => { jest.restoreAllMocks(); setLookupForTests(null) })
 
 describe('McpProxyService SSRF re-validation at fetch time', () => {
   it('listTools refuses a blocked host WITHOUT issuing a fetch', async () => {
@@ -24,7 +25,16 @@ describe('McpProxyService SSRF re-validation at fetch time', () => {
       new Response(JSON.stringify({ jsonrpc: '2.0', id: 2, result: { tools: [{ name: 'search' }] } }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }),
     )
+    setLookupForTests(async () => [{ address: '93.184.216.34', family: 4 }])
     const tools = await listTools({ id: 'x', url: 'https://mcp.acme.io/rpc' })
     expect(tools.map((t) => t.name)).toContain('search')
+  })
+
+  it('refuses a public name that resolves to a private address WITHOUT issuing a fetch', async () => {
+    const spy = jest.spyOn(globalThis, 'fetch')
+    setLookupForTests(async () => [{ address: '10.0.0.9', family: 4 }])
+    await expect(listTools({ id: 'x', url: 'https://mcp.rebind.example/rpc' }))
+      .rejects.toThrow(/not allowed/i)
+    expect(spy).not.toHaveBeenCalled()
   })
 })

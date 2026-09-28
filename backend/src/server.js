@@ -49,11 +49,13 @@ import mcpRoutes from './routes/mcp.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import { pricingService } from './services/PricingService.js'
 import { requestLogger } from './middleware/logger.js'
+import { installBodyParsers } from './middleware/bodyParsers.js'
+import { warnIfAuthorizedPartiesMissing } from './services/strictClerk.js'
 
 // Debug environment variables
 console.log('Environment variables loaded:')
 console.log('NODE_ENV:', process.env.NODE_ENV)
-console.log('MONGODB_URI:', process.env.MONGODB_URI ? process.env.MONGODB_URI.substring(0, 20) + '...' : 'NOT SET')
+console.log('MONGODB_URI:', process.env.MONGODB_URI ? 'set' : 'NOT SET')
 
 const app = express()
 
@@ -111,8 +113,9 @@ app.use(compression({
   }
 }))
 app.use(limiter)
-app.use(express.json({ limit: '50mb' }))
-app.use(express.urlencoded({ extended: true, limit: '50mb' }))
+// 50mb for authenticated routes; small ceilings on unauthenticated ones
+// (middleware/bodyParsers.js).
+installBodyParsers(app)
 app.use(requestLogger)
 
 // Routes
@@ -169,6 +172,7 @@ setupSocketHandlers(io)
 const PORT = process.env.PORT || 3010
 
 async function startServer() {
+  warnIfAuthorizedPartiesMissing()
   try {
     await connectDB()
     console.log('[ok] Connected to MongoDB')

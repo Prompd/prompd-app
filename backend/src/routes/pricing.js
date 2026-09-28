@@ -1,6 +1,6 @@
 import express from 'express'
 import { pricingService } from '../services/PricingService.js'
-import { requireAuth } from '../middleware/auth.js'
+import { requireAuth, requireAdmin } from '../middleware/auth.js'
 
 const router = express.Router()
 
@@ -234,9 +234,9 @@ router.post('/calculate', requireAuth, async (req, res) => {
  * - Fetches current valid models from provider API
  * - Expires any DB models NOT in that list (marks as deprecated)
  * - Adds any new models from API that aren't in DB yet
- * Requires authentication
+ * Admin only (ADMIN_USER_IDS): rewrites the shared catalog.
  */
-router.post('/reseed/:provider', requireAuth, async (req, res) => {
+router.post('/reseed/:provider', requireAdmin, async (req, res) => {
   try {
     const { provider } = req.params
     const providerLower = provider.toLowerCase()
@@ -341,9 +341,9 @@ router.post('/reseed/:provider', requireAuth, async (req, res) => {
  * - Fetches current valid models from each provider API
  * - Expires any DB models NOT in valid list (marks as deprecated)
  * - Adds any new models from API that aren't in DB yet
- * Requires authentication
+ * Admin only (ADMIN_USER_IDS): rewrites the shared catalog.
  */
-router.post('/reseed-all', requireAuth, async (req, res) => {
+router.post('/reseed-all', requireAdmin, async (req, res) => {
   // Throttle: return the recent result instead of re-hitting every provider API.
   if (reseedInProgress) {
     // data is null until the first run in this process completes — return an empty

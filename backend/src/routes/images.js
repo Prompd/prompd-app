@@ -16,6 +16,7 @@
 import express from 'express'
 import { clerkAuth } from '../middleware/clerkAuth.js'
 import { getOpenAIKey } from '../services/userOpenAiKey.js'
+import { redactSecrets } from '../utils/redactSecrets.js'
 
 const router = express.Router()
 
@@ -79,10 +80,11 @@ router.post('/', clerkAuth, async (req, res) => {
       body: JSON.stringify(upstreamBody),
     })
   } catch (error) {
-    return res.status(502).json({ error: { message: `Upstream request failed: ${error.message}`, type: 'upstream_error' } })
+    return res.status(502).json({ error: { message: `Upstream request failed: ${redactSecrets(error.message)}`, type: 'upstream_error' } })
   }
 
-  const text = await upstream.text()
+  // A relayed ERROR body can quote the key back (see utils/redactSecrets).
+  const text = upstream.ok ? await upstream.text() : redactSecrets(await upstream.text())
   res.status(upstream.status)
   res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
   return res.send(text)

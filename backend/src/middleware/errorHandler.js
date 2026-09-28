@@ -1,3 +1,6 @@
+import { sanitizeLogData as sanitizeForLogging, redactUrl } from '../utils/logSanitize.js'
+import { redactSecrets } from '../utils/redactSecrets.js'
+
 /**
  * Global error handling middleware
  */
@@ -8,9 +11,9 @@ export const errorHandler = (err, req, res, next) => {
   // Don't log errors in test environment
   if (process.env.NODE_ENV !== 'test') {
     console.error('Error occurred:', {
-      message: err.message,
-      stack: err.stack,
-      url: req.url,
+      message: redactSecrets(String(err?.message ?? '')),
+      stack: redactSecrets(String(err?.stack ?? '')),
+      url: redactUrl(req.url),
       method: req.method,
       userId: req.user?.userId,
       timestamp: new Date().toISOString()
@@ -207,17 +210,17 @@ function logError(err, req) {
     timestamp: new Date().toISOString(),
     level: getErrorLevel(err),
     category: getErrorCategory(err),
-    message: err.message,
-    stack: err.stack,
+    message: redactSecrets(String(err?.message ?? '')),
+    stack: redactSecrets(String(err?.stack ?? '')),
     request: {
       method: req.method,
-      url: req.url,
+      url: redactUrl(req.url),
       userAgent: req.get('User-Agent'),
       ip: req.ip,
       userId: req.user?.userId,
       body: sanitizeLogData(req.body),
       query: sanitizeLogData(req.query),
-      params: req.params
+      params: sanitizeLogData(req.params)
     },
     error: {
       name: err.name,
@@ -312,39 +315,11 @@ function getErrorCategory(err) {
 }
 
 /**
- * Sanitize sensitive data from logs
+ * Sanitize sensitive data from logs: credential names redacted, prompt/message
+ * content omitted, remaining strings redacted by value (utils/logSanitize.js).
  */
 function sanitizeLogData(data) {
-  if (!data || typeof data !== 'object') {
-    return data
-  }
-
-  const sensitiveFields = [
-    'password',
-    'token',
-    'apiKey',
-    'secret',
-    'authorization',
-    'cookie',
-    'session'
-  ]
-
-  const sanitized = { ...data }
-
-  for (const field of sensitiveFields) {
-    if (field in sanitized) {
-      sanitized[field] = '[REDACTED]'
-    }
-  }
-
-  // Recursively sanitize nested objects
-  for (const key in sanitized) {
-    if (typeof sanitized[key] === 'object' && sanitized[key] !== null) {
-      sanitized[key] = sanitizeLogData(sanitized[key])
-    }
-  }
-
-  return sanitized
+  return sanitizeForLogging(data)
 }
 
 /**
@@ -424,31 +399,29 @@ export class NotFoundError extends Error {
 }
 
 /**
- * Handle unhandled promise rejections
+ * Handle unhandled promise rejections: log and keep serving.
+ *
+ * This used to process.exit(1). The service runs as a single Cloud Run
+ * instance, so one request that left a rejection unhandled took the API down
+ * for everyone until the restart. A rejected promise does not corrupt process
+ * state the way a synchronous throw can, so it is logged (redacted) and the
+ * process continues.
  */
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason)
-  
-  // Log the error
-  logError(new Error(`Unhandled Rejection: ${reason}`), {
-    method: 'SYSTEM',
-    url: 'N/A',
-    get: () => null,
-    ip: 'system',
-    body: {},
-    query: {},
-    params: {}
-  })
-  
-  // Exit gracefully
-  process.exit(1)
-})
+export function onUnhandledRejection(reason) {
+  const text = reason instanceof Error ? (reason.stack || reason.message) : String(reason)
+  console.error('Unhandled Rejection (continuing):', redactSecrets(text))
+}
+
+if (!process.listeners('unhandledRejection').includes(onUnhandledRejection)) {
+  process.on('unhandledRejection', onUnhandledRejection)
+}
 
 /**
- * Handle uncaught exceptions
+ * Handle uncaught exceptions. These still exit: after a synchronous throw
+ * escapes to the top, process state is undefined, and Cloud Run restarts us.
  */
 process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err)
+  console.error('Uncaught Exception:', redactSecrets(String(err?.stack || err)))
   
   // Log the error
   logError(err, {
