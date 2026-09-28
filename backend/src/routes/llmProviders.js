@@ -1,4 +1,5 @@
 import express from 'express'
+import { assertPublicHttpUrl } from '../utils/ssrfGuard.js'
 import { User } from '../models/User.js'
 import { encryptApiKey } from '../services/EncryptionService.js'
 import { clerkAuth } from '../middleware/clerkAuth.js'
@@ -6,6 +7,22 @@ import { ProviderPricingConfig } from '../models/ProviderPricingConfig.js'
 import { pricingService } from '../services/PricingService.js'
 
 const router = express.Router()
+
+/**
+ * Refuse a custom provider base URL the server must never fetch (private,
+ * loopback, link-local, metadata, internal names, non-http schemes). Shape
+ * only; the fetch path re-checks with DNS resolution and per-redirect checks.
+ * @returns {string|null} an error message, or null when acceptable
+ */
+export function customBaseUrlError(baseUrl) {
+  if (typeof baseUrl !== 'string' || !baseUrl) return 'customConfig.baseUrl is required'
+  try {
+    assertPublicHttpUrl(baseUrl)
+    return null
+  } catch (e) {
+    return `customConfig.baseUrl rejected: ${e.message}`
+  }
+}
 
 // Known provider key prefixes for validation
 const PROVIDER_KEY_PREFIXES = {
@@ -185,6 +202,10 @@ router.post('/:provider', clerkAuth, async (req, res) => {
         return res.status(400).json({
           error: 'Custom providers require displayName and baseUrl in customConfig'
         })
+      }
+      const baseUrlError = customBaseUrlError(customConfig.baseUrl)
+      if (baseUrlError) {
+        return res.status(400).json({ error: baseUrlError })
       }
     }
 

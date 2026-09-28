@@ -1,4 +1,5 @@
 import path from 'path'
+import { assertPublicHttpUrlResolved, safeFetch } from '../utils/ssrfGuard.js'
 import fs from 'fs/promises'
 import crypto from 'crypto'
 import { PrompdCompiler, MemoryFileSystem } from '@prompd/cli'
@@ -936,7 +937,15 @@ export class CompilationService {
           // Ollama API (OpenAI-compatible, local)
           console.log('[CompilationService] >>> OLLAMA BLOCK ENTERED <<<')
           const OpenAI = (await import('openai')).default
-          const ollama = new OpenAI({ apiKey: 'ollama', baseURL: providerConfig.baseUrl || 'http://localhost:11434/v1' })
+          // The base URL is user-supplied and fetched from OUR network: it must
+          // resolve to a public address, and every redirect hop is re-checked
+          // (safeFetch). There is no localhost default -- on the server that
+          // would be this container, not the user's machine.
+          if (!providerConfig.baseUrl) {
+            throw new Error('Ollama requires a public base URL in provider settings (a local Ollama cannot be reached from the server)')
+          }
+          await assertPublicHttpUrlResolved(providerConfig.baseUrl)
+          const ollama = new OpenAI({ apiKey: 'ollama', baseURL: providerConfig.baseUrl, fetch: (url, init) => safeFetch(url, init) })
           const response = await ollama.chat.completions.create({ model, messages: [{ role: 'user', content: compiledPrompt || prompt }] })
           result = { exitCode: 0, stdout: JSON.stringify({ success: true, response: response.choices[0].message.content, usage: { promptTokens: response.usage?.prompt_tokens || 0, completionTokens: response.usage?.completion_tokens || 0, totalTokens: response.usage?.total_tokens || 0 } }) }
           console.log('[CompilationService] >>> OLLAMA BLOCK COMPLETE <<<')
