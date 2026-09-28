@@ -49,6 +49,7 @@ import mcpRoutes from './routes/mcp.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import { pricingService } from './services/PricingService.js'
 import { requestLogger } from './middleware/logger.js'
+import { installBodyParsers } from './middleware/bodyParsers.js'
 import { warnIfAuthorizedPartiesMissing } from './services/strictClerk.js'
 
 // Debug environment variables
@@ -112,8 +113,9 @@ app.use(compression({
   }
 }))
 app.use(limiter)
-app.use(express.json({ limit: '50mb' }))
-app.use(express.urlencoded({ extended: true, limit: '50mb' }))
+// 50mb for authenticated routes; small ceilings on unauthenticated ones
+// (middleware/bodyParsers.js).
+installBodyParsers(app)
 app.use(requestLogger)
 
 // Routes
