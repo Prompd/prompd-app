@@ -420,7 +420,6 @@ export class CompilationService {
     try {
       console.log('[CompilationService] === Execute called ===')
       console.log('[CompilationService] Prompt length:', prompt?.length)
-      console.log('[CompilationService] Prompt preview (first 500 chars):', prompt?.substring(0, 500))
       console.log('[CompilationService] Source file path:', sourceFilePath)
       console.log('[CompilationService] Files received:', files ? Object.keys(files) : 'none')
       // Get user's provider configuration (if userId provided)
@@ -553,7 +552,6 @@ export class CompilationService {
       const inheritsFileMatch = prompt.match(/^---\n[\s\S]*?inherits:\s*["']?(\.\/[\w\/.-]+\.prmd)["']?[\s\S]*?\n---/m)
 
       console.log('[CompilationService] Checking for inherits field...')
-      console.log('[CompilationService] Prompt first 600 chars:', prompt.substring(0, 600))
       console.log('[CompilationService] Inherits package match:', inheritsPackageMatch ? inheritsPackageMatch[1] : 'not found')
       console.log('[CompilationService] Inherits file match:', inheritsFileMatch ? inheritsFileMatch[1] : 'not found')
       console.log('[CompilationService] packageRef parameter:', packageRef)
@@ -685,7 +683,6 @@ export class CompilationService {
         console.log('[CompilationService] Attempting compilation with @prompd/cli')
         console.log('[CompilationService] Input prompt length:', prompt.length)
         console.log('[CompilationService] mainFilePath:', mainFilePath)
-        console.log('[CompilationService] Input prompt preview:', prompt.substring(0, 400))
         console.log('[CompilationService] MemoryFS files:', Array.from(memFS.getAllFiles().keys()))
 
         // Log file contents for debugging
@@ -694,7 +691,6 @@ export class CompilationService {
         console.log('[CompilationService] Total files in MemoryFS:', allFiles.length)
         for (const [path, content] of allFiles) {
           console.log(`[CompilationService]   ${path}: ${content.length} bytes`)
-          console.log(`[CompilationService]     Preview: ${content.substring(0, 150).replace(/\n/g, '\\n')}`)
         }
         console.log('[CompilationService] Compiling file:', mainFilePath)
 
@@ -743,9 +739,7 @@ export class CompilationService {
           // Compiler returned raw string (markdown output)
           compiledPrompt = compileResult
           console.log(`[CompilationService] ✓ Compiler returned string output (${compiledPrompt.length} chars)`)
-          if (compiledPrompt.length > 0) {
-            console.log('[CompilationService] Compiled prompt preview:', compiledPrompt.substring(0, 300))
-          } else {
+          if (compiledPrompt.length === 0) {
             console.warn('[CompilationService] ⚠ Warning: Compilation returned empty string')
             console.warn('[CompilationService] This usually means the .prmd file has no body content or inline sections')
           }
@@ -753,7 +747,6 @@ export class CompilationService {
           // Compiler returned object with success and output
           compiledPrompt = compileResult.output
           console.log(`[CompilationService] ✓ Compiler returned object with output (${compiledPrompt.length} chars)`)
-          console.log('[CompilationService] Compiled prompt preview:', compiledPrompt.substring(0, 300))
         } else if (compileResult && typeof compileResult === 'object') {
           // Compiler returned object but without output - check for errors
           console.error('[CompilationService] ✗ Compiler returned object without output')
@@ -864,11 +857,9 @@ export class CompilationService {
             responseText = generatedResponse.candidates[0].content.parts[0].text
           } else {
             console.log('[CompilationService] WARNING: Could not extract text!')
-            console.log('[CompilationService] candidates:', JSON.stringify(generatedResponse?.candidates, null, 2))
           }
 
           console.log('[CompilationService] Google responseText length:', responseText?.length)
-          console.log('[CompilationService] Google responseText (first 500 chars):', responseText?.substring(0, 500))
 
           const usageMetadata = generatedResponse?.usageMetadata || {}
           console.log('[CompilationService] Google usageMetadata:', JSON.stringify(usageMetadata))

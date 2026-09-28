@@ -54,7 +54,7 @@ import { warnIfAuthorizedPartiesMissing } from './services/strictClerk.js'
 // Debug environment variables
 console.log('Environment variables loaded:')
 console.log('NODE_ENV:', process.env.NODE_ENV)
-console.log('MONGODB_URI:', process.env.MONGODB_URI ? process.env.MONGODB_URI.substring(0, 20) + '...' : 'NOT SET')
+console.log('MONGODB_URI:', process.env.MONGODB_URI ? 'set' : 'NOT SET')
 
 const app = express()
 

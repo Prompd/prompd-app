@@ -68,14 +68,8 @@ export const clerkAuth = async (req, res, next) => {
 
     if (!user) {
       // Debug: Log JWT claims to see what's available
-      console.log('[ClerkAuth] Creating new user. JWT claims:', JSON.stringify({
-        sub: decoded.sub,
-        email: decoded.email,
-        primary_email_address: decoded.primary_email_address,
-        email_addresses: decoded.email_addresses,
-        // Log all top-level keys to see what's available
-        keys: Object.keys(decoded)
-      }, null, 2))
+      // Claim NAMES only: values include email addresses.
+      console.log('[ClerkAuth] Creating new user. JWT claim keys:', Object.keys(decoded).join(','))
 
       // Fetch user info and plan from registry
       let registryUser = null

@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import { sanitizeLogData as sanitizeForLogging, redactUrl } from '../utils/logSanitize.js'
 
 /**
  * Request logging middleware
@@ -14,7 +15,7 @@ export const requestLogger = (req, res, next) => {
   
   // Log request start
   if (process.env.NODE_ENV !== 'test') {
-    console.log(`[${new Date().toISOString()}] ${req.requestId} ${req.method} ${req.url} - START`)
+    console.log(`[${new Date().toISOString()}] ${req.requestId} ${req.method} ${redactUrl(req.url)} - START`)
   }
   
   // Override res.end to capture response details
@@ -25,12 +26,12 @@ export const requestLogger = (req, res, next) => {
     
     // Log request completion
     if (process.env.NODE_ENV !== 'test') {
-      console.log(`[${new Date().toISOString()}] ${req.requestId} ${req.method} ${req.url} - ${res.statusCode} ${duration}ms ${contentLength}bytes`)
+      console.log(`[${new Date().toISOString()}] ${req.requestId} ${req.method} ${redactUrl(req.url)} - ${res.statusCode} ${duration}ms ${contentLength}bytes`)
     }
     
     // Log additional details for errors
     if (res.statusCode >= 400) {
-      console.error(`[ERROR] ${req.requestId} ${req.method} ${req.url} - ${res.statusCode}`, {
+      console.error(`[ERROR] ${req.requestId} ${req.method} ${redactUrl(req.url)} - ${res.statusCode}`, {
         userAgent: req.get('User-Agent'),
         ip: req.ip,
         userId: req.user?.userId,
@@ -57,7 +58,7 @@ export const performanceLogger = (req, res, next) => {
     
     // Log slow requests
     if (duration > 1000) { // Requests taking more than 1 second
-      console.warn(`[SLOW REQUEST] ${req.requestId} ${req.method} ${req.url} - ${duration.toFixed(2)}ms`)
+      console.warn(`[SLOW REQUEST] ${req.requestId} ${req.method} ${redactUrl(req.url)} - ${duration.toFixed(2)}ms`)
     }
     
     // Log performance metrics
@@ -103,7 +104,7 @@ export const securityLogger = (req, res, next) => {
   if (suspicious) {
     console.warn(`[SECURITY] ${req.requestId} Suspicious request detected`, {
       method: req.method,
-      url: req.url,
+      url: redactUrl(req.url),
       ip: req.ip,
       userAgent: req.get('User-Agent'),
       userId: req.user?.userId,
@@ -116,7 +117,7 @@ export const securityLogger = (req, res, next) => {
     if (res.statusCode === 401 || res.statusCode === 403) {
       console.warn(`[SECURITY] ${req.requestId} Authentication/Authorization failure`, {
         method: req.method,
-        url: req.url,
+        url: redactUrl(req.url),
         statusCode: res.statusCode,
         ip: req.ip,
         userAgent: req.get('User-Agent'),
@@ -218,7 +219,7 @@ export const auditLogger = (operation, req, details = {}) => {
     userEmail: req.user?.email,
     ip: req.ip,
     userAgent: req.get('User-Agent'),
-    url: req.url,
+    url: redactUrl(req.url),
     method: req.method,
     details: sanitizeLogData(details)
   }
@@ -240,14 +241,14 @@ export const errorTracker = (error, req, additionalContext = {}) => {
     requestId: req?.requestId,
     error: {
       name: error.name,
-      message: error.message,
-      stack: error.stack,
+      message: sanitizeLogData(error.message),
+      stack: sanitizeLogData(error.stack),
       code: error.code,
       statusCode: error.statusCode
     },
     request: req ? {
       method: req.method,
-      url: req.url,
+      url: redactUrl(req.url),
       userId: req.user?.userId,
       ip: req.ip,
       userAgent: req.get('User-Agent')
@@ -289,41 +290,11 @@ export const metricsLogger = {
 }
 
 /**
- * Log sanitization helper
+ * Log sanitization helper: credential names redacted, prompt/message content
+ * omitted, and every remaining string redacted by value (utils/logSanitize.js).
  */
 function sanitizeLogData(data) {
-  if (!data || typeof data !== 'object') {
-    return data
-  }
-  
-  const sensitiveFields = [
-    'password',
-    'token',
-    'apiKey',
-    'secret',
-    'authorization',
-    'cookie',
-    'session',
-    'creditCard',
-    'ssn',
-    'email' // Sometimes you want to log email, sometimes not
-  ]
-  
-  const sanitized = Array.isArray(data) ? [] : {}
-  
-  for (const [key, value] of Object.entries(data)) {
-    const lowerKey = key.toLowerCase()
-    
-    if (sensitiveFields.some(field => lowerKey.includes(field))) {
-      sanitized[key] = '[REDACTED]'
-    } else if (typeof value === 'object' && value !== null) {
-      sanitized[key] = sanitizeLogData(value)
-    } else {
-      sanitized[key] = value
-    }
-  }
-  
-  return sanitized
+  return sanitizeForLogging(data)
 }
 
 /**

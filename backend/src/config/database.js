@@ -4,7 +4,7 @@ export async function connectDB() {
   try {
     // Get fresh environment variable each time
     const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/prompd-editor'
-    console.log('Attempting to connect to MongoDB:', MONGODB_URI.substring(0, 20) + '...')
+    console.log('Attempting to connect to MongoDB')
     console.log('Full URI check:', process.env.MONGODB_URI ? 'FOUND' : 'NOT FOUND')
     const conn = await mongoose.connect(MONGODB_URI, {
       // Connection options for reliability

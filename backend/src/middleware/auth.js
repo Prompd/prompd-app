@@ -181,7 +181,6 @@ export const auth = async (req, res, next) => {
  */
 function extractToken(req) {
   const authHeader = req.headers.authorization
-  console.log('[Auth] Authorization header:', authHeader ? `${authHeader.substring(0, 20)}...` : 'MISSING')
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7)
