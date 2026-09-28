@@ -6,6 +6,35 @@ import fetch from 'node-fetch'
 import { removeWebhookFromQueue } from '../routes/webhookProxy.js'
 import { socketAuthMiddleware, socketEventGate } from './socketAuth.js'
 import { User } from '../models/User.js'
+import { Project } from '../models/Project.js'
+
+/** True when the verified Clerk user owns or collaborates on the project.
+ * Public visibility is NOT membership: a room carries collaborators' live
+ * file contents. */
+export async function isProjectMember(clerkUserId, projectId) {
+  if (!clerkUserId || typeof projectId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(projectId)) return false
+  const user = await User.findOne({ clerkUserId })
+  if (!user) return false
+  let project
+  try {
+    project = await Project.findById(projectId)
+  } catch {
+    return false // malformed id
+  }
+  if (!project) return false
+  const uid = String(user._id)
+  if (String(project.userId) === uid) return true
+  return (project.collaborators || []).some((c) => String(c.userId) === uid)
+}
+
+/** Emitter for a project room, only if this socket has joined it (i.e. passed
+ * the membership check); otherwise a no-op, so a non-member cannot push
+ * events into a room it could not join. */
+function toProject(socket, projectId) {
+  const room = `project:${projectId}`
+  if (typeof projectId !== 'string' || !socket.rooms?.has(room)) return { emit() {} }
+  return socket.to(room)
+}
 
 /**
  * Connected webhook proxy clients (userId → socket mapping)
@@ -91,11 +120,15 @@ export function setupSocketHandlers(io, { verify } = {}) {
     // Project collaboration
     socket.on('project:join', async (projectId) => {
       try {
+        if (!(await isProjectMember(socket.data.userId, projectId))) {
+          socket.emit('error', { message: 'Failed to join project', code: 'PROJECT_ACCESS_DENIED' })
+          return
+        }
         await socket.join(`project:${projectId}`)
         socket.emit('project:joined', { projectId, socketId: socket.id })
         
         // Notify other users in the project
-        socket.to(`project:${projectId}`).emit('user:joined', {
+        toProject(socket, projectId).emit('user:joined', {
           socketId: socket.id,
           timestamp: new Date().toISOString()
         })
@@ -106,11 +139,11 @@ export function setupSocketHandlers(io, { verify } = {}) {
 
     socket.on('project:leave', async (projectId) => {
       try {
-        await socket.leave(`project:${projectId}`)
-        socket.to(`project:${projectId}`).emit('user:left', {
+        toProject(socket, projectId).emit('user:left', {
           socketId: socket.id,
           timestamp: new Date().toISOString()
         })
+        await socket.leave(`project:${projectId}`)
       } catch (error) {
         console.error('Error leaving project:', error)
       }
@@ -125,7 +158,7 @@ export function setupSocketHandlers(io, { verify } = {}) {
         
         // Notify project members
         if (projectId) {
-          socket.to(`project:${projectId}`).emit('compilation:started', {
+          toProject(socket, projectId).emit('compilation:started', {
             socketId: socket.id,
             timestamp: new Date().toISOString()
           })
@@ -147,7 +180,7 @@ export function setupSocketHandlers(io, { verify } = {}) {
         })
 
         if (projectId) {
-          socket.to(`project:${projectId}`).emit('compilation:finished', {
+          toProject(socket, projectId).emit('compilation:finished', {
             socketId: socket.id,
             success: true,
             timestamp: new Date().toISOString()
@@ -163,7 +196,7 @@ export function setupSocketHandlers(io, { verify } = {}) {
         })
 
         if (data.projectId) {
-          socket.to(`project:${data.projectId}`).emit('compilation:finished', {
+          toProject(socket, data.projectId).emit('compilation:finished', {
             socketId: socket.id,
             success: false,
             error: error.message,
@@ -187,7 +220,7 @@ export function setupSocketHandlers(io, { verify } = {}) {
         })
 
         if (projectId) {
-          socket.to(`project:${projectId}`).emit('validation:update', {
+          toProject(socket, projectId).emit('validation:update', {
             socketId: socket.id,
             result,
             timestamp: new Date().toISOString()
@@ -209,7 +242,7 @@ export function setupSocketHandlers(io, { verify } = {}) {
       const { projectId, fileName, changeType, content } = data
       
       if (projectId) {
-        socket.to(`project:${projectId}`).emit('file:changed', {
+        toProject(socket, projectId).emit('file:changed', {
           fileName,
           changeType,
           content,
@@ -224,7 +257,7 @@ export function setupSocketHandlers(io, { verify } = {}) {
       const { projectId, fileName, position, selection } = data
       
       if (projectId) {
-        socket.to(`project:${projectId}`).emit('cursor:position', {
+        toProject(socket, projectId).emit('cursor:position', {
           fileName,
           position,
           selection,
@@ -243,7 +276,7 @@ export function setupSocketHandlers(io, { verify } = {}) {
         
         // Notify project members
         if (projectId) {
-          socket.to(`project:${projectId}`).emit('execution:started', {
+          toProject(socket, projectId).emit('execution:started', {
             socketId: socket.id,
             provider,
             model,
@@ -283,7 +316,7 @@ export function setupSocketHandlers(io, { verify } = {}) {
         })
 
         if (projectId) {
-          socket.to(`project:${projectId}`).emit('execution:finished', {
+          toProject(socket, projectId).emit('execution:finished', {
             socketId: socket.id,
             success: result.success,
             provider,
@@ -301,7 +334,7 @@ export function setupSocketHandlers(io, { verify } = {}) {
         })
 
         if (data.projectId) {
-          socket.to(`project:${data.projectId}`).emit('execution:finished', {
+          toProject(socket, data.projectId).emit('execution:finished', {
             socketId: socket.id,
             success: false,
             error: error.message,
@@ -333,7 +366,7 @@ export function setupSocketHandlers(io, { verify } = {}) {
         })
 
         if (projectId) {
-          socket.to(`project:${projectId}`).emit('package:updated', {
+          toProject(socket, projectId).emit('package:updated', {
             packageName,
             version,
             action: 'installed',
