@@ -14,6 +14,8 @@ import { readFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { decryptApiKey } from './EncryptionService.js'
+import { resolveServerKeyAccess } from './serverKeyAccess.js'
+import { incrementAiUsage } from '../middleware/aiQuota.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -24,6 +26,29 @@ try {
   agentModeConfig = JSON.parse(readFileSync(configPath, 'utf-8'))
 } catch (error) {
   console.error('Failed to load agent mode config:', error.message)
+}
+
+/**
+ * The server's own provider key, for a known user who passes the free-tier
+ * gate. Throws (with .code) otherwise. Never returns a key for no user.
+ */
+async function serverKeyFor(user, provider, model, envName, label) {
+  if (!user) {
+    const err = new Error('Sign in required')
+    err.code = 'AUTH_REQUIRED'
+    throw err
+  }
+  const gate = await resolveServerKeyAccess({ user, provider, model })
+  if (!gate.allowed) {
+    const err = new Error(gate.message)
+    err.code = gate.code
+    throw err
+  }
+  const apiKey = process.env[envName]
+  if (!apiKey) {
+    throw new Error(`Server ${label} API key not configured`)
+  }
+  return { apiKey, meter: gate.meter }
 }
 
 /**
@@ -102,11 +127,19 @@ export class AgentService {
     console.log(`[AgentService] Chat called - session: ${sessionId}, iteration: ${session.iteration}`)
 
     try {
-      let response
+      let call
       if (provider === 'anthropic') {
-        response = await this.callAnthropic(userId, messages, model, options)
+        call = await this.callAnthropic(userId, messages, model, options)
       } else {
-        response = await this.callOpenAI(userId, messages, model, options)
+        call = await this.callOpenAI(userId, messages, model, options)
+      }
+      const response = call.text
+
+      // A run on OUR server key counts against the user's execution quota.
+      // Best-effort: a save failure must not lose the response.
+      if (call.meter && call.user) {
+        try { await incrementAiUsage(call.user, 'execute') }
+        catch (e) { console.error('[AgentService] usage increment failed:', e.message) }
       }
 
       // Parse the response
@@ -123,6 +156,7 @@ export class AgentService {
       return {
         success: false,
         error: error.message,
+        ...(error.code ? { code: error.code } : {}),
         iteration: session.iteration
       }
     }
@@ -132,7 +166,7 @@ export class AgentService {
    * Call Anthropic Claude
    */
   async callAnthropic(userId, messages, model, options) {
-    const { user, client } = await this.getAnthropicClient(userId)
+    const { user, client, meter } = await this.getAnthropicClient(userId, model)
     const systemPrompt = this.getSystemPrompt()
 
     const response = await client.messages.create({
@@ -145,14 +179,14 @@ export class AgentService {
 
     // Extract text from response
     const textBlock = response.content.find(c => c.type === 'text')
-    return textBlock?.text || ''
+    return { text: textBlock?.text || '', user, meter }
   }
 
   /**
    * Call OpenAI (or compatible)
    */
   async callOpenAI(userId, messages, model, options) {
-    const { user, client } = await this.getOpenAIClient(userId)
+    const { user, client, meter } = await this.getOpenAIClient(userId, model)
     const systemPrompt = this.getSystemPrompt()
 
     const messagesWithSystem = [
@@ -175,7 +209,7 @@ export class AgentService {
 
     const response = await client.chat.completions.create(completionParams)
 
-    return response.choices[0]?.message?.content || ''
+    return { text: response.choices[0]?.message?.content || '', user, meter }
   }
 
   /**
@@ -218,72 +252,58 @@ export class AgentService {
    * Get Anthropic client
    * @param {string} userId - Can be Clerk user ID (user_xxx) or session fallback (session_xxx)
    */
-  async getAnthropicClient(userId) {
+  async getAnthropicClient(userId, model) {
     const User = (await import('../models/User.js')).User
 
-    // Try to find user - handles both Clerk IDs and session fallbacks gracefully
+    // userId is the verified identity (the socket's handshake sub). No user,
+    // no server key: a missing or pseudo id never spends our provider key.
     let user = null
-    if (userId && !userId.startsWith('session_')) {
-      // Try to find by Clerk user ID first
+    if (userId && typeof userId === 'string' && !userId.startsWith('session_')) {
       user = await User.findOne({ clerkUserId: userId })
     }
 
-    // If user found, try to use their API key
-    let client
+    // The user's own key, when they have one.
     if (user) {
       const anthropicConfig = this.getUserProviderConfig(user.aiFeatures?.llmProviders, 'anthropic')
-      const hasOwnKey = anthropicConfig?.hasKey || false
-
-      if (hasOwnKey) {
+      if (anthropicConfig?.hasKey) {
         const userKey = decryptApiKey(anthropicConfig.encryptedKey, anthropicConfig.iv)
-        client = new Anthropic({ apiKey: userKey })
-        return { user, client }
+        return { user, client: new Anthropic({ apiKey: userKey }), meter: false }
       }
     }
 
-    // Fall back to server API key
-    if (!process.env.ANTHROPIC_API_KEY) {
-      throw new Error('Server Anthropic API key not configured')
-    }
-    client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-    return { user, client }
+    // Server key: a known user only, through the same free-tier allowlist and
+    // quota gate as the HTTP chat gateway.
+    const { apiKey, meter } = await serverKeyFor(user, 'anthropic', model, 'ANTHROPIC_API_KEY', 'Anthropic')
+    return { user, client: new Anthropic({ apiKey }), meter }
   }
 
   /**
    * Get OpenAI client
    * @param {string} userId - Can be Clerk user ID (user_xxx) or session fallback (session_xxx)
    */
-  async getOpenAIClient(userId) {
+  async getOpenAIClient(userId, model) {
     const User = (await import('../models/User.js')).User
 
-    // Try to find user - handles both Clerk IDs and session fallbacks gracefully
+    // userId is the verified identity (the socket's handshake sub). No user,
+    // no server key: a missing or pseudo id never spends our provider key.
     let user = null
-    if (userId && !userId.startsWith('session_')) {
-      // Try to find by Clerk user ID first
+    if (userId && typeof userId === 'string' && !userId.startsWith('session_')) {
       user = await User.findOne({ clerkUserId: userId })
     }
 
-    // If user found, try to use their API key
-    let client
+    // The user's own key, when they have one.
     if (user) {
       const openaiConfig = this.getUserProviderConfig(user.aiFeatures?.llmProviders, 'openai')
-      const hasOwnKey = openaiConfig?.hasKey || false
-
-      if (hasOwnKey) {
+      if (openaiConfig?.hasKey) {
         const userKey = decryptApiKey(openaiConfig.encryptedKey, openaiConfig.iv)
-        client = new OpenAI({ apiKey: userKey })
-        return { user, client }
+        return { user, client: new OpenAI({ apiKey: userKey }), meter: false }
       }
     }
 
-    // Fall back to server API key
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('Server OpenAI API key not configured')
-    }
-    client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-
-    return { user, client }
+    // Server key: a known user only, through the same free-tier allowlist and
+    // quota gate as the HTTP chat gateway.
+    const { apiKey, meter } = await serverKeyFor(user, 'openai', model, 'OPENAI_API_KEY', 'OpenAI')
+    return { user, client: new OpenAI({ apiKey }), meter }
   }
 
   /**

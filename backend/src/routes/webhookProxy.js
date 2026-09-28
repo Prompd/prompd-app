@@ -114,7 +114,7 @@ function cleanupExpiredWebhooks() {
 }
 
 // Run cleanup every minute
-setInterval(cleanupExpiredWebhooks, 60 * 1000)
+setInterval(cleanupExpiredWebhooks, 60 * 1000).unref()
 
 /**
  * POST /api/webhook-proxy/:userId/:workflowId

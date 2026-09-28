@@ -4,6 +4,8 @@ import { ProjectService } from '../services/ProjectService.js'
 import { agentService } from '../services/AgentService.js'
 import fetch from 'node-fetch'
 import { removeWebhookFromQueue } from '../routes/webhookProxy.js'
+import { socketAuthMiddleware, socketEventGate } from './socketAuth.js'
+import { User } from '../models/User.js'
 
 /**
  * Connected webhook proxy clients (userId → socket mapping)
@@ -31,13 +33,24 @@ async function validateRegistryToken(token, registryUrl = 'https://registry.prom
   }
 }
 
-export function setupSocketHandlers(io) {
+/**
+ * @param {import('socket.io').Server} io
+ * @param {{ verify?: (token: string) => Promise<{ sub: string }> }} [opts]
+ *   verify defaults to the strict Clerk verifier; tests inject a fake.
+ */
+export function setupSocketHandlers(io, { verify } = {}) {
   const compilationService = new CompilationService()
   const validationService = new ValidationService()
   const projectService = new ProjectService()
 
+  // Handshake: verify a Clerk token when one is offered (see socketAuth.js).
+  io.use(socketAuthMiddleware(verify ? { verify } : {}))
+
   io.on('connection', (socket) => {
     console.log(`Socket connected: ${socket.id}`)
+
+    // Every event except the webhook-proxy ones needs a verified identity.
+    socket.use(socketEventGate(socket))
 
     // Webhook proxy client registration (for local services)
     socket.on('webhook-proxy:register', async (data) => {
@@ -238,11 +251,27 @@ export function setupSocketHandlers(io) {
           })
         }
 
+        // Identity is the verified handshake sub. Loading the user makes
+        // execute() apply the same own-key / free-tier gate as the HTTP route.
+        const userId = socket.data.userId
+        const user = await User.findOne({ clerkUserId: userId })
+        if (!user || !user.isActive || user.isSuspended) {
+          socket.emit('execution:error', {
+            success: false,
+            error: 'Account not available',
+            timestamp: new Date().toISOString()
+          })
+          return
+        }
+
         const result = await compilationService.execute(
           prompt,
           provider,
           model,
-          parameters
+          parameters,
+          userId,
+          projectId || null,
+          user
         )
 
         socket.emit('execution:complete', {
@@ -327,12 +356,17 @@ export function setupSocketHandlers(io) {
     // Architecture: Backend only handles LLM calls, frontend executes tools locally
     socket.on('agent:chat', async (data) => {
       try {
-        const { userId, sessionId, provider, model, messages, maxTokens, temperature } = data
+        // Never trust a userId from the payload: identity is the verified
+        // handshake token's sub (the gate guarantees one exists here).
+        const { sessionId, provider, model, messages, maxTokens, temperature } = data
+        const userId = socket.data.userId
 
         console.log(`[Agent] Chat request - session: ${sessionId}, provider: ${provider}`)
 
         // Call LLM via AgentService
-        const result = await agentService.chat(userId, sessionId, {
+        // Sessions are namespaced by the verified user so one user cannot
+        // read, advance or stop another user's session by guessing its id.
+        const result = await agentService.chat(userId, `${userId}:${sessionId}`, {
           provider,
           model,
           messages,
@@ -359,7 +393,7 @@ export function setupSocketHandlers(io) {
     socket.on('agent:stop', (data) => {
       const { sessionId } = data
       console.log(`[Agent] Stop requested for session ${sessionId}`)
-      agentService.stopSession(sessionId)
+      agentService.stopSession(`${socket.data.userId}:${sessionId}`)
       socket.emit('agent:stopped', { sessionId })
     })
 
@@ -390,9 +424,14 @@ export function setupSocketHandlers(io) {
       })
     })
 
-    // Error handling
+    // Error handling. A refused event (the auth gate) lands here too; tell
+    // the client why instead of dropping it silently.
     socket.on('error', (error) => {
-      console.error(`Socket error for ${socket.id}:`, error)
+      if (error?.message === 'unauthorized') {
+        socket.emit('auth:error', { error: 'Authentication required', code: error.data?.code || 'AUTH_REQUIRED', event: error.data?.event || null })
+        return
+      }
+      console.error(`Socket error for ${socket.id}:`, error?.message)
     })
   })
 
