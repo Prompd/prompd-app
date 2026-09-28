@@ -1,41 +1,13 @@
-import jwt from 'jsonwebtoken'
-import jwksClient from 'jwks-rsa'
 import { User } from '../models/User.js'
 import { normalizePlan, PLANS } from '../config/plans.js'
+import { verifyClerkToken } from '../services/strictClerk.js'
 
 const REGISTRY_URL = process.env.PROMPD_REGISTRY_URL || 'https://registry.prompdhub.ai'
 
-// JWKS client for verifying Clerk JWT signatures
-// Extract Clerk frontend API from secret key or use env variable
-const CLERK_FRONTEND_API = process.env.CLERK_FRONTEND_API || 'decent-bird-33.clerk.accounts.dev'
-
-console.log('[ClerkAuth] Environment check - CLERK_FRONTEND_API from env:', process.env.CLERK_FRONTEND_API)
-console.log('[ClerkAuth] Using CLERK_FRONTEND_API:', CLERK_FRONTEND_API)
-
-const client = jwksClient({
-  jwksUri: `https://${CLERK_FRONTEND_API}/.well-known/jwks.json`,
-  cache: true,
-  rateLimit: true,
-  jwksRequestsPerMinute: 10
-})
-
-console.log('[ClerkAuth] Using Clerk JWKS URI:', `https://${CLERK_FRONTEND_API}/.well-known/jwks.json`)
-
-/**
- * Get signing key for JWT verification
- */
-function getKey(header, callback) {
-  console.log('[ClerkAuth] Looking up signing key for kid:', header.kid)
-  client.getSigningKey(header.kid, function(err, key) {
-    if (err) {
-      console.error('[ClerkAuth] Failed to get signing key:', err.message)
-      return callback(err)
-    }
-    const signingKey = key.publicKey || key.rsaPublicKey
-    console.log('[ClerkAuth] Found signing key, length:', signingKey?.length || 0)
-    callback(null, signingKey)
-  })
-}
+/* Token verification lives in services/strictClerk.js (issuer, RS256, azp).
+ * It is awaited so a throw in the user lookup below reaches this middleware's
+ * catch and answers 500, instead of escaping a jwt.verify callback as an
+ * unhandled rejection. */
 
 /**
  * Clerk authentication middleware
@@ -53,42 +25,31 @@ export const clerkAuth = async (req, res, next) => {
       })
     }
 
-    // Verify JWT token using Clerk's public key (SECURE!)
-    console.log('[ClerkAuth] Verifying token, first 50 chars:', token.substring(0, 50) + '...')
-
-    // Debug: Decode token header to see key info
+    let decoded
     try {
-      const [headerB64] = token.split('.')
-      const header = JSON.parse(Buffer.from(headerB64, 'base64url').toString())
-      console.log('[ClerkAuth] Token header:', JSON.stringify(header))
-    } catch (e) {
-      console.log('[ClerkAuth] Could not decode token header:', e.message)
-    }
-
-    jwt.verify(token, getKey, {}, async (err, decoded) => {
-      if (err) {
-        console.error('[ClerkAuth] JWT verification failed:', err.name, err.message)
-        if (err.name === 'JsonWebTokenError') {
-          return res.status(401).json({
-            success: false,
-            error: 'Invalid token',
-            code: 'INVALID_TOKEN'
-          })
-        }
-        if (err.name === 'TokenExpiredError') {
-          return res.status(401).json({
-            success: false,
-            error: 'Token expired',
-            code: 'TOKEN_EXPIRED'
-          })
-        }
-        console.error('JWT verification error:', err)
-        return res.status(500).json({
+      decoded = await verifyClerkToken(token)
+    } catch (err) {
+      console.error('[ClerkAuth] JWT verification failed:', err?.name, err?.message)
+      if (err?.name === 'TokenExpiredError') {
+        return res.status(401).json({
           success: false,
-          error: 'Authentication failed',
-          code: 'AUTH_ERROR'
+          error: 'Token expired',
+          code: 'TOKEN_EXPIRED'
         })
       }
+      if (err?.name === 'JsonWebTokenError' || err?.name === 'NotBeforeError') {
+        return res.status(401).json({
+          success: false,
+          error: 'Invalid token',
+          code: 'INVALID_TOKEN'
+        })
+      }
+      return res.status(500).json({
+        success: false,
+        error: 'Authentication failed',
+        code: 'AUTH_ERROR'
+      })
+    }
 
       if (!decoded || !decoded.sub) {
         return res.status(401).json({
@@ -242,9 +203,8 @@ export const clerkAuth = async (req, res, next) => {
       req.auth = { userId: decoded.sub } // Keep for Clerk consistency
 
       next()
-    })
   } catch (error) {
-    console.error('Clerk authentication error:', error)
+    console.error('Clerk authentication error:', error?.message)
     return res.status(500).json({
       success: false,
       error: 'Authentication failed',

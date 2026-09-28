@@ -49,6 +49,7 @@ import mcpRoutes from './routes/mcp.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import { pricingService } from './services/PricingService.js'
 import { requestLogger } from './middleware/logger.js'
+import { warnIfAuthorizedPartiesMissing } from './services/strictClerk.js'
 
 // Debug environment variables
 console.log('Environment variables loaded:')
@@ -169,6 +170,7 @@ setupSocketHandlers(io)
 const PORT = process.env.PORT || 3010
 
 async function startServer() {
+  warnIfAuthorizedPartiesMissing()
   try {
     await connectDB()
     console.log('[ok] Connected to MongoDB')
