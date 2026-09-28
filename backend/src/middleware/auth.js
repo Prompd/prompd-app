@@ -1,6 +1,7 @@
 import { User } from '../models/User.js'
-import { PLANS, normalizePlan } from '../config/plans.js'
+import { normalizePlan } from '../config/plans.js'
 import { verifyClerkToken } from '../services/strictClerk.js'
+import { isAdminUserId } from './adminIds.js'
 
 const REGISTRY_URL = process.env.PROMPD_REGISTRY_URL || 'https://registry.prompdhub.ai'
 
@@ -231,23 +232,20 @@ export const optionalAuth = async (req, res, next) => {
 export const requireAuth = auth
 
 /**
- * Admin authentication middleware - requires user to be admin
+ * Operator-only routes. Admin is membership of ADMIN_USER_IDS, checked against
+ * the VERIFIED token's sub -- not a billing plan and not an email substring.
+ * The previous rule admitted every enterprise-plan customer, and anyone whose
+ * email contained '@prompd.io' or '@logikbug.com', to routes that read other
+ * people's error reports. An unset ADMIN_USER_IDS admits nobody.
  */
 export const requireAdmin = async (req, res, next) => {
-  // First run the auth middleware
   auth(req, res, (err) => {
     if (err) {
       return next(err)
     }
 
-    // Check if user is admin
-    const adminPlan = normalizePlan(req.user?.subscription?.plan)
-    const isAdmin = adminPlan === PLANS.ADMIN ||
-                    adminPlan === PLANS.ENTERPRISE ||
-                    req.user?.email?.includes('@prompd.io') ||
-                    req.user?.email?.includes('@logikbug.com')
-
-    if (!isAdmin) {
+    const sub = req.auth?.userId
+    if (!isAdminUserId(sub)) {
       return res.status(403).json({
         success: false,
         error: 'Admin access required',
