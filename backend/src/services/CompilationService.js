@@ -3,7 +3,7 @@ import { assertPublicHttpUrlResolved, safeFetch } from '../utils/ssrfGuard.js'
 import { redactSecrets } from '../utils/redactSecrets.js'
 import fs from 'fs/promises'
 import crypto from 'crypto'
-import { PrompdCompiler, MemoryFileSystem } from '@prompd/cli'
+import { getTemplateRenderer, PackageLoadError } from './templateRenderer/pool.js'
 import { CompilationCache } from '../models/CompilationCache.js'
 import { ProjectService } from './ProjectService.js'
 import Provider from '../models/Provider.js'
@@ -13,8 +13,8 @@ import { incrementAiUsage } from '../middleware/aiQuota.js'
 
 export class CompilationService {
   constructor() {
-    // Use @prompd/cli TypeScript library instead of Python CLI
-    this.compiler = new PrompdCompiler()
+    // Templates are compiled by @prompd/cli in an isolated child process
+    // (templateRenderer/). Nothing here runs user templates in-process.
     this.tempDir = path.join(process.cwd(), 'temp', 'compilation')
     this.ensureTempDir()
     this.projectService = new ProjectService()
@@ -48,21 +48,17 @@ export class CompilationService {
         }
       }
 
-      // Use memory filesystem for compilation (no temp files needed)
-      const memFS = new MemoryFileSystem({
-        '/main.prmd': content
-      })
-
-      // Compile using @prompd/cli library.
+      // Compile in the isolated renderer over an in-memory file system.
       // NOTE: compiler.compile() returns only the compiled string and throws on
       // any error, so it cannot surface output and structured validation together
       // (that left preview-public always returning no output and isValid:true).
-      // compileWithContext() returns the full CompilationContext - the pipeline
-      // accumulates errors per-stage instead of throwing - which we normalize below.
-      const context = await this.compiler.compileWithContext('/main.prmd', {
+      // The renderer runs compileWithContext() - the pipeline accumulates errors
+      // per-stage instead of throwing - which we normalize below.
+      const context = await getTemplateRenderer().render({
+        entry: '/main.prmd',
+        files: { '/main.prmd': content },
         outputFormat: this.mapFormatToCompiler(format),
         parameters: parameters,
-        fileSystem: memFS,
         registryUrl: process.env.PROMPD_REGISTRY_URL || 'https://registry.prompdhub.ai'
       })
 
@@ -88,6 +84,9 @@ export class CompilationService {
       }
 
     } catch (error) {
+      // Renderer failures (timeout, size limit, crash, busy) carry an HTTP
+      // status and a generic message; let the route answer with them.
+      if (error?.isRendererError) throw error
       console.error('Compilation error:', error)
       return {
         success: false,
@@ -203,10 +202,6 @@ export class CompilationService {
       // Use memory filesystem (no temp files needed)
       progressCallback?.({ stage: 'setup', progress: 10, description: 'Preparing compilation environment' })
 
-      const memFS = new MemoryFileSystem({
-        '/main.prmd': content
-      })
-
       const startTime = Date.now()
 
       // Execute compilation with @prompd/cli library
@@ -222,12 +217,19 @@ export class CompilationService {
         })
       })
 
-      const result = await this.compiler.compile('/main.prmd', {
+      // Same contract as @prompd/cli's compiler.compile(): the compiled string,
+      // or a throw listing the errors. Compiled in the isolated renderer.
+      const context = await getTemplateRenderer().render({
+        entry: '/main.prmd',
+        files: { '/main.prmd': content },
         outputFormat: this.mapFormatToCompiler(format),
         parameters: parameters,
-        fileSystem: memFS,
         registryUrl: process.env.PROMPD_REGISTRY_URL || 'https://registry.prompdhub.ai'
       })
+      if (context.hasErrors()) {
+        throw new Error(`Compilation failed:\n  - ${context.errors.join('\n  - ')}`)
+      }
+      const result = context.compiledResult || ''
 
       const compilationTime = Date.now() - startTime
 
@@ -252,6 +254,7 @@ export class CompilationService {
       }
 
     } catch (error) {
+      if (error?.isRendererError) throw error
       console.error('Compilation with progress error:', error)
       progressCallback?.({ 
         stage: 'error', 
@@ -607,8 +610,8 @@ export class CompilationService {
         }
       }
 
-      // Create MemoryFileSystem with workspace structure
-      const memFS = new MemoryFileSystem(memoryFiles)
+      // Registry packages to load into the renderer's in-memory file system.
+      const packages = []
 
       // If prompt has relative file inheritance (inherits: ./blog-writer.prmd) or package inheritance,
       // download the package and load it using secure MemoryFileSystem API
@@ -647,12 +650,9 @@ export class CompilationService {
 
           console.log(`[CompilationService] Downloaded ${metadata.name}@${metadata.version} (${tarball.length} bytes)`)
 
-          // Load package into MemoryFileSystem with automatic security validation
-          // This validates: ZIP slip, symlinks, size limits, package name/version format
-          await memFS.addPackage(packageName, packageVersion, tarball)
-
-          const stats = memFS.getTotalSize(`/packages/${packageName}@${packageVersion}`)
-          console.log(`[CompilationService] ✓ Loaded package with ${stats.files} files (${stats.size} bytes)`)
+          // The renderer child loads it into its MemoryFileSystem, which validates
+          // ZIP slip, symlinks, size limits and package name/version format.
+          packages.push({ name: packageName, version: packageVersion, tarball })
 
         } catch (pkgError) {
           // Proper error handling - don't silently continue
@@ -683,27 +683,30 @@ export class CompilationService {
         console.log('[CompilationService] Attempting compilation with @prompd/cli')
         console.log('[CompilationService] Input prompt length:', prompt.length)
         console.log('[CompilationService] mainFilePath:', mainFilePath)
-        console.log('[CompilationService] MemoryFS files:', Array.from(memFS.getAllFiles().keys()))
-
-        // Log file contents for debugging
-        console.log('[CompilationService] MemoryFS files:')
-        const allFiles = Array.from(memFS.getAllFiles().entries())
-        console.log('[CompilationService] Total files in MemoryFS:', allFiles.length)
-        for (const [path, content] of allFiles) {
-          console.log(`[CompilationService]   ${path}: ${content.length} bytes`)
-        }
+        console.log('[CompilationService] MemoryFS files:', Object.keys(memoryFiles))
+        console.log('[CompilationService] Packages:', packages.map(p => `${p.name}@${p.version}`))
         console.log('[CompilationService] Compiling file:', mainFilePath)
 
         console.log('[CompilationService] === Starting compilation ===')
         // Use compileWithContext to get warnings and full context
         // Pass registryUrl so package resolution uses the correct registry (local dev or production)
-        const compilationContext = await this.compiler.compileWithContext(mainFilePath, {
-          outputFormat: 'markdown',
-          parameters: compileParams,
-          fileSystem: memFS,
-          verbose: false, // Disable verbose to prevent metadata comments in output
-          registryUrl: process.env.PROMPD_REGISTRY_URL || 'https://registry.prompdhub.ai'
-        })
+        let compilationContext
+        try {
+          compilationContext = await getTemplateRenderer().render({
+            entry: mainFilePath,
+            files: memoryFiles,
+            packages,
+            outputFormat: 'markdown',
+            parameters: compileParams,
+            verbose: false, // Disable verbose to prevent metadata comments in output
+            registryUrl: process.env.PROMPD_REGISTRY_URL || 'https://registry.prompdhub.ai'
+          })
+        } catch (renderError) {
+          if (renderError instanceof PackageLoadError) {
+            throw new Error(`Failed to load package ${packageRef}: ${renderError.message}`)
+          }
+          throw renderError
+        }
 
         // Extract result from context
         const compileResult = compilationContext.compiledResult || ''
@@ -760,6 +763,8 @@ export class CompilationService {
           throw new Error('Compilation failed: Unexpected result type. Check .prmd syntax.')
         }
       } catch (compileError) {
+        // Renderer failures keep their HTTP status (the outer catch rethrows them).
+        if (compileError?.isRendererError) throw compileError
         console.error('[CompilationService] Compilation to markdown failed:', compileError.message, compileError.stack)
         // Don't silently fall back - propagate the error so users know their .prmd has issues
         throw new Error(`Compilation failed: ${compileError.message}`)

@@ -24,6 +24,7 @@ import compression from 'compression'
 import rateLimit from 'express-rate-limit'
 import { connectDB } from './config/database.js'
 import { setupSocketHandlers } from './config/socket.js'
+import { getTemplateRenderer, shutdownTemplateRenderer } from './services/templateRenderer/pool.js'
 import projectRoutes from './routes/projects.js'
 import packageRoutes from './routes/packages.js'
 import compilationRoutes from './routes/compilation.js'
@@ -193,6 +194,8 @@ async function startServer() {
     }
 
     server.listen(PORT, () => {
+      // Start the isolated template renderer children now, not on the first compile.
+      getTemplateRenderer().warm()
       console.log(`🚀 Server running on port ${PORT}`)
       console.log(`📡 Socket.IO server ready for real-time connections`)
       console.log(`🌐 API available at http://localhost:${PORT}`)
@@ -207,6 +210,7 @@ async function startServer() {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully')
+  shutdownTemplateRenderer().catch(() => {})
   server.close(() => {
     console.log('Server closed')
     process.exit(0)

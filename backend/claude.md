@@ -42,6 +42,15 @@ backend/
 - `JWT_SECRET` - JWT signing secret
 - `PROMPD_REGISTRY_URL` - Prompd registry URL (shared with @prompd/cli)
 - `PYTHON_CLI_PATH` - Path to Python CLI executable
+- `TEMPLATE_RENDER_POOL_SIZE` (2, max 4), `TEMPLATE_RENDER_TIMEOUT_MS` (10000), `TEMPLATE_RENDER_MAX_OLD_SPACE_MB` (128),
+  `TEMPLATE_RENDER_MAX_INPUT_BYTES` (16 MiB), `TEMPLATE_RENDER_MAX_OUTPUT_BYTES` (4 MiB) - isolated template renderer
+
+## Template compilation is isolated
+User .prmd templates are never compiled in the API process. `src/services/templateRenderer/`
+forks a small pool of children (empty env, Node permission model: fs read of node_modules +
+the child file only, no writes/subprocesses/workers/addons, no eval, capped heap, SIGKILL on
+timeout). CompilationService calls `getTemplateRenderer().render(...)`; registry packages are
+downloaded by the parent and handed to the child over IPC. Requires Node 20+.
 
 ## API Endpoints Summary
 - **Projects**: CRUD operations for user projects
