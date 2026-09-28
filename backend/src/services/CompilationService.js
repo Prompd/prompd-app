@@ -1,5 +1,6 @@
 import path from 'path'
 import { assertPublicHttpUrlResolved, safeFetch } from '../utils/ssrfGuard.js'
+import { redactSecrets } from '../utils/redactSecrets.js'
 import fs from 'fs/promises'
 import crypto from 'crypto'
 import { PrompdCompiler, MemoryFileSystem } from '@prompd/cli'
@@ -953,11 +954,12 @@ export class CompilationService {
           throw new Error(`Unsupported provider: ${providerName}. Supported providers: 'openai', 'anthropic', 'google', 'groq', 'mistral', 'cohere', 'together', 'perplexity', 'deepseek', 'ollama'.`)
         }
       } catch (providerError) {
-        console.error('[CompilationService] Provider API error:', providerError.message)
+        console.error('[CompilationService] Provider API error:', redactSecrets(String(providerError?.message ?? '')))
         console.error('[CompilationService] Provider error details:', providerError.errorDetails || 'none')
 
         // Build a more descriptive error message for rate limits
-        let errorMessage = providerError.message
+        // Provider SDK errors carry the upstream body, which can quote the key.
+        let errorMessage = redactSecrets(String(providerError?.message ?? 'Provider error'))
         if (providerError.status === 429) {
           const retryInfo = providerError.errorDetails?.find(d => d['@type']?.includes('RetryInfo'))
           const retryDelay = retryInfo?.retryDelay || '30s'
@@ -1049,7 +1051,7 @@ export class CompilationService {
       if (error.statusCode) throw error
       return {
         success: false,
-        error: error.message,
+        error: redactSecrets(String(error?.message ?? 'Execution failed')),
         response: null,
         compiledPrompt: null,  // Include compiledPrompt in error response for consistency
         usage: {

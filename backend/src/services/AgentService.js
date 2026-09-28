@@ -16,6 +16,7 @@ import { fileURLToPath } from 'url'
 import { decryptApiKey } from './EncryptionService.js'
 import { resolveServerKeyAccess } from './serverKeyAccess.js'
 import { incrementAiUsage } from '../middleware/aiQuota.js'
+import { redactSecrets } from '../utils/redactSecrets.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -152,10 +153,10 @@ export class AgentService {
         rawResponse: response
       }
     } catch (error) {
-      console.error('[AgentService] Chat error:', error)
+      console.error('[AgentService] Chat error:', redactSecrets(String(error?.message ?? '')))
       return {
         success: false,
-        error: error.message,
+        error: redactSecrets(String(error?.message ?? 'Agent call failed')),
         ...(error.code ? { code: error.code } : {}),
         iteration: session.iteration
       }
