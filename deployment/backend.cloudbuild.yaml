@@ -41,7 +41,7 @@ steps:
       # lives here. ADMIN_USER_IDS (Clerk user ids, the token's `sub`) decides
       # who passes requireAdmin; unset means nobody. It holds a comma list, so
       # the flag uses gcloud's alternate delimiter: items separated by @ only.
-      '--set-env-vars', '^@^NODE_ENV=production@FRONTEND_URL=https://prompd.app@CLERK_FRONTEND_API=clerk.prompdhub.ai@ADMIN_USER_IDS=user_32XsKzRRQxyVJvpZNCtQRPcKXLE,user_32WUbujbk8kogO12iavaOZu7g6j',
+      '--set-env-vars', '^@^NODE_ENV=production@FRONTEND_URL=https://prompd.app@CLERK_FRONTEND_API=clerk.prompdhub.ai@CLERK_AUTHORIZED_PARTIES=https://prompd.app,https://www.prompd.app@ADMIN_USER_IDS=user_32XsKzRRQxyVJvpZNCtQRPcKXLE,user_32WUbujbk8kogO12iavaOZu7g6j',
       '--set-secrets', 'MONGODB_URI=prompd-editor-mongodb-uri:latest,JWT_SECRET=prompd-editor-jwt-secret:latest,ENCRYPTION_SECRET=prompd-editor-encryption-secret:latest,CLERK_SECRET_KEY=prompd-editor-clerk-secret:latest,OPENAI_API_KEY=prompd-editor-openai-key:latest,ANTHROPIC_API_KEY=prompd-editor-anthropic-key:latest'
     ]
 
