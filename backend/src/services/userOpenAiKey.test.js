@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals'
-import { getOpenAIKey } from './userOpenAiKey.js'
+import { getOpenAIKey, getProviderKey } from './userOpenAiKey.js'
 import { encryptApiKey } from './EncryptionService.js'
 
 const prev = process.env.ENCRYPTION_SECRET
@@ -24,5 +24,20 @@ describe('getOpenAIKey', () => {
     const { encryptedKey, iv } = encryptApiKey('sk-map')
     const user = { aiFeatures: { llmProviders: new Map([['openai', { hasKey: true, encryptedKey, iv }]]) } }
     expect(getOpenAIKey(user)).toBe('sk-map')
+  })
+})
+
+describe('getProviderKey', () => {
+  const userWithGoogle = (cfg) => ({ aiFeatures: { llmProviders: { google: cfg } } })
+
+  it('decrypts the google key when the user has one', () => {
+    const { encryptedKey, iv } = encryptApiKey('AIza-user-google')
+    expect(getProviderKey(userWithGoogle({ hasKey: true, encryptedKey, iv }), 'google')).toBe('AIza-user-google')
+  })
+
+  it('returns null when the user has no google key', () => {
+    expect(getProviderKey(userWithGoogle({ hasKey: false }), 'google')).toBeNull()
+    expect(getProviderKey({}, 'google')).toBeNull()
+    expect(getProviderKey(undefined, 'google')).toBeNull()
   })
 })
