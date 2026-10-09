@@ -87,7 +87,7 @@ describe('chat-completions error relay', () => {
 describe('images error relay', () => {
   it('redacts the key from the upstream error body', async () => {
     fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(openAi401, { status: 401, headers: { 'content-type': 'application/json' } }))
-    const res = await request(app()).post('/api/v1/images/generations').set('Authorization', `Bearer ${token}`).send({ prompt: 'a cat', model: 'gpt-image-1' })
+    const res = await request(app()).post('/api/v1/images/generations').set('Authorization', `Bearer ${token}`).send({ prompt: 'a cat', model: 'gpt-image-2.5-flare' })
     expect(res.status).toBe(401)
     expect(res.text).not.toContain('abcdefghijklmnop')
     expect(res.text).toContain('invalid_api_key')
