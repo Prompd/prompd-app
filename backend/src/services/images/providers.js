@@ -41,7 +41,7 @@ export function resolveImageRequest(body) {
   return { request: { provider: provider.id, model: spec.id, prompt, shape, quality, n } }
 }
 
-function publicModel(m) {
+function publicModel(m, price) {
   return {
     id: m.id,
     label: m.label,
@@ -51,12 +51,15 @@ function publicModel(m) {
     maxPrompt: m.maxPrompt,
     maxN: m.maxN,
     default: Boolean(m.default),
+    price,
   }
 }
 
 /** Every provider's models, each provider marked available when `hasKey(id)`.
- * Static per release; the web caches it for the session. */
-export function listImageModels(hasKey) {
+ * `priceOf(provider, model)` gives the list price in USD per 1M tokens
+ * (`{ input, output }`) or null when none is published; null is never shown
+ * as free. The web caches the list for the session. */
+export function listImageModels(hasKey, priceOf = () => null) {
   return {
     providers: PROVIDERS.map((p) => {
       const available = Boolean(hasKey(p.id))
@@ -65,7 +68,7 @@ export function listImageModels(hasKey) {
         label: p.label,
         available,
         ...(available ? {} : { reason: `Add a ${p.label} key in provider settings.` }),
-        models: p.models.map(publicModel),
+        models: p.models.map((m) => publicModel(m, priceOf(p.id, m.id) ?? null)),
       }
     }),
   }

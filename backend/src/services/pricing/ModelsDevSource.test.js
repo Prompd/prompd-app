@@ -78,3 +78,16 @@ describe('ModelsDevSource.overlay — reject implausible unit slips', () => {
     expect(models[0].pricing.outputTokens).toBe(0.7)
   })
 })
+
+describe('ModelsDevSource.priceOf', () => {
+  it('gives input and output per 1M from the loaded catalog', () => {
+    expect(src.priceOf('openai', 'gpt-5')).toEqual({ input: 1.0, output: 8.0 })
+  })
+  it('is null for a model with no output price, an unknown model, or no catalog', () => {
+    expect(src.priceOf('openai', 'text-embedding-3')).toBeNull()
+    expect(src.priceOf('openai', 'nope')).toBeNull()
+    expect(src.priceOf('nope', 'gpt-5')).toBeNull()
+    src.catalog = null
+    expect(src.priceOf('openai', 'gpt-5')).toBeNull()
+  })
+})

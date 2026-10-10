@@ -149,6 +149,18 @@ class ModelsDevSource {
    * provider — callers union this onto their seed/API list as the dynamic source
    * of new models (gpt-5, future releases) without re-seeding.
    */
+  /**
+   * One model's list price from the catalog already loaded, in USD per 1M
+   * tokens, or null when models.dev has not been loaded or lists no input and
+   * output price for it. Sync on purpose: callers load() first, once.
+   */
+  priceOf(provider, model) {
+    const entry = this.catalog?.[PROVIDER_ALIAS[provider] || provider]?.models?.[model]
+    const input = num(entry?.cost?.input)
+    const output = num(entry?.cost?.output)
+    return input === undefined || output === undefined ? null : { input, output }
+  }
+
   async listForProvider(provider) {
     try {
       const catalog = await this.load()

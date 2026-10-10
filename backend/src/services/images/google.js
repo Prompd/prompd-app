@@ -26,6 +26,18 @@ export function imagesFromInteraction(json) {
   return out
 }
 
+const count = (v) => (Number.isInteger(v) && v >= 0 ? v : null)
+
+/** Tokens Google reports for a finished interaction, or null when it has none.
+ * Thought tokens are billed at the output rate, so they count as output. */
+export function usageFromInteraction(json) {
+  const u = json?.usage
+  const input = count(u?.total_input_tokens)
+  const output = count(u?.total_output_tokens)
+  if (input === null || output === null) return null
+  return { input, output: output + (count(u?.total_thought_tokens) ?? 0) }
+}
+
 export const googleProvider = {
   id: 'google',
   label: 'Google',
@@ -62,7 +74,7 @@ export const googleProvider = {
         const why = json.errors?.[0]?.message
         return { ok: false, status: 502, message: `Google did not finish the image (${json.status})${why ? `: ${why}` : ''}` }
       }
-      return { ok: true, images: imagesFromInteraction(json) }
+      return { ok: true, images: imagesFromInteraction(json), usage: usageFromInteraction(json) }
     } catch (error) {
       return { ok: false, status: 502, message: `Upstream request failed: ${error.message}` }
     }
