@@ -67,13 +67,13 @@ describe('google generate', () => {
 })
 
 describe('google usage', () => {
-  it('reads input and output tokens, counting thought tokens as output', async () => {
-    const body = { status: 'completed', output_image: { data: 'QUJD', mime_type: 'image/png' }, usage: { total_input_tokens: 12, total_output_tokens: 1290, total_thought_tokens: 200, total_tokens: 1502 } }
+  it('reads input and image output tokens, leaving thought tokens out', async () => {
+    const body = { status: 'completed', output_image: { data: 'QUJD', mime_type: 'image/png' }, usage: { total_input_tokens: 12, total_output_tokens: 1300, total_thought_tokens: 200, total_tokens: 1512, output_tokens_by_modality: [{ modality: 'text', tokens: 10 }, { modality: 'image', tokens: 1290 }] } }
     const fetchImpl = async () => new Response(JSON.stringify(body), { status: 200 })
-    expect((await googleProvider.generate(req(), 'k', { fetchImpl })).usage).toEqual({ input: 12, output: 1490 })
+    expect((await googleProvider.generate(req(), 'k', { fetchImpl })).usage).toEqual({ input: 12, output: 1290 })
   })
-  it('treats missing thought tokens as none', () => {
-    expect(usageFromInteraction({ usage: { total_input_tokens: 3, total_output_tokens: 7 } })).toEqual({ input: 3, output: 7 })
+  it('falls back to total output without a per-modality breakdown', () => {
+    expect(usageFromInteraction({ usage: { total_input_tokens: 3, total_output_tokens: 7, total_thought_tokens: 50 } })).toEqual({ input: 3, output: 7 })
   })
   it('is null without input and output counts', () => {
     expect(usageFromInteraction({})).toBeNull()

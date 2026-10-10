@@ -44,6 +44,13 @@ function mapEntry(e) {
 // users incorrectly. Legitimate price changes are well within this band.
 const MAX_PRICE_DRIFT_FACTOR = 100
 
+// No model is priced anywhere near this per 1M tokens; above it, a listed
+// price is taken for a unit slip (per-1K, per-token) and not shown.
+const MAX_PER_MILLION = 1000
+
+// A hung models.dev must not hold up its callers (the image model list waits on it).
+const FETCH_TIMEOUT_MS = 10_000
+
 class ModelsDevSource {
   constructor() {
     this.catalog = null
@@ -74,7 +81,7 @@ class ModelsDevSource {
 
     this.loading = (async () => {
       try {
-        const res = await fetch(CATALOG_URL, { headers: { Accept: 'application/json' } })
+        const res = await fetch(CATALOG_URL, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const json = await res.json()
         this.catalog = json
@@ -142,6 +149,22 @@ class ModelsDevSource {
   }
 
   /**
+   * One model's list price from the catalog already loaded, in USD per 1M
+   * tokens, or null when models.dev has not been loaded, lists no input and
+   * output price for it, or lists one too large to be a per-1M rate (a unit
+   * slip would otherwise be shown as the price). Sync on purpose: callers
+   * load() first, once.
+   */
+  priceOf(provider, model) {
+    const entry = this.catalog?.[PROVIDER_ALIAS[provider] || provider]?.models?.[model]
+    const input = num(entry?.cost?.input)
+    const output = num(entry?.cost?.output)
+    if (input === undefined || output === undefined) return null
+    if (input < 0 || output < 0 || input > MAX_PER_MILLION || output > MAX_PER_MILLION) return null
+    return { input, output }
+  }
+
+  /**
    * The full model list models.dev publishes for a provider, mapped to our
    * fetcher shape. Filtered to billable text/chat models (has input pricing and
    * accepts text input) so embeddings / image- or audio-only models don't leak
@@ -149,18 +172,6 @@ class ModelsDevSource {
    * provider — callers union this onto their seed/API list as the dynamic source
    * of new models (gpt-5, future releases) without re-seeding.
    */
-  /**
-   * One model's list price from the catalog already loaded, in USD per 1M
-   * tokens, or null when models.dev has not been loaded or lists no input and
-   * output price for it. Sync on purpose: callers load() first, once.
-   */
-  priceOf(provider, model) {
-    const entry = this.catalog?.[PROVIDER_ALIAS[provider] || provider]?.models?.[model]
-    const input = num(entry?.cost?.input)
-    const output = num(entry?.cost?.output)
-    return input === undefined || output === undefined ? null : { input, output }
-  }
-
   async listForProvider(provider) {
     try {
       const catalog = await this.load()
