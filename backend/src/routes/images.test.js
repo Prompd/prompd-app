@@ -46,6 +46,12 @@ describe('generateResponse', () => {
     expect(out).toEqual({ status: 200, json: { data: [{ b64_json: 'QUJD', mime: 'image/png' }], provider: 'openai', model: 'gpt-image-2.5-flare' } })
   })
 
+  it("relays the provider's token counts when it reports them", async () => {
+    const fetchImpl = json(200, { data: [{ b64_json: 'QUJD' }], usage: { input_tokens: 38, output_tokens: 1272 } })
+    const out = await generateResponse({ prompt: 'a' }, () => 'sk-x', { fetchImpl })
+    expect(out.json.usage).toEqual({ input_tokens: 38, output_tokens: 1272 })
+  })
+
   it('relays a provider error with secrets redacted', async () => {
     const fetchImpl = json(401, { error: { message: 'Incorrect API key provided: sk-proj-abcdefghijklmnopqrstuvwxyz123456' } })
     const out = await generateResponse({ prompt: 'a' }, () => 'sk-x', { fetchImpl })
@@ -73,5 +79,10 @@ describe('modelsResponse', () => {
     const out = modelsResponse((id) => (id === 'openai' ? 'sk-secret-value' : null))
     expect(out.providers.map((p) => [p.id, p.available])).toEqual([['openai', true], ['google', false]])
     expect(JSON.stringify(out)).not.toMatch(/sk-secret-value/)
+  })
+  it("passes each model's price through", () => {
+    const out = modelsResponse(() => null, (p, m) => (m === 'gemini-3-pro-image' ? { input: 2, output: 120 } : null))
+    const pro = out.providers.find((p) => p.id === 'google').models.find((m) => m.id === 'gemini-3-pro-image')
+    expect(pro.price).toEqual({ input: 2, output: 120 })
   })
 })

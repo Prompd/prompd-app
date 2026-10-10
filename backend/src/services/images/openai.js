@@ -6,6 +6,16 @@
  */
 const IMAGES_URL = 'https://api.openai.com/v1/images/generations'
 
+const count = (v) => (Number.isInteger(v) && v >= 0 ? v : null)
+
+/** Tokens OpenAI reports for the request, or null when the reply has none
+ * (the gpt-image models report `usage`; anything else may not). */
+export function usageFromImages(json) {
+  const input = count(json?.usage?.input_tokens)
+  const output = count(json?.usage?.output_tokens)
+  return input === null || output === null ? null : { input, output }
+}
+
 const QUALITY_25 = ['auto', 'low', 'medium', 'high', 'xhigh', 'max']
 const SIZES_STANDARD = { square: '1024x1024', wide: '1536x1024', tall: '1024x1536' }
 /* The 2K sizes satisfy OpenAI's custom-size rules for the 2.5 models: both
@@ -44,7 +54,7 @@ export const openaiProvider = {
         .map((d) => d?.b64_json)
         .filter((b) => typeof b === 'string' && b.length > 0)
         .map((b64) => ({ b64, mime: 'image/png' }))
-      return { ok: true, images }
+      return { ok: true, images, usage: usageFromImages(json) }
     } catch (error) {
       return { ok: false, status: 502, message: `Upstream request failed: ${error.message}` }
     }

@@ -84,8 +84,14 @@ describe('listImageModels', () => {
       id: 'gpt-image-2.5-flare', label: 'Fast', description: 'Everyday images, quickly.',
       shapes: ['square', 'wide', 'tall', 'square-2k', 'wide-2k', 'tall-2k'],
       qualities: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'],
-      maxPrompt: 4000, maxN: 4, default: true,
+      maxPrompt: 4000, maxN: 4, default: true, price: null,
     })
+  })
+  it("carries each model's list price, or null when there is none", () => {
+    const priceOf = (p, m) => (p === 'openai' && m === 'gpt-image-2' ? { input: 5, output: 30 } : null)
+    const openai = listImageModels(() => true, priceOf).providers[0].models
+    expect(openai.find((m) => m.id === 'gpt-image-2').price).toEqual({ input: 5, output: 30 })
+    expect(openai.find((m) => m.id === 'gpt-image-2.5-flare').price).toBeNull()
   })
   it('never carries anything that looks like a key', () => {
     expect(JSON.stringify(listImageModels(() => true))).not.toMatch(/sk-|key"/i)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
-import { openaiProvider } from './openai.js'
+import { openaiProvider, usageFromImages } from './openai.js'
 
 const req = (over = {}) => ({ provider: 'openai', model: 'gpt-image-2.5-flare', prompt: 'a cat', shape: 'square', quality: 'auto', n: 1, ...over })
 const spec = (id) => openaiProvider.models.find((m) => m.id === id)
@@ -38,7 +38,7 @@ describe('openai generate', () => {
 
   it('returns base64 images as png', async () => {
     const out = await openaiProvider.generate(req(), 'sk-x', { fetchImpl: okFetch({ data: [{ b64_json: 'QUJD' }] }) })
-    expect(out).toEqual({ ok: true, images: [{ b64: 'QUJD', mime: 'image/png' }] })
+    expect(out).toEqual({ ok: true, images: [{ b64: 'QUJD', mime: 'image/png' }], usage: null })
   })
 
   it('sends the key as a Bearer token to the images endpoint', async () => {
@@ -65,5 +65,19 @@ describe('openai generate', () => {
     const fetchImpl = async () => ({ ok: true, status: 200, headers: new Headers(), text: async () => { throw new Error('ECONNRESET') } })
     const out = await openaiProvider.generate(req(), 'sk-x', { fetchImpl })
     expect(out).toEqual({ ok: false, status: 502, message: 'Upstream request failed: ECONNRESET' })
+  })
+})
+
+describe('openai usage', () => {
+  it('reads input and output tokens from the reply', async () => {
+    const body = { data: [{ b64_json: 'QUJD' }], usage: { total_tokens: 1310, input_tokens: 38, output_tokens: 1272, input_tokens_details: { text_tokens: 38 } } }
+    const fetchImpl = async () => new Response(JSON.stringify(body), { status: 200 })
+    expect((await openaiProvider.generate(req(), 'sk-x', { fetchImpl })).usage).toEqual({ input: 38, output: 1272 })
+  })
+  it('is null when either count is missing or not a whole number', () => {
+    expect(usageFromImages({})).toBeNull()
+    expect(usageFromImages({ usage: { input_tokens: 5 } })).toBeNull()
+    expect(usageFromImages({ usage: { input_tokens: 5, output_tokens: -1 } })).toBeNull()
+    expect(usageFromImages({ usage: { input_tokens: '5', output_tokens: 9 } })).toBeNull()
   })
 })

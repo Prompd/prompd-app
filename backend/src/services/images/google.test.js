@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
-import { googleProvider, imagesFromInteraction } from './google.js'
+import { googleProvider, imagesFromInteraction, usageFromInteraction } from './google.js'
 
 const req = (over = {}) => ({ provider: 'google', model: 'gemini-nano-banana-2.1', prompt: 'a cat', shape: 'square', quality: 'auto', n: 1, ...over })
 const spec = (id) => googleProvider.models.find((m) => m.id === id)
@@ -46,7 +46,7 @@ describe('google generate', () => {
     expect(seen.url).toBe('https://generativelanguage.googleapis.com/v1beta/interactions')
     expect(seen.url).not.toMatch(/AIza/)
     expect(seen.init.headers['x-goog-api-key']).toBe('AIza-test')
-    expect(out).toEqual({ ok: true, images: [{ b64: 'QUJD', mime: 'image/png' }] })
+    expect(out).toEqual({ ok: true, images: [{ b64: 'QUJD', mime: 'image/png' }], usage: null })
   })
   it('reports an interaction that did not complete, with Google\'s reason', async () => {
     const fetchImpl = async () => new Response(JSON.stringify({ status: 'failed', errors: [{ code: 'x', message: 'Safety filter' }] }), { status: 200 })
@@ -63,5 +63,20 @@ describe('google generate', () => {
   it('reports a body that fails to read after headers as 502, never rejecting', async () => {
     const fetchImpl = async () => ({ ok: true, status: 200, headers: new Headers(), text: async () => { throw new Error('ECONNRESET') } })
     expect(await googleProvider.generate(req(), 'k', { fetchImpl })).toEqual({ ok: false, status: 502, message: 'Upstream request failed: ECONNRESET' })
+  })
+})
+
+describe('google usage', () => {
+  it('reads input and output tokens, counting thought tokens as output', async () => {
+    const body = { status: 'completed', output_image: { data: 'QUJD', mime_type: 'image/png' }, usage: { total_input_tokens: 12, total_output_tokens: 1290, total_thought_tokens: 200, total_tokens: 1502 } }
+    const fetchImpl = async () => new Response(JSON.stringify(body), { status: 200 })
+    expect((await googleProvider.generate(req(), 'k', { fetchImpl })).usage).toEqual({ input: 12, output: 1490 })
+  })
+  it('treats missing thought tokens as none', () => {
+    expect(usageFromInteraction({ usage: { total_input_tokens: 3, total_output_tokens: 7 } })).toEqual({ input: 3, output: 7 })
+  })
+  it('is null without input and output counts', () => {
+    expect(usageFromInteraction({})).toBeNull()
+    expect(usageFromInteraction({ usage: { total_output_tokens: 7 } })).toBeNull()
   })
 })
