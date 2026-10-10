@@ -29,13 +29,20 @@ export function imagesFromInteraction(json) {
 const count = (v) => (Number.isInteger(v) && v >= 0 ? v : null)
 
 /** Tokens Google reports for a finished interaction, or null when it has none.
- * Thought tokens are billed at the output rate, so they count as output. */
+ *
+ * Output is the IMAGE output: the card prices it at the model's listed output
+ * rate, which is the image rate. Thought tokens (total_thought_tokens, apart
+ * from total_output_tokens) and any text output bill at the lower text rate,
+ * so counting them here would overstate the cost; they are left out. When the
+ * per-modality breakdown is missing, total_output_tokens is the best count. */
 export function usageFromInteraction(json) {
   const u = json?.usage
   const input = count(u?.total_input_tokens)
-  const output = count(u?.total_output_tokens)
-  if (input === null || output === null) return null
-  return { input, output: output + (count(u?.total_thought_tokens) ?? 0) }
+  const total = count(u?.total_output_tokens)
+  if (input === null || total === null) return null
+  const byModality = Array.isArray(u?.output_tokens_by_modality) ? u.output_tokens_by_modality : null
+  const image = byModality ? count(byModality.find((m) => m?.modality === 'image')?.tokens) : null
+  return { input, output: image ?? total }
 }
 
 export const googleProvider = {

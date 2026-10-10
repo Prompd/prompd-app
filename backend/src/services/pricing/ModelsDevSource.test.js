@@ -90,4 +90,8 @@ describe('ModelsDevSource.priceOf', () => {
     src.catalog = null
     expect(src.priceOf('openai', 'gpt-5')).toBeNull()
   })
+  it('is null for a price too large to be per 1M tokens (a unit slip)', () => {
+    src.catalog.openai.models['gpt-5'].cost = { input: 1000000, output: 8 }
+    expect(src.priceOf('openai', 'gpt-5')).toBeNull()
+  })
 })
